@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  kaha-hostel-api:
+    build: .
+    container_name: kaha-hostel-nestjs
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - APP_PORT=3001
+      - DB_HOST=host.docker.internal
+      - DB_PORT=5432
+      - DB_USERNAME=${DB_USERNAME:-kaha_user}
+      - DB_PASSWORD=${DB_PASSWORD:-your_secure_password}
+      - DB_NAME=${DB_NAME:-kaha_hostel_db}
+      - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_key}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    depends_on: []
+    networks:
+      - kaha-network
+
+networks:
+  kaha-network:
+    driver: bridge
