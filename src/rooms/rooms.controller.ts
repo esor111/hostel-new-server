@@ -152,6 +152,57 @@ export class RoomsController {
     };
   }
 
+  @Get('beds/available')
+  @ApiOperation({ summary: 'Get available beds' })
+  @ApiResponse({ status: 200, description: 'Available beds retrieved successfully' })
+  async getAvailableBeds(
+    @Query('roomId') roomId?: string,
+    @Query('gender') gender?: string,
+    @Query('limit') limit?: string
+  ) {
+    const beds = await this.bedService.findAvailableBedsForBooking(
+      roomId,
+      gender,
+      limit ? parseInt(limit) : undefined
+    );
+    
+    return {
+      status: HttpStatus.OK,
+      data: beds
+    };
+  }
+
+  @Post('beds/validate-availability')
+  @ApiOperation({ summary: 'Validate multiple bed availability' })
+  @ApiResponse({ status: 200, description: 'Bed availability validated successfully' })
+  async validateBedAvailability(
+    @Body() validateDto: { bedIdentifiers: string[]; guestGenders?: string[] }
+  ) {
+    const result = await this.bedService.validateMultipleBedAvailability(
+      validateDto.bedIdentifiers,
+      validateDto.guestGenders
+    );
+    
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
+  @Post('beds/migrate-all')
+  @ApiOperation({ summary: 'Migrate all rooms to create bed entities from bedPositions' })
+  @ApiResponse({ status: 200, description: 'Migration completed successfully' })
+  async migrateAllRoomsBeds() {
+    // This will use the BedSyncService migration method
+    const result = await this.bedSyncService.migrateAllRoomsToBedsEntities();
+    
+    return {
+      status: HttpStatus.OK,
+      message: 'Migration completed',
+      data: result
+    };
+  }
+
   @Get('beds/identifier/:bedIdentifier')
   @ApiOperation({ summary: 'Get bed by identifier (for mobile app)' })
   @ApiResponse({ status: 200, description: 'Bed retrieved successfully' })
@@ -251,55 +302,6 @@ export class RoomsController {
     };
   }
 
-  @Get(':roomId/beds/stats')
-  @ApiOperation({ summary: 'Get bed statistics for room' })
-  @ApiResponse({ status: 200, description: 'Bed statistics retrieved successfully' })
-  async getRoomBedStats(@Param('roomId') roomId: string) {
-    const stats = await this.bedService.getBedStatistics(roomId);
-    
-    return {
-      status: HttpStatus.OK,
-      data: stats
-    };
-  }
-
-  @Get('beds/available')
-  @ApiOperation({ summary: 'Get available beds' })
-  @ApiResponse({ status: 200, description: 'Available beds retrieved successfully' })
-  async getAvailableBeds(
-    @Query('roomId') roomId?: string,
-    @Query('gender') gender?: string,
-    @Query('limit') limit?: string
-  ) {
-    const beds = await this.bedService.findAvailableBedsForBooking(
-      roomId,
-      gender,
-      limit ? parseInt(limit) : undefined
-    );
-    
-    return {
-      status: HttpStatus.OK,
-      data: beds
-    };
-  }
-
-  @Post('beds/validate-availability')
-  @ApiOperation({ summary: 'Validate multiple bed availability' })
-  @ApiResponse({ status: 200, description: 'Bed availability validated successfully' })
-  async validateBedAvailability(
-    @Body() validateDto: { bedIdentifiers: string[]; guestGenders?: string[] }
-  ) {
-    const result = await this.bedService.validateMultipleBedAvailability(
-      validateDto.bedIdentifiers,
-      validateDto.guestGenders
-    );
-    
-    return {
-      status: HttpStatus.OK,
-      data: result
-    };
-  }
-
   @Get(':roomId/beds/summary')
   @ApiOperation({ summary: 'Get bed availability summary for room' })
   @ApiResponse({ status: 200, description: 'Bed availability summary retrieved successfully' })
@@ -335,20 +337,6 @@ export class RoomsController {
         bedsCreated: beds.length,
         beds: beds
       }
-    };
-  }
-
-  @Post('beds/migrate-all')
-  @ApiOperation({ summary: 'Migrate all rooms to create bed entities from bedPositions' })
-  @ApiResponse({ status: 200, description: 'Migration completed successfully' })
-  async migrateAllRoomsBeds() {
-    // This will use the BedSyncService migration method
-    const result = await this.bedSyncService.migrateAllRoomsToBedsEntities();
-    
-    return {
-      status: HttpStatus.OK,
-      message: 'Migration completed',
-      data: result
     };
   }
 }

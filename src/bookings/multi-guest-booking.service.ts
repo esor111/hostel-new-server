@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, Not, IsNull, MoreThan } from 'typeorm';
 import { MultiGuestBooking, MultiGuestBookingStatus } from './entities/multi-guest-booking.entity';
 import { BookingGuest, GuestStatus } from './entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
+import { Room } from '../rooms/entities/room.entity';
+import { Student, StudentStatus } from '../students/entities/student.entity';
 import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
+import { CreateBookingDto, ApproveBookingDto, RejectBookingDto } from './dto/create-booking.dto';
 import { BedSyncService } from '../rooms/bed-sync.service';
+import { BookingValidationService } from './validation/booking-validation.service';
 
 
 
@@ -58,8 +62,13 @@ export class MultiGuestBookingService {
     private bookingGuestRepository: Repository<BookingGuest>,
     @InjectRepository(Bed)
     private bedRepository: Repository<Bed>,
+    @InjectRepository(Room)
+    private roomRepository: Repository<Room>,
+    @InjectRepository(Student)
+    private studentRepository: Repository<Student>,
     private dataSource: DataSource,
     private bedSyncService: BedSyncService,
+    private validationService: BookingValidationService,
   ) {}
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto): Promise<any> {
@@ -70,47 +79,36 @@ export class MultiGuestBookingService {
     // Use transaction to ensure data consistency
     return await this.dataSource.transaction(async manager => {
       try {
-        // Validate bed availability and get bed details
-        const bedIds = bookingData.guests.map(guest => guest.bedId);
-        const beds = await manager.find(Bed, {
-          where: bedIds.map(bedId => ({ bedIdentifier: bedId })),
-          relations: ['room']
-        });
-
-        // Validate all beds exist
-        if (beds.length !== bedIds.length) {
-          const foundBedIds = beds.map(bed => bed.bedIdentifier);
-          const missingBeds = bedIds.filter(bedId => !foundBedIds.includes(bedId));
-          throw new BadRequestException(`Beds not found: ${missingBeds.join(', ')}`);
+        // Comprehensive validation using validation service
+        const dataValidation = this.validationService.validateBookingData(bookingData);
+        if (!dataValidation.isValid) {
+          throw new BadRequestException(`Booking data validation failed: ${dataValidation.errors.join('; ')}`);
         }
 
-        // Check bed availability
-        const unavailableBeds = beds.filter(bed => bed.status !== BedStatus.AVAILABLE);
-        if (unavailableBeds.length > 0) {
-          const unavailableBedIds = unavailableBeds.map(bed => bed.bedIdentifier);
-          throw new BadRequestException(`Beds not available: ${unavailableBedIds.join(', ')}`);
+        const bedIds = bookingData.guests.map(guest => guest.bedId);
+        
+        // Validate bed IDs
+        const bedValidation = await this.validationService.validateBedIds(bedIds);
+        if (!bedValidation.isValid) {
+          throw new BadRequestException(`Bed validation failed: ${bedValidation.errors.join('; ')}`);
         }
 
         // Validate gender compatibility
-        const genderMismatches: string[] = [];
-        for (const guest of bookingData.guests) {
-          const bed = beds.find(b => b.bedIdentifier === guest.bedId);
-          if (bed && bed.gender && bed.gender !== 'Any' && bed.gender !== guest.gender) {
-            genderMismatches.push(
-              `Bed ${guest.bedId} is designated for ${bed.gender} but guest ${guest.name} is ${guest.gender}`
-            );
-          }
+        const guestAssignments = bookingData.guests.map(guest => ({
+          bedId: guest.bedId,
+          gender: guest.gender
+        }));
+        
+        const genderValidation = await this.validationService.validateGenderCompatibility(guestAssignments);
+        if (!genderValidation.isValid) {
+          throw new BadRequestException(`Gender compatibility validation failed: ${genderValidation.errors.join('; ')}`);
         }
 
-        if (genderMismatches.length > 0) {
-          throw new BadRequestException(`Gender compatibility issues: ${genderMismatches.join('; ')}`);
-        }
-
-        // Validate no duplicate bed assignments
-        const uniqueBedIds = new Set(bedIds);
-        if (uniqueBedIds.size !== bedIds.length) {
-          throw new BadRequestException('Cannot assign multiple guests to the same bed');
-        }
+        // Get bed details for booking creation
+        const beds = await manager.find(Bed, {
+          where: bedIds.map(bedId => ({ id: bedId })),
+          relations: ['room']
+        });
 
         // Create booking
         const booking = manager.create(MultiGuestBooking, {
@@ -132,7 +130,7 @@ export class MultiGuestBookingService {
 
         // Create guest records
         const guests = bookingData.guests.map((guestDto: any) => {
-          const bed = beds.find(b => b.bedIdentifier === guestDto.bedId);
+          const bed = beds.find(b => b.id === guestDto.bedId);
           this.logger.log(`Creating guest record for ${guestDto.name} in bed ${guestDto.bedId}`);
           return manager.create(BookingGuest, {
             bookingId: savedBooking.id,
@@ -142,7 +140,7 @@ export class MultiGuestBookingService {
             gender: guestDto.gender,
             status: GuestStatus.PENDING,
             assignedRoomNumber: bed?.room?.roomNumber,
-            assignedBedNumber: bed?.bedIdentifier // Use bedIdentifier instead of bedNumber
+            assignedBedNumber: bed?.bedIdentifier // Still use bedIdentifier for display
           });
         });
 
@@ -158,8 +156,13 @@ export class MultiGuestBookingService {
 
         this.logger.log(`✅ Created multi-guest booking ${savedBooking.bookingReference} with ${guests.length} guests`);
 
-        // Return complete booking with guests
-        return this.findBookingById(savedBooking.id);
+        // Return complete booking with guests using transaction manager
+        const bookingWithGuests = await manager.findOne(MultiGuestBooking, {
+          where: { id: savedBooking.id },
+          relations: ['guests']
+        });
+        
+        return this.transformToApiResponse(bookingWithGuests);
       } catch (error) {
         this.logger.error(`❌ Error creating multi-guest booking: ${error.message}`);
         throw error;
@@ -178,6 +181,22 @@ export class MultiGuestBookingService {
     }
 
     return this.transformToApiResponse(booking);
+  }
+
+  /**
+   * Find booking entity by ID for internal use (returns raw entity)
+   */
+  async findBookingEntityById(id: string): Promise<MultiGuestBooking> {
+    const booking = await this.multiGuestBookingRepository.findOne({
+      where: { id },
+      relations: ['guests']
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Multi-guest booking not found');
+    }
+
+    return booking;
   }
 
   async confirmBooking(id: string, processedBy?: string): Promise<ConfirmationResult> {
@@ -201,7 +220,7 @@ export class MultiGuestBookingService {
         // Validate beds are still reserved for this booking
         const bedIds = booking.guests.map(guest => guest.bedId);
         const beds = await manager.find(Bed, {
-          where: bedIds.map(bedId => ({ bedIdentifier: bedId }))
+          where: bedIds.map(bedId => ({ id: bedId }))
         });
 
         const failedAssignments: string[] = [];
@@ -209,7 +228,7 @@ export class MultiGuestBookingService {
 
         // Check each bed's current status
         for (const guest of booking.guests) {
-          const bed = beds.find(b => b.bedIdentifier === guest.bedId);
+          const bed = beds.find(b => b.id === guest.bedId);
           if (!bed) {
             failedAssignments.push(`Bed ${guest.bedId} no longer exists`);
           } else if (bed.status !== BedStatus.RESERVED) {
@@ -392,7 +411,7 @@ export class MultiGuestBookingService {
     const [bookings, total] = await queryBuilder.getManyAndCount();
     
     return {
-      items: bookings.map(booking => this.transformToApiResponse(booking)),
+      items: bookings, // Return raw bookings for controller to transform
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -510,14 +529,14 @@ export class MultiGuestBookingService {
   /**
    * Get bookings by status
    */
-  async getBookingsByStatus(status: MultiGuestBookingStatus): Promise<any[]> {
+  async getBookingsByStatus(status: MultiGuestBookingStatus): Promise<MultiGuestBooking[]> {
     const bookings = await this.multiGuestBookingRepository.find({
       where: { status },
       relations: ['guests'],
       order: { createdAt: 'DESC' }
     });
 
-    return bookings.map(booking => this.transformToApiResponse(booking));
+    return bookings; // Return raw bookings for controller to transform
   }
 
   /**
@@ -589,7 +608,7 @@ export class MultiGuestBookingService {
       queryBuilder.getMany(),
       queryBuilder
         .leftJoin('booking.guests', 'guest')
-        .leftJoin(Bed, 'bed', 'bed.bedIdentifier = guest.bedId')
+        .leftJoin(Bed, 'bed', 'bed.id = guest.bedId')
         .select('SUM(bed.monthlyRate)', 'total')
         .where('booking.status IN (:...statuses)', { 
           statuses: [MultiGuestBookingStatus.CONFIRMED, MultiGuestBookingStatus.PARTIALLY_CONFIRMED] 
@@ -623,7 +642,7 @@ export class MultiGuestBookingService {
     conflicts: { bedId: string; reason: string }[];
   }> {
     const beds = await this.bedRepository.find({
-      where: bedIds.map(bedId => ({ bedIdentifier: bedId }))
+      where: bedIds.map(bedId => ({ id: bedId }))
     });
 
     const available: string[] = [];
@@ -631,7 +650,7 @@ export class MultiGuestBookingService {
     const conflicts: { bedId: string; reason: string }[] = [];
 
     for (const bedId of bedIds) {
-      const bed = beds.find(b => b.bedIdentifier === bedId);
+      const bed = beds.find(b => b.id === bedId);
       
       if (!bed) {
         unavailable.push(bedId);
@@ -645,6 +664,458 @@ export class MultiGuestBookingService {
     }
 
     return { available, unavailable, conflicts };
+  }
+
+  /**
+   * Create single guest booking (for backward compatibility with BookingRequest)
+   */
+  async createSingleGuestBooking(dto: CreateBookingDto): Promise<any> {
+    this.logger.log(`Creating single guest booking for ${dto.name}`);
+
+    // Convert single guest booking to multi-guest format
+    const multiGuestDto: CreateMultiGuestBookingDto = {
+      data: {
+        contactPerson: {
+          name: dto.name,
+          phone: dto.phone,
+          email: dto.email
+        },
+        guests: [{
+          bedId: dto.preferredRoom || 'auto-assign',
+          name: dto.name,
+          age: 18, // Default age for single guest bookings
+          gender: 'Any' as any, // Default gender
+          idProofType: dto.idProofType,
+          idProofNumber: dto.idProofNumber,
+          emergencyContact: dto.emergencyContact,
+          notes: dto.notes
+        }],
+        checkInDate: dto.checkInDate,
+        duration: dto.duration?.toString(),
+        notes: dto.notes,
+        emergencyContact: dto.emergencyContact,
+        source: dto.source || 'website'
+      }
+    };
+
+    // Use transaction for data consistency
+    return await this.dataSource.transaction(async manager => {
+      try {
+        // Create booking with enhanced fields from BookingRequest
+        const booking = manager.create(MultiGuestBooking, {
+          contactName: dto.name,
+          contactPhone: dto.phone,
+          contactEmail: dto.email,
+          guardianName: dto.guardianName,
+          guardianPhone: dto.guardianPhone,
+          preferredRoom: dto.preferredRoom,
+          course: dto.course,
+          institution: dto.institution,
+          requestDate: dto.requestDate ? new Date(dto.requestDate) : new Date(),
+          checkInDate: dto.checkInDate ? new Date(dto.checkInDate) : null,
+          duration: dto.duration?.toString(),
+          status: this.mapBookingStatusToMultiGuest(dto.status || 'pending'),
+          notes: dto.notes,
+          emergencyContact: dto.emergencyContact,
+          address: dto.address,
+          idProofType: dto.idProofType,
+          idProofNumber: dto.idProofNumber,
+          source: dto.source || 'website',
+          totalGuests: 1,
+          confirmedGuests: 0,
+          bookingReference: this.generateBookingReference(),
+          priorityScore: this.calculatePriorityScore(dto)
+        });
+
+        const savedBooking = await manager.save(MultiGuestBooking, booking);
+
+        // Create single guest record
+        const guest = manager.create(BookingGuest, {
+          bookingId: savedBooking.id,
+          bedId: dto.preferredRoom || 'auto-assign',
+          guestName: dto.name,
+          age: 18, // Default age
+          gender: 'Any' as any, // Default gender
+          status: GuestStatus.PENDING,
+          guardianName: dto.guardianName,
+          guardianPhone: dto.guardianPhone,
+          course: dto.course,
+          institution: dto.institution,
+          address: dto.address,
+          idProofType: dto.idProofType,
+          idProofNumber: dto.idProofNumber,
+          phone: dto.phone,
+          email: dto.email,
+          assignedRoomNumber: dto.preferredRoom,
+          assignedBedNumber: dto.preferredRoom
+        });
+
+        await manager.save(BookingGuest, guest);
+
+        this.logger.log(`✅ Created single guest booking ${savedBooking.bookingReference}`);
+
+        return this.transformToBookingRequestFormat(savedBooking, [guest]);
+      } catch (error) {
+        this.logger.error(`❌ Error creating single guest booking: ${error.message}`);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Approve booking (enhanced for single guest compatibility)
+   */
+  async approveBooking(id: string, approvalData: ApproveBookingDto): Promise<any> {
+    this.logger.log(`Approving booking ${id}`);
+
+    return await this.dataSource.transaction(async manager => {
+      try {
+        const booking = await manager.findOne(MultiGuestBooking, {
+          where: { id },
+          relations: ['guests']
+        });
+
+        if (!booking) {
+          throw new NotFoundException('Booking not found');
+        }
+
+        if (booking.status !== MultiGuestBookingStatus.PENDING) {
+          throw new BadRequestException(`Cannot approve booking with status: ${booking.status}`);
+        }
+
+        // Update booking status
+        await manager.update(MultiGuestBooking, id, {
+          status: MultiGuestBookingStatus.CONFIRMED,
+          confirmedGuests: booking.totalGuests,
+          processedBy: approvalData.processedBy || 'admin',
+          processedDate: new Date(),
+          approvedDate: new Date(),
+          assignedRoom: approvalData.assignedRoom
+        });
+
+        // Update guest statuses
+        await manager.update(BookingGuest, { bookingId: id }, {
+          status: GuestStatus.CONFIRMED,
+          assignedRoomNumber: approvalData.assignedRoom,
+          assignedBedNumber: approvalData.assignedBed || 'B1' // Fixed: Use separate bed assignment or default
+        });
+
+        // Create student profiles if requested
+        const students = [];
+        if (approvalData.createStudent) {
+          for (const guest of booking.guests) {
+            const student = await this.createStudentFromGuest(manager, guest, booking, approvalData);
+            students.push(student);
+          }
+        }
+
+        this.logger.log(`✅ Approved booking ${booking.bookingReference}`);
+
+        return {
+          success: true,
+          message: 'Booking approved successfully',
+          bookingId: id,
+          approvedDate: new Date(),
+          students: students
+        };
+      } catch (error) {
+        this.logger.error(`❌ Error approving booking ${id}: ${error.message}`);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Reject booking (enhanced for single guest compatibility)
+   */
+  async rejectBooking(id: string, rejectionData: RejectBookingDto): Promise<any> {
+    this.logger.log(`Rejecting booking ${id}: ${rejectionData.reason}`);
+
+    return await this.dataSource.transaction(async manager => {
+      try {
+        const booking = await manager.findOne(MultiGuestBooking, {
+          where: { id },
+          relations: ['guests']
+        });
+
+        if (!booking) {
+          throw new NotFoundException('Booking not found');
+        }
+
+        if (booking.status !== MultiGuestBookingStatus.PENDING) {
+          throw new BadRequestException(`Cannot reject booking with status: ${booking.status}`);
+        }
+
+        // Update booking status
+        await manager.update(MultiGuestBooking, id, {
+          status: MultiGuestBookingStatus.CANCELLED,
+          processedBy: rejectionData.processedBy || 'admin',
+          processedDate: new Date(),
+          rejectionReason: rejectionData.reason
+        });
+
+        // Update guest statuses
+        await manager.update(BookingGuest, { bookingId: id }, {
+          status: GuestStatus.CANCELLED
+        });
+
+        // Release any reserved beds
+        const bedIds = booking.guests.map(guest => guest.bedId).filter(bedId => bedId !== 'auto-assign');
+        if (bedIds.length > 0) {
+          await this.bedSyncService.handleBookingCancellation(bedIds, rejectionData.reason);
+        }
+
+        this.logger.log(`✅ Rejected booking ${booking.bookingReference}`);
+
+        return {
+          success: true,
+          message: 'Booking rejected successfully',
+          bookingId: id,
+          reason: rejectionData.reason
+        };
+      } catch (error) {
+        this.logger.error(`❌ Error rejecting booking ${id}: ${error.message}`);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Get booking statistics (enhanced to include single guest bookings)
+   */
+  async getEnhancedBookingStats(): Promise<any> {
+    this.logger.log('Generating enhanced booking statistics');
+
+    try {
+      const [
+        totalBookings,
+        pendingBookings,
+        approvedBookings,
+        rejectedBookings,
+        cancelledBookings,
+        singleGuestBookings,
+        multiGuestBookings,
+        totalGuests,
+        confirmedGuests,
+        sourceBreakdown,
+        monthlyTrend
+      ] = await Promise.all([
+        this.multiGuestBookingRepository.count(),
+        this.multiGuestBookingRepository.count({ 
+          where: { status: MultiGuestBookingStatus.PENDING } 
+        }),
+        this.multiGuestBookingRepository.count({ 
+          where: [
+            { status: MultiGuestBookingStatus.CONFIRMED },
+            { status: MultiGuestBookingStatus.PARTIALLY_CONFIRMED }
+          ]
+        }),
+        this.multiGuestBookingRepository.count({ 
+          where: { status: MultiGuestBookingStatus.CANCELLED, rejectionReason: Not(IsNull()) }
+        }),
+        this.multiGuestBookingRepository.count({ 
+          where: { status: MultiGuestBookingStatus.CANCELLED }
+        }),
+        this.multiGuestBookingRepository.count({ 
+          where: { totalGuests: 1 }
+        }),
+        this.multiGuestBookingRepository.count({ 
+          where: { totalGuests: MoreThan(1) }
+        }),
+        this.bookingGuestRepository.count(),
+        this.bookingGuestRepository.count({
+          where: { status: GuestStatus.CONFIRMED }
+        }),
+        this.multiGuestBookingRepository
+          .createQueryBuilder('booking')
+          .select('booking.source', 'source')
+          .addSelect('COUNT(*)', 'count')
+          .groupBy('booking.source')
+          .getRawMany(),
+        this.multiGuestBookingRepository
+          .createQueryBuilder('booking')
+          .select('DATE_TRUNC(\'month\', booking.requestDate)', 'month')
+          .addSelect('COUNT(*)', 'count')
+          .where('booking.requestDate >= :sixMonthsAgo', { 
+            sixMonthsAgo: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) 
+          })
+          .groupBy('DATE_TRUNC(\'month\', booking.requestDate)')
+          .orderBy('month', 'ASC')
+          .getRawMany()
+      ]);
+
+      const approvalRate = totalBookings > 0 ? (approvedBookings / totalBookings) * 100 : 0;
+
+      const sources = {};
+      sourceBreakdown.forEach(row => {
+        sources[row.source] = parseInt(row.count);
+      });
+
+      const stats = {
+        totalBookings,
+        pendingBookings,
+        approvedBookings,
+        rejectedBookings,
+        cancelledBookings: cancelledBookings - rejectedBookings, // Cancelled but not rejected
+        singleGuestBookings,
+        multiGuestBookings,
+        totalGuests,
+        confirmedGuests,
+        approvalRate: Math.round(approvalRate * 100) / 100,
+        sourceBreakdown: sources,
+        monthlyTrend: monthlyTrend.map(row => ({
+          month: row.month,
+          count: parseInt(row.count)
+        }))
+      };
+
+      this.logger.log(`✅ Generated enhanced booking stats: ${totalBookings} total, ${approvedBookings} approved, ${approvalRate.toFixed(1)}% rate`);
+      
+      return stats;
+    } catch (error) {
+      this.logger.error(`❌ Error generating enhanced booking statistics: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Transform MultiGuestBooking to BookingRequest format for API compatibility
+   */
+  private transformToBookingRequestFormat(booking: MultiGuestBooking, guests?: BookingGuest[]): any {
+    const primaryGuest = guests?.[0] || booking.guests?.[0];
+    
+    return {
+      id: booking.id,
+      name: primaryGuest?.guestName || booking.contactName,
+      phone: primaryGuest?.phone || booking.contactPhone,
+      email: primaryGuest?.email || booking.contactEmail,
+      guardianName: booking.guardianName || primaryGuest?.guardianName,
+      guardianPhone: booking.guardianPhone || primaryGuest?.guardianPhone,
+      preferredRoom: booking.preferredRoom,
+      course: booking.course || primaryGuest?.course,
+      institution: booking.institution || primaryGuest?.institution,
+      requestDate: booking.requestDate,
+      checkInDate: booking.checkInDate,
+      duration: booking.duration,
+      status: this.mapMultiGuestStatusToBooking(booking.status),
+      notes: booking.notes,
+      emergencyContact: booking.emergencyContact,
+      address: booking.address || primaryGuest?.address,
+      idProofType: booking.idProofType || primaryGuest?.idProofType,
+      idProofNumber: booking.idProofNumber || primaryGuest?.idProofNumber,
+      approvedDate: booking.approvedDate,
+      processedBy: booking.processedBy,
+      rejectionReason: booking.rejectionReason,
+      assignedRoom: booking.assignedRoom,
+      priorityScore: booking.priorityScore,
+      source: booking.source,
+      createdAt: booking.createdAt,
+      updatedAt: booking.updatedAt
+    };
+  }
+
+  /**
+   * Map booking status from BookingRequest to MultiGuestBooking
+   */
+  private mapBookingStatusToMultiGuest(status: string): MultiGuestBookingStatus {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return MultiGuestBookingStatus.PENDING;
+      case 'approved':
+        return MultiGuestBookingStatus.CONFIRMED;
+      case 'rejected':
+      case 'cancelled':
+        return MultiGuestBookingStatus.CANCELLED;
+      default:
+        return MultiGuestBookingStatus.PENDING;
+    }
+  }
+
+  /**
+   * Map MultiGuestBooking status to BookingRequest format
+   */
+  private mapMultiGuestStatusToBooking(status: MultiGuestBookingStatus): string {
+    switch (status) {
+      case MultiGuestBookingStatus.PENDING:
+        return 'Pending';
+      case MultiGuestBookingStatus.CONFIRMED:
+      case MultiGuestBookingStatus.PARTIALLY_CONFIRMED:
+        return 'Approved';
+      case MultiGuestBookingStatus.CANCELLED:
+        return 'Rejected';
+      case MultiGuestBookingStatus.COMPLETED:
+        return 'Approved';
+      default:
+        return 'Pending';
+    }
+  }
+
+  /**
+   * Calculate priority score (from BookingRequest logic)
+   */
+  private calculatePriorityScore(bookingData: CreateBookingDto): number {
+    let score = 0;
+    
+    // Early application bonus
+    const daysUntilCheckIn = bookingData.checkInDate ? 
+      Math.floor((new Date(bookingData.checkInDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
+    
+    if (daysUntilCheckIn > 30) score += 10;
+    else if (daysUntilCheckIn > 7) score += 5;
+    
+    // Complete information bonus
+    if (bookingData.guardianName && bookingData.guardianPhone) score += 5;
+    if (bookingData.emergencyContact) score += 3;
+    if (bookingData.idProofType && bookingData.idProofNumber) score += 5;
+    
+    // Duration bonus (longer stays get priority)
+    if (bookingData.duration && bookingData.duration > 12) score += 10;
+    else if (bookingData.duration && bookingData.duration > 6) score += 5;
+    
+    return score;
+  }
+
+  /**
+   * Create student from guest (for approval workflow)
+   */
+  private async createStudentFromGuest(
+    manager: any, 
+    guest: BookingGuest, 
+    booking: MultiGuestBooking, 
+    approvalData: ApproveBookingDto
+  ): Promise<Student> {
+    // Fixed: Convert room number to UUID using validation service
+    let roomUuid = null;
+    if (approvalData.assignedRoom) {
+      const roomValidation = await this.validationService.validateAndConvertRoomNumber(approvalData.assignedRoom);
+      
+      if (roomValidation.isValid) {
+        roomUuid = roomValidation.roomUuid;
+        this.logger.log(`✅ Found room UUID ${roomUuid} for room number ${approvalData.assignedRoom}`);
+      } else {
+        this.logger.error(`❌ Room validation failed: ${roomValidation.error}`);
+        throw new BadRequestException(`Room assignment failed: ${roomValidation.error}`);
+      }
+    }
+
+    const student = manager.create(Student, {
+      name: guest.guestName,
+      phone: guest.phone || booking.contactPhone,
+      email: guest.email || booking.contactEmail,
+      enrollmentDate: new Date(),
+      status: StudentStatus.PENDING_CONFIGURATION, // Fixed: Use correct status for pending configuration
+      address: guest.address || booking.address,
+      bedNumber: guest.assignedBedNumber,
+      roomId: roomUuid, // Fixed: Use UUID instead of room number
+      isConfigured: false, // Ensure this is false for pending configuration
+      bookingRequestId: null // Fixed: Don't link to booking_requests table since we're using multi_guest_bookings
+    });
+
+    const savedStudent = await manager.save(Student, student);
+    
+    this.logger.log(`✅ Created student profile for ${guest.guestName} (ID: ${savedStudent.id}) with room UUID: ${roomUuid}`);
+    
+    return savedStudent;
   }
 
   /**

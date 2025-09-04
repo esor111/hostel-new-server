@@ -1,0 +1,95 @@
+{
+  "timestamp": "2025-09-04T18:01:17.143Z",
+  "testType": "Automated Booking Flow Test",
+  "summary": {
+    "totalTests": 7,
+    "passed": 0,
+    "failed": 7,
+    "successRate": "0.0%"
+  },
+  "results": [
+    {
+      "test": "System Health Check",
+      "status": "FAIL",
+      "details": "Status: 500, Time: 16ms"
+    },
+    {
+      "test": "Initial Statistics",
+      "status": "FAIL",
+      "details": "Status: 500"
+    },
+    {
+      "test": "Create Single Guest Booking",
+      "status": "FAIL",
+      "details": "Status: 500"
+    },
+    {
+      "test": "Create Multi-Guest Booking",
+      "status": "FAIL",
+      "details": "Status: 400"
+    },
+    {
+      "test": "Get Pending Bookings",
+      "status": "FAIL",
+      "details": "Status: 500"
+    },
+    {
+      "test": "Final Statistics",
+      "status": "FAIL",
+      "details": "Status: 500"
+    },
+    {
+      "test": "Get All Bookings (Unified)",
+      "status": "FAIL",
+      "details": "Status: 500"
+    }
+  ],
+  "createdBookings": [],
+  "testData": {
+    "singleGuest": {
+      "name": "John Doe",
+      "phone": "555-1001",
+      "email": "john.doe@test.com",
+      "guardianName": "Jane Doe",
+      "guardianPhone": "555-1002",
+      "preferredRoom": "Room A101",
+      "course": "Computer Science",
+      "institution": "Test University",
+      "checkInDate": "2024-02-01",
+      "duration": "6",
+      "notes": "Test single guest booking",
+      "emergencyContact": "555-1003",
+      "address": "123 Test St, Test City",
+      "idProofType": "Passport",
+      "idProofNumber": "T123456789",
+      "source": "website"
+    },
+    "multiGuest": {
+      "data": {
+        "contactPerson": {
+          "name": "Alice Johnson",
+          "phone": "555-2001",
+          "email": "alice.johnson@test.com"
+        },
+        "guests": [
+          {
+            "bedId": "bed1",
+            "name": "Bob Johnson",
+            "age": 20,
+            "gender": "Male"
+          },
+          {
+            "bedId": "bed2",
+            "name": "Carol Johnson",
+            "age": 18,
+            "gender": "Female"
+          }
+        ],
+        "checkInDate": "2024-02-15",
+        "duration": "12 months",
+        "notes": "Test multi-guest booking",
+        "source": "mobile_app"
+      }
+    }
+  }
+}

@@ -220,11 +220,11 @@ export class MigrateBedEntitiesFromLayout1756966400000 implements MigrationInter
       SELECT 
         s.id as student_id,
         s.name as student_name,
-        s."roomId" as room_id,
+        s.room_id as room_id,
         r."roomNumber" as room_number
       FROM students s
-      INNER JOIN rooms r ON s."roomId" = r.id
-      WHERE s."roomId" IS NOT NULL
+      INNER JOIN rooms r ON s.room_id = r.id
+      WHERE s.room_id IS NOT NULL
     `);
 
     console.log(`Found ${studentsWithRooms.length} students with room assignments`);

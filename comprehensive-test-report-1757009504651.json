@@ -1,0 +1,81 @@
+{
+  "timestamp": "2025-09-04T18:11:44.650Z",
+  "testType": "Comprehensive Booking System Test",
+  "summary": {
+    "totalTests": 9,
+    "passedTests": 8,
+    "failedTests": 1,
+    "successRate": 88.9,
+    "criticalRate": 100,
+    "systemStatus": "OPERATIONAL"
+  },
+  "results": [
+    {
+      "category": "Core System",
+      "test": "System Health Check",
+      "status": "PASS",
+      "details": "Status: 200",
+      "critical": true
+    },
+    {
+      "category": "Core System",
+      "test": "Statistics Endpoint",
+      "status": "PASS",
+      "details": "Status: 200",
+      "critical": true
+    },
+    {
+      "category": "Core System",
+      "test": "Multi-Guest Endpoint Access",
+      "status": "PASS",
+      "details": "Status: 200",
+      "critical": true
+    },
+    {
+      "category": "Single Guest Booking",
+      "test": "Single Guest Booking Creation",
+      "status": "PASS",
+      "details": "Created booking: 138aa224-1542-4cb6-8538-75e209a735e4",
+      "critical": true
+    },
+    {
+      "category": "Single Guest Booking",
+      "test": "Single Guest Booking Retrieval",
+      "status": "PASS",
+      "details": "Status: 200",
+      "critical": true
+    },
+    {
+      "category": "Multi-Guest Booking",
+      "test": "Multi-Guest Booking Creation (Basic)",
+      "status": "FAIL",
+      "details": "Status: 400 - data.guests.0.Bed ID must follow the format: bed1, bed2, bed3, etc.,data.Each guest must be assigned to a unique bed,data.Guest assignments must be compatible with bed requirements",
+      "critical": false
+    },
+    {
+      "category": "API Compatibility",
+      "test": "Unified Booking List",
+      "status": "PASS",
+      "details": "Retrieved 5 bookings",
+      "critical": true
+    },
+    {
+      "category": "API Compatibility",
+      "test": "Pending Bookings",
+      "status": "PASS",
+      "details": "Found 5 pending bookings",
+      "critical": true
+    },
+    {
+      "category": "Advanced Workflows",
+      "test": "Booking Approval Workflow",
+      "status": "PASS",
+      "details": "Approval successful",
+      "critical": false
+    }
+  ],
+  "systemInfo": {
+    "baseUrl": "http://localhost:3001/hostel/api/v1",
+    "testEnvironment": "development"
+  }
+}

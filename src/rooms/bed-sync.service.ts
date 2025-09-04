@@ -582,7 +582,7 @@ export class BedSyncService {
     try {
       for (const bedId of bedIds) {
         const bed = await this.bedRepository.findOne({
-          where: { bedIdentifier: bedId },
+          where: { id: bedId },
           relations: ['room']
         });
 
@@ -665,7 +665,7 @@ export class BedSyncService {
     try {
       for (const assignment of guestAssignments) {
         const bed = await this.bedRepository.findOne({
-          where: { bedIdentifier: assignment.bedId },
+          where: { id: assignment.bedId },
           relations: ['room']
         });
 
@@ -710,7 +710,7 @@ export class BedSyncService {
     try {
       for (const bedId of bedIds) {
         const bed = await this.bedRepository.findOne({
-          where: { bedIdentifier: bedId },
+          where: { id: bedId },
           relations: ['room']
         });
 
@@ -764,7 +764,7 @@ export class BedSyncService {
       });
 
       return beds.map(bed => ({
-        bedId: bed.bedIdentifier,
+        bedId: bed.id, // Use UUID instead of bedIdentifier
         status: bed.status,
         color: this.getBedStatusColor(bed.status),
         occupantName: bed.currentOccupantName,

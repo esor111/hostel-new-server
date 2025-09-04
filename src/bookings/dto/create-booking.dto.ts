@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsEmail, IsPhoneNumber, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsEmail, IsPhoneNumber, IsBoolean, Min, Max } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -196,12 +196,21 @@ export class ApproveBookingDto {
   assignedRoom?: string;
 
   @ApiProperty({ 
+    description: 'Bed assigned to the booking',
+    example: 'B1',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  assignedBed?: string;
+
+  @ApiProperty({ 
     description: 'Whether to create a student record automatically',
     example: true,
     required: false
   })
   @IsOptional()
-  @IsString()
+  @IsBoolean()
   createStudent?: boolean;
 
   @ApiProperty({ 

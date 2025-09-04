@@ -13,7 +13,11 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
   IsPhoneNumber,
-  IsDateString
+  IsDateString,
+  IsUUID,
+  registerDecorator,
+  ValidationOptions,
+  ValidationArguments
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -62,15 +66,13 @@ export class ContactPersonDto {
 
 export class GuestDto {
   @ApiProperty({ 
-    description: 'Bed identifier to assign guest to (format: bed1, bed2, etc.)',
-    example: 'bed1',
-    pattern: '^bed\\d+$'
+    description: 'Bed UUID to assign guest to',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    format: 'uuid'
   })
   @IsString({ message: 'Bed ID must be a string' })
-  @Matches(/^bed\d+$/, { 
-    message: 'Bed ID must follow the format: bed1, bed2, bed3, etc.' 
-  })
-  @Transform(({ value }) => value?.trim().toLowerCase())
+  @IsUUID(4, { message: 'Bed ID must be a valid UUID' })
+  @Transform(({ value }) => value?.trim())
   bedId: string;
 
   @ApiProperty({ 

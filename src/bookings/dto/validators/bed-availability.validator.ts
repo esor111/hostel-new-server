@@ -4,12 +4,27 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
   ValidationArguments,
+  isUUID,
 } from 'class-validator';
 import { Injectable } from '@nestjs/common';
 
 @ValidatorConstraint({ name: 'bedAvailability', async: false })
 @Injectable()
 export class BedAvailabilityConstraint implements ValidatorConstraintInterface {
+  
+  /**
+   * Validate bed ID is a valid UUID
+   */
+  private isValidBedId(bedId: string): boolean {
+    // Accept auto-assign for single guest bookings
+    if (bedId === 'auto-assign') {
+      return true;
+    }
+    
+    // Validate as UUID
+    return isUUID(bedId, 4);
+  }
+  
   validate(guests: any[], args: ValidationArguments): boolean {
     if (!Array.isArray(guests) || guests.length === 0) {
       return true; // Let other validators handle array validation
@@ -23,9 +38,9 @@ export class BedAvailabilityConstraint implements ValidatorConstraintInterface {
       return false; // Duplicate bed assignments not allowed
     }
 
-    // Validate each bed ID format
+    // Validate each bed ID as UUID
     for (const bedId of bedIds) {
-      if (!/^bed\d+$/.test(bedId)) {
+      if (!this.isValidBedId(bedId)) {
         return false; // Invalid bed ID format
       }
     }
@@ -34,7 +49,7 @@ export class BedAvailabilityConstraint implements ValidatorConstraintInterface {
   }
 
   defaultMessage(args: ValidationArguments): string {
-    return 'Duplicate bed assignments detected or invalid bed ID format. Each guest must be assigned to a unique bed with format: bed1, bed2, etc.';
+    return 'Duplicate bed assignments detected or invalid bed UUID. Each guest must be assigned to a unique bed with valid UUID.';
   }
 }
 

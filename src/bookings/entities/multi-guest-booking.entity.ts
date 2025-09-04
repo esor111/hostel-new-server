@@ -68,6 +68,46 @@ export class MultiGuestBooking extends BaseEntity {
   @Column({ name: 'cancellation_reason', type: 'text', nullable: true })
   cancellationReason: string;
 
+  // Enhanced fields from BookingRequest consolidation
+  @Column({ name: 'guardian_name', length: 255, nullable: true })
+  guardianName: string;
+
+  @Column({ name: 'guardian_phone', length: 20, nullable: true })
+  guardianPhone: string;
+
+  @Column({ name: 'preferred_room', length: 255, nullable: true })
+  preferredRoom: string;
+
+  @Column({ length: 255, nullable: true })
+  course: string;
+
+  @Column({ length: 255, nullable: true })
+  institution: string;
+
+  @Column({ name: 'request_date', type: 'date', nullable: true })
+  requestDate: Date;
+
+  @Column({ type: 'text', nullable: true })
+  address: string;
+
+  @Column({ name: 'id_proof_type', length: 50, nullable: true })
+  idProofType: string;
+
+  @Column({ name: 'id_proof_number', length: 100, nullable: true })
+  idProofNumber: string;
+
+  @Column({ name: 'approved_date', type: 'date', nullable: true })
+  approvedDate: Date;
+
+  @Column({ name: 'rejection_reason', type: 'text', nullable: true })
+  rejectionReason: string;
+
+  @Column({ name: 'assigned_room', length: 50, nullable: true })
+  assignedRoom: string;
+
+  @Column({ name: 'priority_score', type: 'int', default: 0 })
+  priorityScore: number;
+
   // Relations
   @OneToMany(() => BookingGuest, (guest) => guest.booking, { cascade: true })
   guests: BookingGuest[];

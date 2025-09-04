@@ -1,0 +1,110 @@
+{
+  "timestamp": "2025-09-04T18:09:02.263Z",
+  "testType": "Automated Booking Flow Test",
+  "summary": {
+    "totalTests": 9,
+    "passed": 7,
+    "failed": 2,
+    "successRate": "77.8%"
+  },
+  "results": [
+    {
+      "test": "System Health Check",
+      "status": "PASS",
+      "details": "Status: 200, Time: 25ms"
+    },
+    {
+      "test": "Initial Statistics",
+      "status": "PASS",
+      "details": "Total: 1, Pending: 1"
+    },
+    {
+      "test": "Create Single Guest Booking",
+      "status": "PASS",
+      "details": "ID: 30a86c91-3cc0-4eba-8c15-229cb8311d3c, Status: Pending"
+    },
+    {
+      "test": "Retrieve Single Guest Booking",
+      "status": "PASS",
+      "details": "Name: John Doe, Status: Pending"
+    },
+    {
+      "test": "Create Multi-Guest Booking",
+      "status": "FAIL",
+      "details": "Status: 400"
+    },
+    {
+      "test": "Get Pending Bookings",
+      "status": "PASS",
+      "details": "Found: 2 pending bookings"
+    },
+    {
+      "test": "Approve Single Guest Booking",
+      "status": "FAIL",
+      "details": "Status: 400"
+    },
+    {
+      "test": "Final Statistics",
+      "status": "PASS",
+      "details": "Total: 2, Approved: 0"
+    },
+    {
+      "test": "Get All Bookings (Unified)",
+      "status": "PASS",
+      "details": "Retrieved: 2 bookings"
+    }
+  ],
+  "createdBookings": [
+    {
+      "id": "30a86c91-3cc0-4eba-8c15-229cb8311d3c",
+      "type": "single"
+    }
+  ],
+  "testData": {
+    "singleGuest": {
+      "name": "John Doe",
+      "phone": "555-1001",
+      "email": "john.doe@test.com",
+      "guardianName": "Jane Doe",
+      "guardianPhone": "555-1002",
+      "preferredRoom": "Room A101",
+      "course": "Computer Science",
+      "institution": "Test University",
+      "checkInDate": "2024-02-01",
+      "duration": "6",
+      "notes": "Test single guest booking",
+      "emergencyContact": "555-1003",
+      "address": "123 Test St, Test City",
+      "idProofType": "Passport",
+      "idProofNumber": "T123456789",
+      "source": "website"
+    },
+    "multiGuest": {
+      "data": {
+        "contactPerson": {
+          "name": "Alice Johnson",
+          "phone": "555-2001",
+          "email": "alice.johnson@test.com"
+        },
+        "guests": [
+          {
+            "bedId": "bed1",
+            "name": "Bob Johnson",
+            "age": 20,
+            "gender": "Male"
+          },
+          {
+            "bedId": "bed2",
+            "name": "Carol Johnson",
+            "age": 18,
+            "gender": "Female"
+          }
+        ],
+        "checkInDate": "2024-02-15",
+        "duration": "12 months",
+        "notes": "Test multi-guest booking",
+        "source": "mobile_app"
+      }
+    }
+  }
+}

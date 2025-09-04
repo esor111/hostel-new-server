@@ -16,7 +16,8 @@ export enum StudentStatus {
   ACTIVE = 'Active',
   INACTIVE = 'Inactive',
   SUSPENDED = 'Suspended',
-  GRADUATED = 'Graduated'
+  GRADUATED = 'Graduated',
+  PENDING_CONFIGURATION = 'Pending Configuration'
 }
 
 @Entity('students')

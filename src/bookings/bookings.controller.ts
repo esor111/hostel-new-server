@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
 import { MultiGuestBookingService } from './multi-guest-booking.service';
+import { BookingTransformationService } from './booking-transformation.service';
 import { CreateBookingDto, ApproveBookingDto, RejectBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
@@ -11,21 +12,35 @@ import { CancelBookingDto } from './dto/cancel-booking.dto';
 @ApiTags('bookings')
 @Controller('booking-requests')
 export class BookingsController {
+  private readonly logger = new Logger(BookingsController.name);
+
   constructor(
     private readonly bookingsService: BookingsService,
-    private readonly multiGuestBookingService: MultiGuestBookingService
+    private readonly multiGuestBookingService: MultiGuestBookingService,
+    private readonly transformationService: BookingTransformationService
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all booking requests' })
   @ApiResponse({ status: 200, description: 'List of booking requests retrieved successfully' })
   async getAllBookingRequests(@Query() query: any) {
-    const result = await this.bookingsService.findAll(query);
+    this.logger.log('Getting all booking requests via unified system');
     
-    // Return format expected by frontend
+    // Use MultiGuestBookingService internally but return in BookingRequest format
+    const result = await this.multiGuestBookingService.getAllBookings(query);
+    
+    // Transform to BookingRequest format for backward compatibility
+    const transformedItems = result.items.map(booking => 
+      this.transformationService.transformToBookingRequestFormat(booking)
+    );
+    
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.OK,
-      data: result
+      data: {
+        items: transformedItems,
+        pagination: result.pagination
+      }
     };
   }
 
@@ -33,12 +48,18 @@ export class BookingsController {
   @ApiOperation({ summary: 'Get booking statistics' })
   @ApiResponse({ status: 200, description: 'Booking statistics retrieved successfully' })
   async getBookingStats() {
-    const stats = await this.bookingsService.getStats();
+    this.logger.log('Getting booking statistics via unified system');
     
-    // Return format expected by frontend
+    // Use enhanced stats from MultiGuestBookingService
+    const multiGuestStats = await this.multiGuestBookingService.getEnhancedBookingStats();
+    
+    // Transform to BookingRequest stats format for backward compatibility
+    const transformedStats = this.transformationService.transformStatsToBookingRequestFormat(multiGuestStats);
+    
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.OK,
-      data: stats
+      data: transformedStats
     };
   }
 
@@ -46,12 +67,20 @@ export class BookingsController {
   @ApiOperation({ summary: 'Get pending booking requests' })
   @ApiResponse({ status: 200, description: 'Pending bookings retrieved successfully' })
   async getPendingBookings() {
-    const bookings = await this.bookingsService.getPendingBookings();
+    this.logger.log('Getting pending bookings via unified system');
     
-    // Return EXACT same format as current Express API
+    // Use MultiGuestBookingService internally
+    const pendingBookings = await this.multiGuestBookingService.getPendingBookings();
+    
+    // Transform to BookingRequest format for backward compatibility
+    const transformedBookings = pendingBookings.map(booking => 
+      this.transformationService.transformToBookingRequestFormat(booking)
+    );
+    
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.OK,
-      data: bookings
+      data: transformedBookings
     };
   }
 
@@ -133,12 +162,18 @@ export class BookingsController {
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Booking not found' })
   async getBookingRequestById(@Param('id') id: string) {
-    const booking = await this.bookingsService.findOne(id);
+    this.logger.log(`Getting booking by ID: ${id} via unified system`);
     
-    // Return EXACT same format as current Express API
+    // Get the raw entity for transformation to BookingRequest format
+    const booking = await this.multiGuestBookingService.findBookingEntityById(id);
+    
+    // Transform to BookingRequest format for backward compatibility
+    const transformedBooking = this.transformationService.transformToBookingRequestFormat(booking);
+    
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.OK,
-      data: booking
+      data: transformedBooking
     };
   }
 
@@ -146,9 +181,13 @@ export class BookingsController {
   @ApiOperation({ summary: 'Create new booking request' })
   @ApiResponse({ status: 201, description: 'Booking request created successfully' })
   async createBookingRequest(@Body() createBookingDto: CreateBookingDto) {
-    const booking = await this.bookingsService.create(createBookingDto);
+    this.logger.log(`Creating single guest booking for ${createBookingDto.name} via unified system`);
     
-    // Return EXACT same format as current Express API
+    // Use MultiGuestBookingService for single guest bookings
+    const booking = await this.multiGuestBookingService.createSingleGuestBooking(createBookingDto);
+    
+    // booking is already in BookingRequest format from createSingleGuestBooking
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.CREATED,
       data: booking
@@ -159,9 +198,13 @@ export class BookingsController {
   @ApiOperation({ summary: 'Update booking request' })
   @ApiResponse({ status: 200, description: 'Booking updated successfully' })
   async updateBookingRequest(@Param('id') id: string, @Body() updateBookingDto: UpdateBookingDto) {
+    this.logger.log(`Updating booking ${id} via unified system`);
+    
+    // For now, fall back to original service for updates
+    // TODO: Implement update functionality in MultiGuestBookingService
     const booking = await this.bookingsService.update(id, updateBookingDto);
     
-    // Return EXACT same format as current Express API
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.OK,
       data: booking
@@ -172,9 +215,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'Approve booking request' })
   @ApiResponse({ status: 200, description: 'Booking approved successfully' })
   async approveBookingRequest(@Param('id') id: string, @Body() approvalDto: ApproveBookingDto) {
-    const result = await this.bookingsService.approveBooking(id, approvalDto);
+    this.logger.log(`Approving booking ${id} via unified system`);
     
-    // Return EXACT same format as current Express API
+    // Use MultiGuestBookingService for approval
+    const result = await this.multiGuestBookingService.approveBooking(id, approvalDto);
+    
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.OK,
       data: result
@@ -185,9 +231,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'Reject booking request' })
   @ApiResponse({ status: 200, description: 'Booking rejected successfully' })
   async rejectBookingRequest(@Param('id') id: string, @Body() rejectionDto: RejectBookingDto) {
-    const result = await this.bookingsService.rejectBooking(id, rejectionDto);
+    this.logger.log(`Rejecting booking ${id} via unified system`);
     
-    // Return EXACT same format as current Express API
+    // Use MultiGuestBookingService for rejection
+    const result = await this.multiGuestBookingService.rejectBooking(id, rejectionDto);
+    
+    // Return EXACT same format as original BookingRequest API
     return {
       status: HttpStatus.OK,
       data: result

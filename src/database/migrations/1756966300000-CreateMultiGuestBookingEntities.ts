@@ -4,11 +4,23 @@ export class CreateMultiGuestBookingEntities1756966300000 implements MigrationIn
     name = 'CreateMultiGuestBookingEntities1756966300000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        // Create the multi_guest_booking_status_enum type
-        await queryRunner.query(`CREATE TYPE "public"."multi_guest_booking_status_enum" AS ENUM('Pending', 'Confirmed', 'Partially_Confirmed', 'Cancelled', 'Completed')`);
+        // Check if multi_guest_booking_status_enum exists
+        const bookingStatusEnumExists = await queryRunner.query(`
+            SELECT 1 FROM pg_type WHERE typname = 'multi_guest_booking_status_enum'
+        `);
         
-        // Create the guest_status_enum type
-        await queryRunner.query(`CREATE TYPE "public"."guest_status_enum" AS ENUM('Pending', 'Confirmed', 'Checked_In', 'Checked_Out', 'Cancelled')`);
+        if (bookingStatusEnumExists.length === 0) {
+            await queryRunner.query(`CREATE TYPE "public"."multi_guest_booking_status_enum" AS ENUM('Pending', 'Confirmed', 'Partially_Confirmed', 'Cancelled', 'Completed')`);
+        }
+        
+        // Check if guest_status_enum exists
+        const guestStatusEnumExists = await queryRunner.query(`
+            SELECT 1 FROM pg_type WHERE typname = 'guest_status_enum'
+        `);
+        
+        if (guestStatusEnumExists.length === 0) {
+            await queryRunner.query(`CREATE TYPE "public"."guest_status_enum" AS ENUM('Pending', 'Confirmed', 'Checked_In', 'Checked_Out', 'Cancelled')`);
+        }
         
         // Create the multi_guest_bookings table
         await queryRunner.query(`CREATE TABLE "multi_guest_bookings" (
