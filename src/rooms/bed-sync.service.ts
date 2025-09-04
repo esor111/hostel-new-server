@@ -48,6 +48,7 @@ export class BedSyncService {
   /**
    * Synchronize Bed entities from bedPositions in room layout
    * Creates/updates Bed entities based on bedPositions array
+   * Enhanced to handle complex bed IDs and resolve conflicts
    */
   async syncBedsFromLayout(roomId: string, bedPositions: BedPosition[]): Promise<void> {
     this.logger.log(`🔄 Syncing beds from layout for room ${roomId}`);
@@ -56,8 +57,21 @@ export class BedSyncService {
       // Validate bedPositions first
       const validation = await this.validateBedPositions(bedPositions);
       if (!validation.isValid) {
+        this.logger.error(`Validation failed: ${validation.errors.join(', ')}`);
         throw new Error(`Invalid bed positions: ${validation.errors.join(', ')}`);
       }
+
+      // Log warnings but continue processing
+      if (validation.warnings.length > 0) {
+        this.logger.warn(`Validation warnings: ${validation.warnings.join(', ')}`);
+      }
+
+      // Normalize bed positions to handle complex IDs
+      const normalizedPositions = await this.normalizeBedPositions(bedPositions, roomId);
+      this.logger.debug(`Normalized ${bedPositions.length} bed positions`);
+
+      // Use normalized positions for the rest of the sync process
+      const processedPositions = normalizedPositions;
 
       // Get existing beds for this room
       const existingBeds = await this.bedRepository.find({
@@ -80,10 +94,10 @@ export class BedSyncService {
       });
 
       // Track which beds should exist after sync
-      const expectedBedIdentifiers = new Set(bedPositions.map(pos => pos.id));
+      const expectedBedIdentifiers = new Set(processedPositions.map(pos => pos.id));
 
       // Process each bed position
-      for (const bedPosition of bedPositions) {
+      for (const bedPosition of processedPositions) {
         const bedIdentifier = bedPosition.id;
         const existingBed = existingBedMap.get(bedIdentifier);
 
@@ -97,18 +111,31 @@ export class BedSyncService {
             where: { bedIdentifier }
           });
 
-          if (globalExistingBed) {
-            this.logger.warn(`⚠️ Bed identifier ${bedIdentifier} already exists globally, skipping`);
-            continue;
-          }
-
-          // Create new bed
-          try {
-            await this.createBedFromPosition(roomId, bedPosition, room);
-            this.logger.debug(`🆕 Created bed ${bedIdentifier}`);
-          } catch (error) {
-            this.logger.error(`❌ Failed to create bed ${bedIdentifier}: ${error.message}`);
-            // Continue with other beds
+          if (globalExistingBed && globalExistingBed.roomId !== roomId) {
+            // Generate a unique identifier to resolve conflict
+            const uniqueIdentifier = await this.generateUniqueBedIdentifier(bedIdentifier, roomId);
+            this.logger.warn(`⚠️ Bed identifier ${bedIdentifier} already exists globally, using ${uniqueIdentifier}`);
+            
+            // Update the bedPosition with the new identifier for consistency
+            bedPosition.id = uniqueIdentifier;
+            
+            // Create new bed with unique identifier
+            try {
+              await this.createBedFromPosition(roomId, bedPosition, room);
+              this.logger.debug(`🆕 Created bed ${uniqueIdentifier} (resolved conflict)`);
+            } catch (error) {
+              this.logger.error(`❌ Failed to create bed ${uniqueIdentifier}: ${error.message}`);
+              // Continue with other beds
+            }
+          } else {
+            // Create new bed with original identifier
+            try {
+              await this.createBedFromPosition(roomId, bedPosition, room);
+              this.logger.debug(`🆕 Created bed ${bedIdentifier}`);
+            } catch (error) {
+              this.logger.error(`❌ Failed to create bed ${bedIdentifier}: ${error.message}`);
+              // Continue with other beds
+            }
           }
         }
       }
@@ -155,6 +182,7 @@ export class BedSyncService {
   /**
    * Merge Bed entity data into bedPositions for API response
    * Enhances bedPositions with status, occupant info, color, and details from Bed entities
+   * Ensures proper data flow from API to frontend for bed color visualization
    */
   async mergeBedDataIntoPositions(bedPositions: BedPosition[], beds: Bed[]): Promise<BedPosition[]> {
     if (!bedPositions || bedPositions.length === 0) {
@@ -168,12 +196,12 @@ export class BedSyncService {
     });
 
     // Merge bed data into each position
-    return bedPositions.map(position => {
+    const enhancedPositions = bedPositions.map(position => {
       const bed = bedMap.get(position.id);
 
       if (bed) {
         // Merge bed entity data into position with color and details
-        return {
+        const enhancedPosition = {
           ...position,
           status: bed.status,
           occupantId: bed.currentOccupantId,
@@ -188,19 +216,29 @@ export class BedSyncService {
             occupiedSince: bed.occupiedSince
           }
         };
+
+        this.logger.debug(`Enhanced bed position ${position.id} with status ${bed.status} and color ${enhancedPosition.color}`);
+        return enhancedPosition;
       }
 
       // Return original position with default color if no corresponding bed entity
-      return {
+      const defaultPosition = {
         ...position,
         color: this.getBedStatusColor('Available'), // Default to available color
         status: position.status || 'Available'
       };
+
+      this.logger.debug(`Using default data for bed position ${position.id}`);
+      return defaultPosition;
     });
+
+    this.logger.log(`Enhanced ${enhancedPositions.length} bed positions with bed entity data`);
+    return enhancedPositions;
   }
 
   /**
    * Validate bedPositions array for consistency and correctness
+   * Enhanced to handle complex bed IDs from frontend
    */
   async validateBedPositions(bedPositions: BedPosition[]): Promise<ValidationResult> {
     const errors: string[] = [];
@@ -217,10 +255,25 @@ export class BedSyncService {
       errors.push(`Duplicate bed identifiers found: ${duplicateIds.join(', ')}`);
     }
 
-    // Validate bed identifier format
+    // Enhanced bed identifier format validation - accept both simple and complex formats
     for (const position of bedPositions) {
-      if (!position.id || !position.id.match(/^bed\d+$/)) {
-        errors.push(`Invalid bed identifier format: ${position.id}. Expected format: bed1, bed2, etc.`);
+      if (!position.id || typeof position.id !== 'string' || position.id.trim() === '') {
+        errors.push(`Invalid bed identifier: ${position.id}. Bed ID cannot be empty.`);
+        continue;
+      }
+
+      // Accept multiple formats:
+      // - Simple: bed1, bed2, etc.
+      // - Complex: single-bed-1756712592717-0m18, bunk-bed-1756712592718-abc123
+      // - Legacy: BED-001-ABC, BUNK-001-XYZ
+      const simpleFormat = /^bed\d+$/;
+      const complexFormat = /^(single-bed|bunk-bed|bed)-\d+-[a-zA-Z0-9]+$/;
+      const legacyFormat = /^(BED|BUNK)-\d+-[A-Z0-9]+$/;
+      
+      if (!simpleFormat.test(position.id) && 
+          !complexFormat.test(position.id) && 
+          !legacyFormat.test(position.id)) {
+        warnings.push(`Bed identifier ${position.id} uses non-standard format. Consider using simple format (bed1, bed2, etc.) for better compatibility.`);
       }
 
       // Validate required UI positioning fields
@@ -438,6 +491,85 @@ export class BedSyncService {
     }
 
     return beds;
+  }
+
+  /**
+   * Generate a unique bed identifier to resolve conflicts
+   * Converts complex IDs to simple format and ensures uniqueness
+   */
+  private async generateUniqueBedIdentifier(originalId: string, roomId: string): Promise<string> {
+    // Get room details for context
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    const roomNumber = room?.roomNumber || 'R';
+    
+    // Convert complex ID to simple format
+    let baseId: string;
+    
+    if (originalId.match(/^bed\d+$/)) {
+      // Already simple format, just add room prefix
+      baseId = `${roomNumber}-${originalId}`;
+    } else {
+      // Complex format - extract bed number or generate one
+      const existingBedsInRoom = await this.bedRepository.count({ where: { roomId } });
+      const bedNumber = existingBedsInRoom + 1;
+      baseId = `${roomNumber}-bed${bedNumber}`;
+    }
+    
+    // Ensure uniqueness by checking database
+    let uniqueId = baseId;
+    let counter = 1;
+    
+    while (await this.bedRepository.findOne({ where: { bedIdentifier: uniqueId } })) {
+      uniqueId = `${baseId}-${counter}`;
+      counter++;
+    }
+    
+    return uniqueId;
+  }
+
+  /**
+   * Convert complex bed IDs to simple format (bed1, bed2, etc.)
+   * Used to standardize bed identifiers from frontend
+   */
+  private convertToSimpleBedId(complexId: string, roomId: string, bedIndex: number): string {
+    // If already in simple format, return as is
+    if (complexId.match(/^bed\d+$/)) {
+      return complexId;
+    }
+    
+    // Convert complex ID to simple format
+    return `bed${bedIndex + 1}`;
+  }
+
+  /**
+   * Normalize bedPositions to use simple bed IDs
+   * Converts complex frontend IDs to simple format for better compatibility
+   */
+  async normalizeBedPositions(bedPositions: BedPosition[], roomId: string): Promise<BedPosition[]> {
+    const normalizedPositions: BedPosition[] = [];
+    
+    for (let i = 0; i < bedPositions.length; i++) {
+      const position = bedPositions[i];
+      const simpleId = this.convertToSimpleBedId(position.id, roomId, i);
+      
+      // Check if this simple ID would conflict with existing beds
+      const existingBed = await this.bedRepository.findOne({
+        where: { bedIdentifier: simpleId }
+      });
+      
+      if (existingBed && existingBed.roomId !== roomId) {
+        // Use the original complex ID to avoid conflicts
+        normalizedPositions.push(position);
+      } else {
+        // Use the simple ID
+        normalizedPositions.push({
+          ...position,
+          id: simpleId
+        });
+      }
+    }
+    
+    return normalizedPositions;
   }
 
   /**

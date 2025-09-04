@@ -265,7 +265,7 @@ export class RoomsService {
           where: { id },
           relations: ['layout', 'beds']
         });
-        
+
         if (updatedRoom?.layout?.layoutData?.bedPositions) {
           await this.bedSyncService.syncBedsFromLayout(id, updatedRoom.layout.layoutData.bedPositions);
         }
@@ -362,16 +362,16 @@ export class RoomsService {
     for (const room of rooms) {
       // Count actual active occupants for this room
       let actualOccupancy = await this.roomOccupantRepository.count({
-        where: { 
-          roomId: room.id, 
-          status: 'Active' 
+        where: {
+          roomId: room.id,
+          status: 'Active'
         }
       });
 
       // If room has beds, use bed occupancy as source of truth (hybrid integration)
       if (room.beds && room.beds.length > 0) {
         const bedBasedOccupancy = room.beds.filter(bed => bed.status === 'Occupied').length;
-        
+
         // Bed entity is source of truth for occupancy in hybrid architecture
         if (bedBasedOccupancy !== actualOccupancy) {
           console.log(`🔄 Hybrid sync: Bed occupancy (${bedBasedOccupancy}) differs from room occupant records (${actualOccupancy}) for room ${room.roomNumber}`);
@@ -383,8 +383,8 @@ export class RoomsService {
       // Update room occupancy if it doesn't match
       if (room.occupancy !== actualOccupancy) {
         console.log(`🔄 Syncing room ${room.roomNumber} occupancy: ${room.occupancy} -> ${actualOccupancy}`);
-        await this.roomRepository.update(room.id, { 
-          occupancy: actualOccupancy 
+        await this.roomRepository.update(room.id, {
+          occupancy: actualOccupancy
         });
         room.occupancy = actualOccupancy; // Update in-memory object
       }
@@ -413,25 +413,69 @@ export class RoomsService {
     // Calculate occupancy and availableBeds from Bed entity status (hybrid integration)
     let actualOccupancy = occupants.length;
     let availableBeds = room.bedCount - actualOccupancy;
-    
+
     if (room.beds && room.beds.length > 0) {
       // Use bed entities for more accurate calculations - bed entity is source of truth
       const occupiedBeds = room.beds.filter(bed => bed.status === 'Occupied').length;
       const availableBedsFromBeds = room.beds.filter(bed => bed.status === 'Available').length;
-      
+
       actualOccupancy = occupiedBeds;
       availableBeds = availableBedsFromBeds;
     }
 
     // Enhance layout with bed data if beds exist (hybrid integration)
-    let enhancedLayout = activeLayout?.layoutData || null;
-    if (enhancedLayout && enhancedLayout.bedPositions && room.beds && room.beds.length > 0) {
+    let enhancedLayout = null;
+
+    if (activeLayout) {
+      // Try to get the complete layout data first
+      enhancedLayout = activeLayout.layoutData;
+
+      // If no layoutData, construct from individual fields
+      if (!enhancedLayout) {
+        enhancedLayout = {
+          dimensions: activeLayout.dimensions,
+          bedPositions: activeLayout.bedPositions,
+          furnitureLayout: activeLayout.furnitureLayout,
+          layoutType: activeLayout.layoutType
+        };
+      }
+
+      // Layout data retrieved successfully
+    }
+
+    if (enhancedLayout) {
       enhancedLayout = { ...enhancedLayout };
-      // Use BedSyncService to merge bed data into positions for hybrid integration
-      enhancedLayout.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
-        enhancedLayout.bedPositions, 
-        room.beds
-      );
+
+      // Handle both bedPositions (legacy) and elements (new format)
+      let bedPositions = enhancedLayout.bedPositions;
+
+      // If no bedPositions but has elements, convert elements to bedPositions
+      if (!bedPositions && enhancedLayout.elements) {
+        bedPositions = enhancedLayout.elements
+          .filter(element => element.type && element.type.includes('bed'))
+          .map(element => ({
+            id: element.id,
+            x: element.x,
+            y: element.y,
+            width: element.width,
+            height: element.height,
+            rotation: element.rotation || 0,
+            bedType: element.properties?.bedType || 'single',
+            status: element.properties?.status || 'available',
+            gender: element.properties?.gender || 'Any'
+          }));
+      }
+
+      // Merge bed entity data into positions if beds exist
+      if (bedPositions && room.beds && room.beds.length > 0) {
+        enhancedLayout.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+          bedPositions,
+          room.beds
+        );
+      } else if (bedPositions) {
+        // Ensure bedPositions are included even without bed entities
+        enhancedLayout.bedPositions = bedPositions;
+      }
     }
 
     // Return EXACT same structure as current JSON with enhanced bed data
@@ -516,38 +560,72 @@ export class RoomsService {
 
       if (existingLayout) {
         console.log('📝 Updating existing layout');
-        // Update existing layout
+        console.log('📐 Storing layout data:', JSON.stringify(layoutData, null, 2));
+
+        // Update existing layout - store complete layout data
         await this.roomLayoutRepository.update(
           { roomId },
           {
-            layoutData,
+            layoutData, // Store complete layout object
             dimensions: layoutData.dimensions,
-            bedPositions: layoutData.bedPositions,
-            furnitureLayout: layoutData.furnitureLayout,
-            layoutType: layoutData.layoutType || 'standard',
+            bedPositions: layoutData.bedPositions || (layoutData.elements ?
+              layoutData.elements.filter(e => e.type && e.type.includes('bed')) : null),
+            furnitureLayout: layoutData.elements ?
+              layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
+            layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
             isActive: true,
             updatedBy: 'system' // You might want to pass the actual user
           }
         );
       } else {
         console.log('🆕 Creating new layout');
-        // Create new layout
+        console.log('📐 Storing layout data:', JSON.stringify(layoutData, null, 2));
+
+        // Create new layout - store complete layout object
         await this.roomLayoutRepository.save({
           roomId,
-          layoutData,
+          layoutData, // Store complete layout object
           dimensions: layoutData.dimensions,
-          bedPositions: layoutData.bedPositions,
-          furnitureLayout: layoutData.furnitureLayout,
-          layoutType: layoutData.layoutType || 'standard',
+          bedPositions: layoutData.bedPositions || (layoutData.elements ?
+            layoutData.elements.filter(e => e.type && e.type.includes('bed')) : null),
+          furnitureLayout: layoutData.elements ?
+            layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
+          layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
           isActive: true,
           createdBy: 'system' // You might want to pass the actual user
         });
       }
 
       // Sync beds with updated layout using BedSyncService (hybrid integration)
-      if (layoutData.bedPositions && Array.isArray(layoutData.bedPositions)) {
+      // Handle both bedPositions (legacy) and elements (new frontend format)
+      let bedPositions = layoutData.bedPositions;
+
+      if (!bedPositions && layoutData.elements) {
+        // Convert elements to bedPositions format
+        console.log('🔄 Converting elements to bedPositions format');
+        bedPositions = layoutData.elements
+          .filter(element => element.type && element.type.includes('bed'))
+          .map(element => ({
+            id: element.id,
+            x: element.x,
+            y: element.y,
+            width: element.width,
+            height: element.height,
+            rotation: element.rotation || 0,
+            // Extract bed properties
+            bedType: element.properties?.bedType || 'single',
+            status: element.properties?.status || 'available',
+            gender: element.properties?.gender || 'Any'
+          }));
+
+        console.log(`🔄 Converted ${bedPositions.length} elements to bedPositions`);
+      }
+
+      if (bedPositions && Array.isArray(bedPositions) && bedPositions.length > 0) {
         console.log('🔄 Syncing beds with updated layout - hybrid integration');
-        await this.bedSyncService.syncBedsFromLayout(roomId, layoutData.bedPositions);
+        await this.bedSyncService.syncBedsFromLayout(roomId, bedPositions);
+      } else {
+        console.log('⚠️ No bed positions found in layout data');
       }
 
       console.log('✅ Layout updated successfully');
@@ -559,9 +637,9 @@ export class RoomsService {
 
   async assignStudentToRoom(roomId: string, studentId: string) {
     console.log(`🏠 Assigning student ${studentId} to room ${roomId}...`);
-    
+
     // Find room with current occupancy
-    const room = await this.roomRepository.findOne({ 
+    const room = await this.roomRepository.findOne({
       where: { id: roomId },
       relations: ['occupants']
     });
@@ -587,21 +665,21 @@ export class RoomsService {
 
     // Check if student is already in this room's occupants
     const existingOccupant = await this.roomOccupantRepository.findOne({
-      where: { 
-        roomId, 
-        studentId, 
-        status: 'Active' 
+      where: {
+        roomId,
+        studentId,
+        status: 'Active'
       }
     });
-    
+
     if (existingOccupant) {
       throw new Error('Student is already assigned to this room');
     }
 
     try {
       // 1. Update student's roomId
-      await this.studentRepository.update(studentId, { 
-        roomId: roomId 
+      await this.studentRepository.update(studentId, {
+        roomId: roomId
       });
       console.log(`✅ Updated student ${studentId} roomId to ${roomId}`);
 
@@ -620,14 +698,14 @@ export class RoomsService {
       const currentOccupancy = await this.roomOccupantRepository.count({
         where: { roomId, status: 'Active' }
       });
-      
-      await this.roomRepository.update(roomId, { 
-        occupancy: currentOccupancy 
+
+      await this.roomRepository.update(roomId, {
+        occupancy: currentOccupancy
       });
       console.log(`✅ Updated room ${roomId} occupancy to ${currentOccupancy}`);
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: 'Student assigned to room successfully',
         roomId,
         studentId,
@@ -642,7 +720,7 @@ export class RoomsService {
 
   async vacateStudentFromRoom(roomId: string, studentId: string) {
     console.log(`🏠 Vacating student ${studentId} from room ${roomId}...`);
-    
+
     // Find room
     const room = await this.roomRepository.findOne({ where: { id: roomId } });
     if (!room) {
@@ -662,10 +740,10 @@ export class RoomsService {
 
     // Find active occupant record
     const occupant = await this.roomOccupantRepository.findOne({
-      where: { 
-        roomId, 
-        studentId, 
-        status: 'Active' 
+      where: {
+        roomId,
+        studentId,
+        status: 'Active'
       }
     });
 
@@ -675,8 +753,8 @@ export class RoomsService {
 
     try {
       // 1. Update student's roomId to null
-      await this.studentRepository.update(studentId, { 
-        roomId: null 
+      await this.studentRepository.update(studentId, {
+        roomId: null
       });
       console.log(`✅ Cleared student ${studentId} roomId`);
 
@@ -691,14 +769,14 @@ export class RoomsService {
       const currentOccupancy = await this.roomOccupantRepository.count({
         where: { roomId, status: 'Active' }
       });
-      
-      await this.roomRepository.update(roomId, { 
-        occupancy: currentOccupancy 
+
+      await this.roomRepository.update(roomId, {
+        occupancy: currentOccupancy
       });
       console.log(`✅ Updated room ${roomId} occupancy to ${currentOccupancy}`);
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: 'Student vacated from room successfully',
         roomId,
         studentId,
