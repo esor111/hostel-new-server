@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Room, RoomStatus, MaintenanceStatus } from './entities/room.entity';
-import { Building } from './entities/building.entity';
+
 import { RoomType } from './entities/room-type.entity';
 import { Amenity, AmenityCategory } from './entities/amenity.entity';
 import { RoomAmenity } from './entities/room-amenity.entity';
@@ -10,13 +10,14 @@ import { RoomLayout } from './entities/room-layout.entity';
 import { RoomOccupant } from './entities/room-occupant.entity';
 import { Student } from '../students/entities/student.entity';
 
+import { BedSyncService } from './bed-sync.service';
+
 @Injectable()
 export class RoomsService {
   constructor(
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
-    @InjectRepository(Building)
-    private buildingRepository: Repository<Building>,
+
     @InjectRepository(RoomType)
     private roomTypeRepository: Repository<RoomType>,
     @InjectRepository(Amenity)
@@ -29,6 +30,8 @@ export class RoomsService {
     private roomOccupantRepository: Repository<RoomOccupant>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
+
+    private bedSyncService: BedSyncService,
   ) { }
 
   async findAll(filters: any = {}) {
@@ -41,7 +44,8 @@ export class RoomsService {
       .leftJoinAndSelect('occupants.student', 'student')
       .leftJoinAndSelect('room.amenities', 'roomAmenities')
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
-      .leftJoinAndSelect('room.layout', 'layout');
+      .leftJoinAndSelect('room.layout', 'layout')
+      .leftJoinAndSelect('room.beds', 'beds');
 
     // Apply status filter
     if (status !== 'all') {
@@ -73,8 +77,18 @@ export class RoomsService {
     // Ensure occupancy is accurate for all rooms
     await this.syncRoomOccupancy(rooms);
 
+    // Merge Bed entity data into bedPositions for all rooms (hybrid integration)
+    for (const room of rooms) {
+      if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
+        room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+          room.layout.layoutData.bedPositions,
+          room.beds
+        );
+      }
+    }
+
     // Transform to API response format (EXACT same as current JSON structure)
-    const transformedItems = rooms.map(room => this.transformToApiResponse(room));
+    const transformedItems = await Promise.all(rooms.map(room => this.transformToApiResponse(room)));
 
     return {
       items: transformedItems,
@@ -97,7 +111,8 @@ export class RoomsService {
         'occupants.student',
         'amenities',
         'amenities.amenity',
-        'layout'
+        'layout',
+        'beds'
       ]
     });
 
@@ -108,7 +123,15 @@ export class RoomsService {
     // Ensure occupancy is accurate for this room
     await this.syncRoomOccupancy([room]);
 
-    return this.transformToApiResponse(room);
+    // Merge Bed entity data into bedPositions for hybrid integration
+    if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
+      room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+        room.layout.layoutData.bedPositions,
+        room.beds
+      );
+    }
+
+    return await this.transformToApiResponse(room);
   }
 
   async create(createRoomDto: any) {
@@ -179,6 +202,12 @@ export class RoomsService {
       });
     }
 
+    // Sync beds with layout after room creation (hybrid integration)
+    if (createRoomDto.layout && createRoomDto.layout.bedPositions) {
+      console.log('🔄 Syncing beds with initial layout - hybrid integration');
+      await this.bedSyncService.syncBedsFromLayout(savedRoom.id, createRoomDto.layout.bedPositions);
+    }
+
     return this.findOne(savedRoom.id);
   }
 
@@ -228,6 +257,19 @@ export class RoomsService {
     if (Object.keys(updateData).length > 0) {
       console.log('📝 Updating room fields:', updateData);
       await this.roomRepository.update(id, updateData);
+
+      // If bed count changed, ensure bed entities are synchronized
+      if (updateData.bedCount !== undefined) {
+        console.log('🔄 Bed count changed, ensuring bed synchronization');
+        const updatedRoom = await this.roomRepository.findOne({
+          where: { id },
+          relations: ['layout', 'beds']
+        });
+        
+        if (updatedRoom?.layout?.layoutData?.bedPositions) {
+          await this.bedSyncService.syncBedsFromLayout(id, updatedRoom.layout.layoutData.bedPositions);
+        }
+      }
     }
 
     // Update amenities if provided
@@ -235,7 +277,7 @@ export class RoomsService {
       await this.updateRoomAmenities(id, updateRoomDto.amenities);
     }
 
-    // Update layout if provided
+    // Update layout if provided (includes automatic bed synchronization)
     if (updateRoomDto.layout !== undefined) {
       await this.updateRoomLayout(id, updateRoomDto.layout);
     }
@@ -288,27 +330,55 @@ export class RoomsService {
   async getAvailableRooms() {
     const availableRooms = await this.roomRepository.find({
       where: { status: 'ACTIVE' },
-      relations: ['roomType', 'amenities', 'amenities.amenity', 'occupants']
+      relations: ['roomType', 'amenities', 'amenities.amenity', 'occupants', 'beds', 'layout']
     });
 
     // Sync occupancy for all rooms to ensure accurate data
     await this.syncRoomOccupancy(availableRooms);
 
-    const filtered = availableRooms.filter(room => room.availableBeds > 0);
+    // Merge Bed entity data into bedPositions for available rooms (hybrid integration)
+    for (const room of availableRooms) {
+      if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
+        room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+          room.layout.layoutData.bedPositions,
+          room.beds
+        );
+      }
+    }
 
-    return filtered.map(room => this.transformToApiResponse(room));
+    const filtered = availableRooms.filter(room => {
+      // Use bed-based availability if beds exist, otherwise use traditional calculation
+      if (room.beds && room.beds.length > 0) {
+        return room.beds.some(bed => bed.status === 'Available');
+      }
+      return room.availableBeds > 0;
+    });
+
+    return await Promise.all(filtered.map(room => this.transformToApiResponse(room)));
   }
 
-  // Sync room occupancy with actual RoomOccupant records
+  // Sync room occupancy with actual RoomOccupant records and bed data (hybrid integration)
   private async syncRoomOccupancy(rooms: Room[]): Promise<void> {
     for (const room of rooms) {
       // Count actual active occupants for this room
-      const actualOccupancy = await this.roomOccupantRepository.count({
+      let actualOccupancy = await this.roomOccupantRepository.count({
         where: { 
           roomId: room.id, 
           status: 'Active' 
         }
       });
+
+      // If room has beds, use bed occupancy as source of truth (hybrid integration)
+      if (room.beds && room.beds.length > 0) {
+        const bedBasedOccupancy = room.beds.filter(bed => bed.status === 'Occupied').length;
+        
+        // Bed entity is source of truth for occupancy in hybrid architecture
+        if (bedBasedOccupancy !== actualOccupancy) {
+          console.log(`🔄 Hybrid sync: Bed occupancy (${bedBasedOccupancy}) differs from room occupant records (${actualOccupancy}) for room ${room.roomNumber}`);
+          console.log(`🔄 Using bed-based occupancy as source of truth`);
+          actualOccupancy = bedBasedOccupancy;
+        }
+      }
 
       // Update room occupancy if it doesn't match
       if (room.occupancy !== actualOccupancy) {
@@ -322,7 +392,7 @@ export class RoomsService {
   }
 
   // Transform normalized data back to exact API format
-  private transformToApiResponse(room: Room): any {
+  private async transformToApiResponse(room: Room): Promise<any> {
     // Get active layout
     const activeLayout = room.layout;
 
@@ -340,33 +410,55 @@ export class RoomsService {
         bedNumber: occupant.bedNumber
       })) || [];
 
-    // Calculate accurate available beds
-    const actualOccupancy = occupants.length;
-    const availableBeds = room.bedCount - actualOccupancy;
+    // Calculate occupancy and availableBeds from Bed entity status (hybrid integration)
+    let actualOccupancy = occupants.length;
+    let availableBeds = room.bedCount - actualOccupancy;
+    
+    if (room.beds && room.beds.length > 0) {
+      // Use bed entities for more accurate calculations - bed entity is source of truth
+      const occupiedBeds = room.beds.filter(bed => bed.status === 'Occupied').length;
+      const availableBedsFromBeds = room.beds.filter(bed => bed.status === 'Available').length;
+      
+      actualOccupancy = occupiedBeds;
+      availableBeds = availableBedsFromBeds;
+    }
 
-    // Return EXACT same structure as current JSON
+    // Enhance layout with bed data if beds exist (hybrid integration)
+    let enhancedLayout = activeLayout?.layoutData || null;
+    if (enhancedLayout && enhancedLayout.bedPositions && room.beds && room.beds.length > 0) {
+      enhancedLayout = { ...enhancedLayout };
+      // Use BedSyncService to merge bed data into positions for hybrid integration
+      enhancedLayout.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+        enhancedLayout.bedPositions, 
+        room.beds
+      );
+    }
+
+    // Return EXACT same structure as current JSON with enhanced bed data
     return {
       id: room.id,
       name: room.name,
       type: room.roomType?.name || 'Private', // Default fallback
       bedCount: room.bedCount,
-      occupancy: actualOccupancy, // Use actual occupancy from occupants array
+      occupancy: actualOccupancy, // Use bed-based occupancy if available
       gender: room.gender,
       monthlyRate: room.roomType?.baseMonthlyRate || 0,
       dailyRate: room.roomType?.baseDailyRate || 0,
       amenities: amenities,
       status: room.status,
-      layout: activeLayout?.layoutData || null,
+      layout: enhancedLayout, // Enhanced with bed data
       floor: room.building?.name || 'Ground Floor', // Fallback
       roomNumber: room.roomNumber,
       occupants: occupants,
-      availableBeds: availableBeds, // Use calculated available beds
+      availableBeds: availableBeds, // Use bed-based calculation if available
       lastCleaned: room.lastCleaned,
       maintenanceStatus: room.maintenanceStatus,
       pricingModel: room.roomType?.pricingModel || 'monthly',
       description: room.description,
       createdAt: room.createdAt,
-      updatedAt: room.updatedAt
+      updatedAt: room.updatedAt,
+      // Include beds array for enhanced functionality (optional)
+      beds: room.beds || []
     };
   }
 
@@ -450,6 +542,12 @@ export class RoomsService {
           isActive: true,
           createdBy: 'system' // You might want to pass the actual user
         });
+      }
+
+      // Sync beds with updated layout using BedSyncService (hybrid integration)
+      if (layoutData.bedPositions && Array.isArray(layoutData.bedPositions)) {
+        console.log('🔄 Syncing beds with updated layout - hybrid integration');
+        await this.bedSyncService.syncBedsFromLayout(roomId, layoutData.bedPositions);
       }
 
       console.log('✅ Layout updated successfully');

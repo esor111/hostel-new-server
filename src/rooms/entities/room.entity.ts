@@ -6,6 +6,7 @@ import { RoomOccupant } from './room-occupant.entity';
 import { RoomLayout } from './room-layout.entity';
 import { Building } from './building.entity';
 import { RoomType } from './room-type.entity';
+import { Bed } from './bed.entity';
 
 export enum RoomStatus {
   ACTIVE = 'Active',
@@ -116,4 +117,7 @@ export class Room extends BaseEntity {
 
   @OneToOne(() => RoomLayout, layout => layout.room, { cascade: true })
   layout: RoomLayout;
+
+  @OneToMany(() => Bed, bed => bed.room, { cascade: true })
+  beds: Bed[];
 }

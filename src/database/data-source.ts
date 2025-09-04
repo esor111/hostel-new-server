@@ -15,6 +15,7 @@ import { Amenity } from '../rooms/entities/amenity.entity';
 import { RoomAmenity } from '../rooms/entities/room-amenity.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
 import { RoomLayout } from '../rooms/entities/room-layout.entity';
+import { Bed } from '../rooms/entities/bed.entity';
 
 import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoiceItem } from '../invoices/entities/invoice-item.entity';
@@ -28,6 +29,8 @@ import { Discount } from '../discounts/entities/discount.entity';
 import { DiscountType } from '../discounts/entities/discount-type.entity';
 
 import { BookingRequest } from '../bookings/entities/booking-request.entity';
+import { MultiGuestBooking } from '../bookings/entities/multi-guest-booking.entity';
+import { BookingGuest } from '../bookings/entities/booking-guest.entity';
 
 import { Report } from '../reports/entities/report.entity';
 
@@ -61,6 +64,7 @@ export const dataSourceOptions: DataSourceOptions = {
     RoomAmenity,
     RoomOccupant,
     RoomLayout,
+    Bed,
     
     // Financial entities
     Invoice,
@@ -75,6 +79,8 @@ export const dataSourceOptions: DataSourceOptions = {
     
     // Booking entities
     BookingRequest,
+    MultiGuestBooking,
+    BookingGuest,
     
     // Report entities
     Report,
