@@ -59,13 +59,15 @@ export class MultiGuestBookingService {
   ) {}
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto): Promise<any> {
-    this.logger.log(`Creating multi-guest booking for ${createDto.contactPerson.name} with ${createDto.guests.length} guests`);
+    // Extract data from the nested structure
+    const bookingData = createDto.data;
+    this.logger.log(`Creating multi-guest booking for ${bookingData.contactPerson.name} with ${bookingData.guests.length} guests`);
 
     // Use transaction to ensure data consistency
     return await this.dataSource.transaction(async manager => {
       try {
         // Validate bed availability and get bed details
-        const bedIds = createDto.guests.map(guest => guest.bedId);
+        const bedIds = bookingData.guests.map(guest => guest.bedId);
         const beds = await manager.find(Bed, {
           where: bedIds.map(bedId => ({ bedIdentifier: bedId })),
           relations: ['room']
@@ -87,7 +89,7 @@ export class MultiGuestBookingService {
 
         // Validate gender compatibility
         const genderMismatches: string[] = [];
-        for (const guest of createDto.guests) {
+        for (const guest of bookingData.guests) {
           const bed = beds.find(b => b.bedIdentifier === guest.bedId);
           if (bed && bed.gender && bed.gender !== 'Any' && bed.gender !== guest.gender) {
             genderMismatches.push(
@@ -108,15 +110,15 @@ export class MultiGuestBookingService {
 
         // Create booking
         const booking = manager.create(MultiGuestBooking, {
-          contactName: createDto.contactPerson.name,
-          contactPhone: createDto.contactPerson.phone,
-          contactEmail: createDto.contactPerson.email,
-          checkInDate: createDto.checkInDate ? new Date(createDto.checkInDate) : null,
-          duration: createDto.duration,
-          notes: createDto.notes,
-          emergencyContact: createDto.emergencyContact,
-          source: createDto.source || 'mobile_app',
-          totalGuests: createDto.guests.length,
+          contactName: bookingData.contactPerson.name,
+          contactPhone: bookingData.contactPerson.phone,
+          contactEmail: bookingData.contactPerson.email,
+          checkInDate: bookingData.checkInDate ? new Date(bookingData.checkInDate) : null,
+          duration: bookingData.duration,
+          notes: bookingData.notes,
+          emergencyContact: bookingData.emergencyContact,
+          source: bookingData.source || 'mobile_app',
+          totalGuests: bookingData.guests.length,
           confirmedGuests: 0,
           bookingReference: this.generateBookingReference(),
           status: MultiGuestBookingStatus.PENDING
@@ -125,7 +127,7 @@ export class MultiGuestBookingService {
         const savedBooking = await manager.save(MultiGuestBooking, booking);
 
         // Create guest records
-        const guests = createDto.guests.map(guestDto => {
+        const guests = bookingData.guests.map((guestDto: any) => {
           const bed = beds.find(b => b.bedIdentifier === guestDto.bedId);
           return manager.create(BookingGuest, {
             bookingId: savedBooking.id,

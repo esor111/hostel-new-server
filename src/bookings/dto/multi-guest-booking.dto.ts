@@ -160,7 +160,8 @@ export class GuestDto {
   notes?: string;
 }
 
-export class CreateMultiGuestBookingDto {
+// Core booking data structure (used internally)
+export class MultiGuestBookingDataDto {
   @ApiProperty({ 
     description: 'Contact person details',
     type: ContactPersonDto
@@ -239,4 +240,36 @@ export class CreateMultiGuestBookingDto {
   @Length(1, 50, { message: 'Source must be between 1 and 50 characters' })
   @Transform(({ value }) => value?.trim())
   source?: string;
+}
+
+// Mobile app specific format with nested data structure
+export class CreateMultiGuestBookingDto {
+  @ApiProperty({ 
+    description: 'Booking data wrapper for mobile app format',
+    type: MultiGuestBookingDataDto,
+    example: {
+      contactPerson: {
+        name: 'Sabiln',
+        phone: '98621515111',
+        email: 'Saw@sadas.cas'
+      },
+      guests: [
+        {
+          bedId: 'bed1',
+          name: 'abc',
+          age: '20',
+          gender: 'Male'
+        },
+        {
+          bedId: 'bed6',
+          name: 'xyz',
+          age: '15',
+          gender: 'Female'
+        }
+      ]
+    }
+  })
+  @ValidateNested({ message: 'Booking data is invalid' })
+  @Type(() => MultiGuestBookingDataDto)
+  data: MultiGuestBookingDataDto;
 }

@@ -3,7 +3,8 @@ export { UpdateBookingDto } from './update-booking.dto';
 export { ApprovalDto } from './approval.dto';
 export { RejectionDto } from './rejection.dto';
 export { 
-  CreateMultiGuestBookingDto, 
+  CreateMultiGuestBookingDto,
+  MultiGuestBookingDataDto,
   ContactPersonDto, 
   GuestDto, 
   GuestGender 

@@ -145,30 +145,32 @@ describe('Multi-Guest Booking DTOs', () => {
   describe('CreateMultiGuestBookingDto', () => {
     it('should validate a valid booking request', async () => {
       const bookingData = {
-        contactPerson: {
-          name: 'John Doe',
-          phone: '+1234567890',
-          email: 'john.doe@example.com'
-        },
-        guests: [
-          {
-            bedId: 'bed1',
-            name: 'Jane Smith',
-            age: 25,
-            gender: GuestGender.FEMALE
+        data: {
+          contactPerson: {
+            name: 'John Doe',
+            phone: '+1234567890',
+            email: 'john.doe@example.com'
           },
-          {
-            bedId: 'bed2',
-            name: 'Bob Johnson',
-            age: 30,
-            gender: GuestGender.MALE
-          }
-        ],
-        checkInDate: '2024-01-15',
-        duration: '1 month',
-        notes: 'Group booking for conference',
-        emergencyContact: '+1234567891',
-        source: 'mobile_app'
+          guests: [
+            {
+              bedId: 'bed1',
+              name: 'Jane Smith',
+              age: 25,
+              gender: GuestGender.FEMALE
+            },
+            {
+              bedId: 'bed2',
+              name: 'Bob Johnson',
+              age: 30,
+              gender: GuestGender.MALE
+            }
+          ],
+          checkInDate: '2024-01-15',
+          duration: '1 month',
+          notes: 'Group booking for conference',
+          emergencyContact: '+1234567891',
+          source: 'mobile_app'
+        }
       };
 
       const bookingDto = plainToClass(CreateMultiGuestBookingDto, bookingData);
@@ -179,20 +181,23 @@ describe('Multi-Guest Booking DTOs', () => {
 
     it('should fail validation for empty guests array', async () => {
       const bookingData = {
-        contactPerson: {
-          name: 'John Doe',
-          phone: '+1234567890',
-          email: 'john.doe@example.com'
-        },
-        guests: []
+        data: {
+          contactPerson: {
+            name: 'John Doe',
+            phone: '+1234567890',
+            email: 'john.doe@example.com'
+          },
+          guests: []
+        }
       };
 
       const bookingDto = plainToClass(CreateMultiGuestBookingDto, bookingData);
       const errors = await validate(bookingDto);
 
       expect(errors.length).toBeGreaterThan(0);
-      const guestsError = errors.find(error => error.property === 'guests');
-      expect(guestsError).toBeDefined();
+      // The error will be on the 'data' property since validation is nested
+      const dataError = errors.find(error => error.property === 'data');
+      expect(dataError).toBeDefined();
     });
 
     it('should fail validation for too many guests', async () => {
@@ -204,12 +209,14 @@ describe('Multi-Guest Booking DTOs', () => {
       }));
 
       const bookingData = {
-        contactPerson: {
-          name: 'John Doe',
-          phone: '+1234567890',
-          email: 'john.doe@example.com'
-        },
-        guests
+        data: {
+          contactPerson: {
+            name: 'John Doe',
+            phone: '+1234567890',
+            email: 'john.doe@example.com'
+          },
+          guests
+        }
       };
 
       const bookingDto = plainToClass(CreateMultiGuestBookingDto, bookingData);
@@ -222,25 +229,27 @@ describe('Multi-Guest Booking DTOs', () => {
 
     it('should fail validation for duplicate bed assignments', async () => {
       const bookingData = {
-        contactPerson: {
-          name: 'John Doe',
-          phone: '+1234567890',
-          email: 'john.doe@example.com'
-        },
-        guests: [
-          {
-            bedId: 'bed1',
-            name: 'Jane Smith',
-            age: 25,
-            gender: GuestGender.FEMALE
+        data: {
+          contactPerson: {
+            name: 'John Doe',
+            phone: '+1234567890',
+            email: 'john.doe@example.com'
           },
-          {
-            bedId: 'bed1', // Duplicate bed ID
-            name: 'Bob Johnson',
-            age: 30,
-            gender: GuestGender.MALE
-          }
-        ]
+          guests: [
+            {
+              bedId: 'bed1',
+              name: 'Jane Smith',
+              age: 25,
+              gender: GuestGender.FEMALE
+            },
+            {
+              bedId: 'bed1', // Duplicate bed ID
+              name: 'Bob Johnson',
+              age: 30,
+              gender: GuestGender.MALE
+            }
+          ]
+        }
       };
 
       const bookingDto = plainToClass(CreateMultiGuestBookingDto, bookingData);
@@ -253,23 +262,25 @@ describe('Multi-Guest Booking DTOs', () => {
 
     it('should validate optional fields', async () => {
       const bookingData = {
-        contactPerson: {
-          name: 'John Doe',
-          phone: '+1234567890',
-          email: 'john.doe@example.com'
-        },
-        guests: [
-          {
-            bedId: 'bed1',
-            name: 'Jane Smith',
-            age: 25,
-            gender: GuestGender.FEMALE,
-            idProofType: 'Passport',
-            idProofNumber: 'A12345678',
-            emergencyContact: '+1234567891',
-            notes: 'Vegetarian diet'
-          }
-        ]
+        data: {
+          contactPerson: {
+            name: 'John Doe',
+            phone: '+1234567890',
+            email: 'john.doe@example.com'
+          },
+          guests: [
+            {
+              bedId: 'bed1',
+              name: 'Jane Smith',
+              age: 25,
+              gender: GuestGender.FEMALE,
+              idProofType: 'Passport',
+              idProofNumber: 'A12345678',
+              emergencyContact: '+1234567891',
+              notes: 'Vegetarian diet'
+            }
+          ]
+        }
       };
 
       const bookingDto = plainToClass(CreateMultiGuestBookingDto, bookingData);
@@ -280,30 +291,32 @@ describe('Multi-Guest Booking DTOs', () => {
 
     it('should transform and trim string values', async () => {
       const bookingData = {
-        contactPerson: {
-          name: '  John Doe  ',
-          phone: '  +1234567890  ',
-          email: '  JOHN.DOE@EXAMPLE.COM  '
-        },
-        guests: [
-          {
-            bedId: '  BED1  ',
-            name: '  Jane Smith  ',
-            age: 25,
-            gender: GuestGender.FEMALE
-          }
-        ]
+        data: {
+          contactPerson: {
+            name: '  John Doe  ',
+            phone: '  +1234567890  ',
+            email: '  JOHN.DOE@EXAMPLE.COM  '
+          },
+          guests: [
+            {
+              bedId: '  BED1  ',
+              name: '  Jane Smith  ',
+              age: 25,
+              gender: GuestGender.FEMALE
+            }
+          ]
+        }
       };
 
       const bookingDto = plainToClass(CreateMultiGuestBookingDto, bookingData);
       const errors = await validate(bookingDto);
 
       expect(errors).toHaveLength(0);
-      expect(bookingDto.contactPerson.name).toBe('John Doe');
-      expect(bookingDto.contactPerson.phone).toBe('+1234567890');
-      expect(bookingDto.contactPerson.email).toBe('john.doe@example.com');
-      expect(bookingDto.guests[0].bedId).toBe('bed1');
-      expect(bookingDto.guests[0].name).toBe('Jane Smith');
+      expect(bookingDto.data.contactPerson.name).toBe('John Doe');
+      expect(bookingDto.data.contactPerson.phone).toBe('+1234567890');
+      expect(bookingDto.data.contactPerson.email).toBe('john.doe@example.com');
+      expect(bookingDto.data.guests[0].bedId).toBe('bed1');
+      expect(bookingDto.data.guests[0].name).toBe('Jane Smith');
     });
   });
 });

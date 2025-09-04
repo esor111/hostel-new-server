@@ -84,25 +84,27 @@ describe('MultiGuestBookingService', () => {
 
   describe('createMultiGuestBooking', () => {
     const createBookingDto: CreateMultiGuestBookingDto = {
-      contactPerson: {
-        name: 'John Doe',
-        phone: '+1234567890',
-        email: 'john@example.com'
-      },
-      guests: [
-        {
-          bedId: 'bed1',
-          name: 'Alice Smith',
-          age: 25,
-          gender: GuestGender.FEMALE
+      data: {
+        contactPerson: {
+          name: 'John Doe',
+          phone: '+1234567890',
+          email: 'john@example.com'
         },
-        {
-          bedId: 'bed2',
-          name: 'Bob Johnson',
-          age: 28,
-          gender: GuestGender.MALE
-        }
-      ]
+        guests: [
+          {
+            bedId: 'bed1',
+            name: 'Alice Smith',
+            age: 25,
+            gender: GuestGender.FEMALE
+          },
+          {
+            bedId: 'bed2',
+            name: 'Bob Johnson',
+            age: 28,
+            gender: GuestGender.MALE
+          }
+        ]
+      }
     };
 
     const mockBeds = [
@@ -137,8 +139,8 @@ describe('MultiGuestBookingService', () => {
       jest.spyOn(service, 'findBookingById').mockResolvedValue({
         id: 'mock-booking-id',
         bookingReference: 'MGB123456',
-        contactPerson: createBookingDto.contactPerson,
-        guests: createBookingDto.guests.map((guest, index) => ({
+        contactPerson: createBookingDto.data.contactPerson,
+        guests: createBookingDto.data.guests.map((guest, index) => ({
           id: `guest-${index}`,
           bedId: guest.bedId,
           name: guest.name,
