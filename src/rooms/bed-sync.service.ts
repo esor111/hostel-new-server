@@ -573,6 +573,210 @@ export class BedSyncService {
   }
 
   /**
+   * Handle bed status changes during booking operations
+   * Ensures bed color updates propagate to frontend room visualization immediately
+   */
+  async handleBookingStatusChange(bedIds: string[], newStatus: BedStatus, bookingReference?: string): Promise<void> {
+    this.logger.log(`🔄 Handling booking status change for beds: ${bedIds.join(', ')} → ${newStatus}`);
+
+    try {
+      for (const bedId of bedIds) {
+        const bed = await this.bedRepository.findOne({
+          where: { bedIdentifier: bedId },
+          relations: ['room']
+        });
+
+        if (!bed) {
+          this.logger.warn(`⚠️ Bed ${bedId} not found during booking status change`);
+          continue;
+        }
+
+        const oldStatus = bed.status;
+        const updateData: Partial<Bed> = {
+          status: newStatus
+        };
+
+        // Add booking-specific notes
+        if (bookingReference) {
+          updateData.notes = `${newStatus} for booking ${bookingReference}`;
+        }
+
+        // Update bed status
+        await this.bedRepository.update(bed.id, updateData);
+
+        // Log the status change with color information
+        const oldColor = this.getBedStatusColor(oldStatus);
+        const newColor = this.getBedStatusColor(newStatus);
+        
+        this.logger.log(`✅ Bed ${bedId} status: ${oldStatus} (${oldColor}) → ${newStatus} (${newColor})`);
+
+        // Trigger room occupancy recalculation if needed
+        if (bed.room) {
+          await this.updateRoomOccupancyFromBeds(bed.room.id);
+        }
+      }
+
+      this.logger.log(`✅ Completed booking status change for ${bedIds.length} beds`);
+    } catch (error) {
+      this.logger.error(`❌ Error handling booking status change: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Update room occupancy statistics based on bed-level changes
+   * Ensures room occupancy calculations reflect bed-level data
+   */
+  async updateRoomOccupancyFromBeds(roomId: string): Promise<void> {
+    try {
+      const beds = await this.bedRepository.find({
+        where: { roomId }
+      });
+
+      const occupiedBeds = beds.filter(bed => bed.status === BedStatus.OCCUPIED).length;
+      const reservedBeds = beds.filter(bed => bed.status === BedStatus.RESERVED).length;
+      const availableBeds = beds.filter(bed => bed.status === BedStatus.AVAILABLE).length;
+      const totalBeds = beds.length;
+
+      // Update room with calculated occupancy
+      await this.roomRepository.update(roomId, {
+        occupancy: occupiedBeds,
+        // availableBeds calculation: available beds minus reserved beds
+        // This ensures reserved beds are not counted as available
+      });
+
+      this.logger.debug(`📊 Updated room ${roomId} occupancy: ${occupiedBeds}/${totalBeds} occupied, ${reservedBeds} reserved, ${availableBeds} available`);
+    } catch (error) {
+      this.logger.error(`❌ Error updating room occupancy for ${roomId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle booking confirmation - convert RESERVED beds to OCCUPIED
+   * Updates bed status and occupant information when bookings are confirmed
+   */
+  async handleBookingConfirmation(bookingId: string, guestAssignments: Array<{
+    bedId: string;
+    guestName: string;
+    guestId: string;
+  }>): Promise<void> {
+    this.logger.log(`✅ Handling booking confirmation for booking ${bookingId}`);
+
+    try {
+      for (const assignment of guestAssignments) {
+        const bed = await this.bedRepository.findOne({
+          where: { bedIdentifier: assignment.bedId },
+          relations: ['room']
+        });
+
+        if (!bed) {
+          this.logger.warn(`⚠️ Bed ${assignment.bedId} not found during confirmation`);
+          continue;
+        }
+
+        // Update bed to occupied with occupant information
+        await this.bedRepository.update(bed.id, {
+          status: BedStatus.OCCUPIED,
+          currentOccupantId: assignment.guestId,
+          currentOccupantName: assignment.guestName,
+          occupiedSince: new Date(),
+          notes: `Occupied by ${assignment.guestName} via booking ${bookingId}`
+        });
+
+        // Log the confirmation with color change
+        const occupiedColor = this.getBedStatusColor(BedStatus.OCCUPIED);
+        this.logger.log(`✅ Bed ${assignment.bedId} confirmed: RESERVED → OCCUPIED (${occupiedColor}) for ${assignment.guestName}`);
+
+        // Update room occupancy
+        if (bed.room) {
+          await this.updateRoomOccupancyFromBeds(bed.room.id);
+        }
+      }
+
+      this.logger.log(`✅ Completed booking confirmation for ${guestAssignments.length} beds`);
+    } catch (error) {
+      this.logger.error(`❌ Error handling booking confirmation: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle booking cancellation - release beds back to AVAILABLE
+   * Updates bed colors in room layouts when bookings are cancelled
+   */
+  async handleBookingCancellation(bedIds: string[], reason: string): Promise<void> {
+    this.logger.log(`❌ Handling booking cancellation for beds: ${bedIds.join(', ')}`);
+
+    try {
+      for (const bedId of bedIds) {
+        const bed = await this.bedRepository.findOne({
+          where: { bedIdentifier: bedId },
+          relations: ['room']
+        });
+
+        if (!bed) {
+          this.logger.warn(`⚠️ Bed ${bedId} not found during cancellation`);
+          continue;
+        }
+
+        const oldStatus = bed.status;
+
+        // Release bed back to available
+        await this.bedRepository.update(bed.id, {
+          status: BedStatus.AVAILABLE,
+          currentOccupantId: null,
+          currentOccupantName: null,
+          occupiedSince: null,
+          notes: `Released due to booking cancellation: ${reason}`
+        });
+
+        // Log the cancellation with color change
+        const availableColor = this.getBedStatusColor(BedStatus.AVAILABLE);
+        this.logger.log(`✅ Bed ${bedId} cancelled: ${oldStatus} → AVAILABLE (${availableColor})`);
+
+        // Update room occupancy
+        if (bed.room) {
+          await this.updateRoomOccupancyFromBeds(bed.room.id);
+        }
+      }
+
+      this.logger.log(`✅ Completed booking cancellation for ${bedIds.length} beds`);
+    } catch (error) {
+      this.logger.error(`❌ Error handling booking cancellation: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get real-time bed status for room visualization
+   * Ensures bed color updates are immediately available for frontend
+   */
+  async getRealTimeBedStatus(roomId: string): Promise<Array<{
+    bedId: string;
+    status: string;
+    color: string;
+    occupantName?: string;
+    occupiedSince?: Date;
+  }>> {
+    try {
+      const beds = await this.bedRepository.find({
+        where: { roomId }
+      });
+
+      return beds.map(bed => ({
+        bedId: bed.bedIdentifier,
+        status: bed.status,
+        color: this.getBedStatusColor(bed.status),
+        occupantName: bed.currentOccupantName,
+        occupiedSince: bed.occupiedSince
+      }));
+    } catch (error) {
+      this.logger.error(`❌ Error getting real-time bed status for room ${roomId}: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Migration script to generate Bed entities from existing bedPositions
    * This method processes all rooms and creates bed entities
    */

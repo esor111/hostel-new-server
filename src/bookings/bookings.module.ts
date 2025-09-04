@@ -9,16 +9,22 @@ import { BookingGuest } from './entities/booking-guest.entity';
 import { Student } from '../students/entities/student.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { Bed } from '../rooms/entities/bed.entity';
+import { RoomsModule } from '../rooms/rooms.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    BookingRequest,
-    MultiGuestBooking,
-    BookingGuest,
-    Student,
-    Room,
-    Bed
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      BookingRequest,
+      MultiGuestBooking,
+      BookingGuest,
+      Student,
+      Room,
+      Bed
+    ]),
+    RoomsModule, // Import RoomsModule to access BedSyncService
+    NotificationsModule // Import NotificationsModule to access NotificationsService
+  ],
   controllers: [BookingsController],
   providers: [BookingsService, MultiGuestBookingService],
   exports: [BookingsService, MultiGuestBookingService],

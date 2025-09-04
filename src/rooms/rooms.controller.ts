@@ -29,7 +29,7 @@ export class RoomsController {
   }
 
   @Get('stats')
-  @ApiOperation({ summary: 'Get room statistics' })
+  @ApiOperation({ summary: 'Get room https://github.com/openai/agents.md.gitstatistics' })
   @ApiResponse({ status: 200, description: 'Room statistics retrieved successfully' })
   async getRoomStats() {
     const stats = await this.roomsService.getStats();
