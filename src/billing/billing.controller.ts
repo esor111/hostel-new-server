@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Query, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
+import { GenerateMonthlyInvoicesDto } from './dto';
 
 @ApiTags('billing')
 @Controller('billing')
@@ -22,11 +23,11 @@ export class BillingController {
   @Post('generate-monthly')
   @ApiOperation({ summary: 'Generate monthly invoices for all active students' })
   @ApiResponse({ status: 201, description: 'Monthly invoices generated successfully' })
-  async generateMonthlyInvoices(@Body() generateDto: any) {
+  async generateMonthlyInvoices(@Body() generateDto: GenerateMonthlyInvoicesDto) {
     const result = await this.billingService.generateMonthlyInvoices(
       generateDto.month,
       generateDto.year,
-      generateDto.dueDate
+      generateDto.dueDate ? new Date(generateDto.dueDate) : undefined
     );
     
     return {

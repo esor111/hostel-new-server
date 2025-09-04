@@ -1,6 +1,9 @@
 import { Controller, Post, Get, Delete, Body, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { SeedService } from './seed.service';
+import { SeedCustomDataDto } from './dto';
 
+@ApiTags('database-seeding')
 @Controller('api/v1/seed')
 export class SeedController {
   constructor(private readonly seedService: SeedService) {}
@@ -349,7 +352,9 @@ export class SeedController {
   }
 
   @Post('custom')
-  async seedCustomData(@Body() seedData: any) {
+  @ApiOperation({ summary: 'Seed custom data into the database' })
+  @ApiResponse({ status: 201, description: 'Custom data seeded successfully' })
+  async seedCustomData(@Body() seedData: SeedCustomDataDto) {
     try {
       const result = await this.seedService.seedCustomData(seedData);
       

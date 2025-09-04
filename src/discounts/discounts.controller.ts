@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { DiscountsService } from "./discounts.service";
 import { CreateDiscountDto, ApplyDiscountDto } from "./dto/create-discount.dto";
 import { UpdateDiscountDto } from "./dto/update-discount.dto";
+import { ExpireDiscountDto } from "./dto";
 
 @ApiTags("discounts")
 @Controller("discounts")
@@ -145,7 +146,7 @@ export class DiscountsController {
   @Put(":id/expire")
   @ApiOperation({ summary: "Expire discount" })
   @ApiResponse({ status: 200, description: "Discount expired successfully" })
-  async expireDiscount(@Param("id") id: string, @Body() expireDto: any) {
+  async expireDiscount(@Param("id") id: string, @Body() expireDto: ExpireDiscountDto) {
     const result = await this.discountsService.expireDiscount(
       id,
       expireDto.expiredBy

@@ -1,0 +1,1 @@
+export { GenerateMonthlyInvoicesDto } from './generate-monthly-invoices.dto';

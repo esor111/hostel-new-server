@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
-import { CreateInvoiceDto, UpdateInvoiceDto } from './dto';
+import { CreateInvoiceDto, UpdateInvoiceDto, UpdateInvoiceStatusDto, SendInvoiceDto } from './dto';
 
 @ApiTags('invoices')
 @Controller('invoices')
@@ -108,7 +108,7 @@ export class InvoicesController {
   @Put(':id/status')
   @ApiOperation({ summary: 'Update invoice status' })
   @ApiResponse({ status: 200, description: 'Invoice status updated successfully' })
-  async updateInvoiceStatus(@Param('id') id: string, @Body() statusDto: any) {
+  async updateInvoiceStatus(@Param('id') id: string, @Body() statusDto: UpdateInvoiceStatusDto) {
     const result = await this.invoicesService.updateStatus(id, statusDto.status, statusDto.notes);
     
     return {

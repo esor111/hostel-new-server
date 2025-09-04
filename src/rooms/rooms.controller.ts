@@ -3,8 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { RoomsService } from './rooms.service';
 import { BedService } from './bed.service';
 import { BedSyncService } from './bed-sync.service';
-import { CreateRoomDto } from './dto/create-room.dto';
-import { UpdateRoomDto } from './dto/update-room.dto';
+import { CreateRoomDto, UpdateRoomDto, AssignStudentDto, VacateStudentDto, MaintenanceDto } from './dto';
 import { BedStatus } from './entities/bed.entity';
 
 @ApiTags('rooms')
@@ -101,7 +100,7 @@ export class RoomsController {
   @Post(':id/assign')
   @ApiOperation({ summary: 'Assign student to room' })
   @ApiResponse({ status: 200, description: 'Student assigned successfully' })
-  async assignStudent(@Param('id') id: string, @Body() assignDto: any) {
+  async assignStudent(@Param('id') id: string, @Body() assignDto: AssignStudentDto) {
     const result = await this.roomsService.assignStudentToRoom(id, assignDto.studentId);
     
     // Return EXACT same format as current Express API
@@ -114,7 +113,7 @@ export class RoomsController {
   @Post(':id/vacate')
   @ApiOperation({ summary: 'Vacate student from room' })
   @ApiResponse({ status: 200, description: 'Student vacated successfully' })
-  async vacateStudent(@Param('id') id: string, @Body() vacateDto: any) {
+  async vacateStudent(@Param('id') id: string, @Body() vacateDto: VacateStudentDto) {
     const result = await this.roomsService.vacateStudentFromRoom(id, vacateDto.studentId);
     
     // Return EXACT same format as current Express API
@@ -127,7 +126,7 @@ export class RoomsController {
   @Post(':id/maintenance')
   @ApiOperation({ summary: 'Schedule room maintenance' })
   @ApiResponse({ status: 200, description: 'Maintenance scheduled successfully' })
-  async scheduleMaintenance(@Param('id') id: string, @Body() maintenanceDto: any) {
+  async scheduleMaintenance(@Param('id') id: string, @Body() maintenanceDto: MaintenanceDto) {
     const result = await this.roomsService.scheduleRoomMaintenance(id, maintenanceDto);
     
     // Return EXACT same format as current Express API

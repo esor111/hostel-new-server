@@ -5,6 +5,8 @@ import { MultiGuestBookingService } from './multi-guest-booking.service';
 import { CreateBookingDto, ApproveBookingDto, RejectBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
+import { ConfirmBookingDto } from './dto/confirm-booking.dto';
+import { CancelBookingDto } from './dto/cancel-booking.dto';
 
 @ApiTags('bookings')
 @Controller('booking-requests')
@@ -105,8 +107,8 @@ export class BookingsController {
   @Post('multi-guest/:id/confirm')
   @ApiOperation({ summary: 'Confirm multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking confirmed successfully' })
-  async confirmMultiGuestBooking(@Param('id') id: string, @Body() body: { processedBy?: string }) {
-    const result = await this.multiGuestBookingService.confirmBooking(id, body.processedBy);
+  async confirmMultiGuestBooking(@Param('id') id: string, @Body() confirmDto: ConfirmBookingDto) {
+    const result = await this.multiGuestBookingService.confirmBooking(id, confirmDto.processedBy);
     
     return {
       status: HttpStatus.OK,
@@ -117,8 +119,8 @@ export class BookingsController {
   @Post('multi-guest/:id/cancel')
   @ApiOperation({ summary: 'Cancel multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking cancelled successfully' })
-  async cancelMultiGuestBooking(@Param('id') id: string, @Body() body: { reason: string; processedBy?: string }) {
-    const result = await this.multiGuestBookingService.cancelBooking(id, body.reason, body.processedBy);
+  async cancelMultiGuestBooking(@Param('id') id: string, @Body() cancelDto: CancelBookingDto) {
+    const result = await this.multiGuestBookingService.cancelBooking(id, cancelDto.reason, cancelDto.processedBy);
     
     return {
       status: HttpStatus.OK,

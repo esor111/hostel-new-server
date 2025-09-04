@@ -2,9 +2,9 @@ import { IsString, IsNotEmpty } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class AssignStudentDto {
+export class VacateStudentDto {
   @ApiProperty({ 
-    description: 'ID of the student to assign to the room',
+    description: 'ID of the student to vacate from the room',
     example: 'student-123'
   })
   @IsString()

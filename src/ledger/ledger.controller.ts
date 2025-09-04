@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus } from '@nes
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LedgerService } from './ledger.service';
 import { CreateAdjustmentDto } from './dto/create-ledger-entry.dto';
+import { ReversalDto } from './dto';
 
 @ApiTags('ledger')
 @Controller('ledgers')
@@ -81,7 +82,7 @@ export class LedgerController {
   @Post(':entryId/reverse')
   @ApiOperation({ summary: 'Reverse a ledger entry' })
   @ApiResponse({ status: 200, description: 'Ledger entry reversed successfully' })
-  async reverseEntry(@Param('entryId') entryId: string, @Body() reversalDto: any) {
+  async reverseEntry(@Param('entryId') entryId: string, @Body() reversalDto: ReversalDto) {
     const result = await this.ledgerService.reverseEntry(
       entryId,
       reversalDto.reversedBy,

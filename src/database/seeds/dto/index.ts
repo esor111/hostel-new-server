@@ -1,0 +1,1 @@
+export { SeedCustomDataDto } from './seed-custom-data.dto';
