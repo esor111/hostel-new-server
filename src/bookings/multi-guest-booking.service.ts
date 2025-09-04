@@ -6,8 +6,8 @@ import { BookingGuest, GuestStatus } from './entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
 import { BedSyncService } from '../rooms/bed-sync.service';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NotificationType, NotificationCategory, NotificationPriority, RecipientType } from '../notifications/entities/notification.entity';
+
+
 
 export interface BookingFilters {
   page?: number;
@@ -60,7 +60,6 @@ export class MultiGuestBookingService {
     private bedRepository: Repository<Bed>,
     private dataSource: DataSource,
     private bedSyncService: BedSyncService,
-    private notificationsService: NotificationsService,
   ) {}
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto): Promise<any> {
@@ -158,9 +157,6 @@ export class MultiGuestBookingService {
         );
 
         this.logger.log(`✅ Created multi-guest booking ${savedBooking.bookingReference} with ${guests.length} guests`);
-
-        // Create notification for new booking
-        await this.createBookingCreationNotification(savedBooking);
 
         // Return complete booking with guests
         return this.findBookingById(savedBooking.id);
@@ -277,25 +273,6 @@ export class MultiGuestBookingService {
 
         this.logger.log(`✅ Confirmed multi-guest booking ${booking.bookingReference} (${confirmedGuestCount}/${booking.totalGuests} guests)`);
 
-        // Create audit trail notification
-        await this.createBookingAuditNotification(
-          booking.bookingReference,
-          'CONFIRMED',
-          `Booking confirmed by ${processedBy || 'admin'}: ${confirmedGuestCount}/${booking.totalGuests} guests assigned`,
-          booking.contactEmail
-        );
-
-        // Create notification for contact person (if email notifications were implemented)
-        await this.createBookingStatusNotification(
-          booking.contactEmail,
-          booking.contactName,
-          'Booking Confirmed',
-          failedAssignments.length > 0 
-            ? `Your booking ${booking.bookingReference} has been partially confirmed. ${confirmedGuestCount} out of ${booking.totalGuests} guests have been assigned beds.`
-            : `Your booking ${booking.bookingReference} has been confirmed successfully. All ${booking.totalGuests} guests have been assigned beds.`,
-          'BOOKING_CONFIRMED'
-        );
-
         return {
           success: true,
           message: failedAssignments.length > 0 
@@ -355,23 +332,6 @@ export class MultiGuestBookingService {
         const releasedBeds = bedIds;
 
         this.logger.log(`✅ Cancelled multi-guest booking ${booking.bookingReference}, released ${releasedBeds.length} beds`);
-
-        // Create audit trail notification
-        await this.createBookingAuditNotification(
-          booking.bookingReference,
-          'CANCELLED',
-          `Booking cancelled by ${processedBy || 'admin'}: ${reason}. Released ${releasedBeds.length} beds.`,
-          booking.contactEmail
-        );
-
-        // Create notification for contact person
-        await this.createBookingStatusNotification(
-          booking.contactEmail,
-          booking.contactName,
-          'Booking Cancelled',
-          `Your booking ${booking.bookingReference} has been cancelled. Reason: ${reason}. All reserved beds have been released.`,
-          'BOOKING_CANCELLED'
-        );
 
         return {
           success: true,
@@ -696,92 +656,4 @@ export class MultiGuestBookingService {
     return `MGB${timestamp.slice(-6)}${random}`;
   }
 
-  /**
-   * Create audit trail notification for booking operations
-   * Provides comprehensive logging for all booking status changes
-   */
-  private async createBookingAuditNotification(
-    bookingReference: string,
-    action: string,
-    details: string,
-    contactEmail: string
-  ): Promise<void> {
-    try {
-      await this.notificationsService.createNotification({
-        title: `Booking ${action}: ${bookingReference}`,
-        message: details,
-        type: NotificationType.INFO,
-        category: NotificationCategory.SYSTEM,
-        priority: NotificationPriority.MEDIUM,
-        recipientType: RecipientType.STAFF,
-        recipientId: 'system',
-        actionUrl: `/admin/bookings/multi-guest/${bookingReference}`
-      });
-
-      this.logger.log(`📋 Audit trail created: ${bookingReference} - ${action}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to create audit notification: ${error.message}`);
-      // Don't throw error - audit failure shouldn't break booking operations
-    }
-  }
-
-  /**
-   * Create booking status notification for contact person
-   * Handles booking confirmation and cancellation notifications
-   */
-  private async createBookingStatusNotification(
-    contactEmail: string,
-    contactName: string,
-    title: string,
-    message: string,
-    category: string
-  ): Promise<void> {
-    try {
-      // Create in-app notification
-      await this.notificationsService.createNotification({
-        title,
-        message,
-        type: NotificationType.INFO,
-        category: category as any,
-        priority: NotificationPriority.HIGH,
-        recipientType: RecipientType.ALL,
-        recipientId: contactEmail, // Use email as recipient ID for guests
-        actionUrl: `/booking-status/${contactEmail}`
-      });
-
-      // Log notification creation (email would be sent here if email service existed)
-      this.logger.log(`📧 Notification created for ${contactName} (${contactEmail}): ${title}`);
-      this.logger.log(`   Message: ${message}`);
-      
-      // TODO: Integrate with email service when available
-      // await this.emailService.sendBookingStatusEmail(contactEmail, contactName, title, message);
-      
-    } catch (error) {
-      this.logger.error(`❌ Failed to create status notification: ${error.message}`);
-      // Don't throw error - notification failure shouldn't break booking operations
-    }
-  }
-
-  /**
-   * Create booking creation notification
-   * Notifies admins when new multi-guest bookings are created
-   */
-  private async createBookingCreationNotification(booking: MultiGuestBooking): Promise<void> {
-    try {
-      await this.notificationsService.createNotification({
-        title: `New Multi-Guest Booking: ${booking.bookingReference}`,
-        message: `New booking from ${booking.contactName} (${booking.contactEmail}) for ${booking.totalGuests} guests. Requires approval.`,
-        type: NotificationType.INFO,
-        category: NotificationCategory.BOOKING,
-        priority: NotificationPriority.HIGH,
-        recipientType: RecipientType.STAFF,
-        recipientId: 'admin',
-        actionUrl: `/admin/bookings/multi-guest/${booking.id}`
-      });
-
-      this.logger.log(`🔔 Admin notification created for new booking: ${booking.bookingReference}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to create booking creation notification: ${error.message}`);
-    }
-  }
 }

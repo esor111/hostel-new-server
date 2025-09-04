@@ -36,7 +36,7 @@ import { Report } from '../reports/entities/report.entity';
 
 import { HostelProfile } from '../hostel/entities/hostel-profile.entity';
 import { MaintenanceRequest } from '../maintenance/entities/maintenance-request.entity';
-import { Notification } from '../notifications/entities/notification.entity';
+
 import { AdminCharge } from '../admin-charges/entities/admin-charge.entity';
 
 // Load environment variables
@@ -88,7 +88,6 @@ export const dataSourceOptions: DataSourceOptions = {
     // Hostel entities
     HostelProfile,
     MaintenanceRequest,
-    Notification,
     
     // Admin charges entities
     AdminCharge,

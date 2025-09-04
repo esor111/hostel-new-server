@@ -14,7 +14,7 @@ import { DiscountsModule } from './discounts/discounts.module';
 import { ReportsModule } from './reports/reports.module';
 import { HostelModule } from './hostel/hostel.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
-import { NotificationsModule } from './notifications/notifications.module';
+
 import { AnalyticsModule } from './analytics/analytics.module';
 import { SeedModule } from './database/seeds/seed.module';
 import { AdminChargesModule } from './admin-charges/admin-charges.module';
@@ -43,7 +43,6 @@ import { BillingModule } from './billing/billing.module';
     ReportsModule,
     HostelModule,
     MaintenanceModule,
-    NotificationsModule,
     AnalyticsModule,
     SeedModule,
     AdminChargesModule,
