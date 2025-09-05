@@ -183,26 +183,49 @@ export class BedSyncService {
    * Merge Bed entity data into bedPositions for API response
    * Enhances bedPositions with status, occupant info, color, and details from Bed entities
    * Ensures proper data flow from API to frontend for bed color visualization
+   * Updates bedPosition IDs to match bed identifiers for frontend mapping
    */
   async mergeBedDataIntoPositions(bedPositions: BedPosition[], beds: Bed[]): Promise<BedPosition[]> {
     if (!bedPositions || bedPositions.length === 0) {
       return bedPositions;
     }
 
-    // Create a map of beds by bedIdentifier for efficient lookup
-    const bedMap = new Map<string, Bed>();
-    beds.forEach(bed => {
-      bedMap.set(bed.bedIdentifier, bed);
+    // Create multiple maps for flexible bed lookup
+    const bedByIdentifier = new Map<string, Bed>();
+    const bedBySimpleId = new Map<string, Bed>();
+    const activeBeds = beds.filter(bed => bed.status !== 'Out_Of_Order');
+    
+    activeBeds.forEach(bed => {
+      bedByIdentifier.set(bed.bedIdentifier, bed);
+      
+      // Also map by simple ID (extract bed1, bed2 from complex identifiers)
+      const simpleIdMatch = bed.bedIdentifier.match(/bed(\d+)$/);
+      if (simpleIdMatch) {
+        const simpleId = `bed${simpleIdMatch[1]}`;
+        bedBySimpleId.set(simpleId, bed);
+      }
     });
 
-    // Merge bed data into each position
-    const enhancedPositions = bedPositions.map(position => {
-      const bed = bedMap.get(position.id);
+    // Merge bed data into each position and update position ID to match bed identifier
+    const enhancedPositions = bedPositions.map((position, index) => {
+      // Try to find matching bed by exact identifier first
+      let bed = bedByIdentifier.get(position.id);
+      
+      // If not found, try to find by simple ID pattern
+      if (!bed) {
+        bed = bedBySimpleId.get(position.id);
+      }
+      
+      // If still not found, try to match by position index
+      if (!bed && activeBeds.length > index) {
+        bed = activeBeds[index];
+      }
 
       if (bed) {
-        // Merge bed entity data into position with color and details
+        // Update position ID to match bed identifier for frontend consistency
         const enhancedPosition = {
           ...position,
+          id: bed.bedIdentifier, // KEY FIX: Update position ID to match bed identifier
           status: bed.status,
           occupantId: bed.currentOccupantId,
           occupantName: bed.currentOccupantName,
@@ -217,7 +240,7 @@ export class BedSyncService {
           }
         };
 
-        this.logger.debug(`Enhanced bed position ${position.id} with status ${bed.status} and color ${enhancedPosition.color}`);
+        this.logger.debug(`Enhanced bed position ${position.id} → ${bed.bedIdentifier} with status ${bed.status}`);
         return enhancedPosition;
       }
 
@@ -494,26 +517,43 @@ export class BedSyncService {
   }
 
   /**
-   * Generate a unique bed identifier to resolve conflicts
-   * Converts complex IDs to simple format and ensures uniqueness
+   * Generate a unique bed identifier that matches bedPosition ID format
+   * Creates room-specific identifiers to ensure global uniqueness while maintaining consistency
    */
   private async generateUniqueBedIdentifier(originalId: string, roomId: string): Promise<string> {
-    // Get room details for context
+    // Get room details for room-specific identifier
     const room = await this.roomRepository.findOne({ where: { id: roomId } });
     const roomNumber = room?.roomNumber || 'R';
     
-    // Convert complex ID to simple format
-    let baseId: string;
-    
+    // For simple IDs like "bed1", "bed2", create room-specific version
     if (originalId.match(/^bed\d+$/)) {
-      // Already simple format, just add room prefix
-      baseId = `${roomNumber}-${originalId}`;
-    } else {
-      // Complex format - extract bed number or generate one
-      const existingBedsInRoom = await this.bedRepository.count({ where: { roomId } });
-      const bedNumber = existingBedsInRoom + 1;
-      baseId = `${roomNumber}-bed${bedNumber}`;
+      const roomSpecificId = `${roomNumber}-${originalId}`;
+      
+      // Check if this room-specific ID already exists
+      const existingBed = await this.bedRepository.findOne({ where: { bedIdentifier: roomSpecificId } });
+      
+      if (!existingBed) {
+        // Room-specific ID is available, use it
+        return roomSpecificId;
+      } else if (existingBed.roomId === roomId) {
+        // ID exists in the same room, that's fine (updating existing bed)
+        return roomSpecificId;
+      }
+      // If there's still a conflict, fall through to generate unique version
     }
+    
+    // Extract bed number from any format
+    let bedNumber: number;
+    const bedNumberMatch = originalId.match(/bed(\d+)/);
+    if (bedNumberMatch) {
+      bedNumber = parseInt(bedNumberMatch[1]);
+    } else {
+      const existingBedsInRoom = await this.bedRepository.count({ where: { roomId } });
+      bedNumber = existingBedsInRoom + 1;
+    }
+    
+    // Generate room-specific base ID
+    let baseId = `${roomNumber}-bed${bedNumber}`;
     
     // Ensure uniqueness by checking database
     let uniqueId = baseId;
@@ -552,16 +592,44 @@ export class BedSyncService {
       const position = bedPositions[i];
       const simpleId = this.convertToSimpleBedId(position.id, roomId, i);
       
-      // Check if this simple ID would conflict with existing beds
+      // Check if this simple ID would conflict with existing beds in OTHER rooms
       const existingBed = await this.bedRepository.findOne({
         where: { bedIdentifier: simpleId }
       });
       
       if (existingBed && existingBed.roomId !== roomId) {
-        // Use the original complex ID to avoid conflicts
-        normalizedPositions.push(position);
+        // Conflict with another room - but still prefer simple format
+        // Generate a unique simple ID for this room
+        let alternativeSimpleId = simpleId;
+        let counter = 1;
+        
+        while (true) {
+          const conflictCheck = await this.bedRepository.findOne({
+            where: { bedIdentifier: alternativeSimpleId }
+          });
+          
+          if (!conflictCheck || conflictCheck.roomId === roomId) {
+            // No conflict or conflict is within same room (acceptable)
+            break;
+          }
+          
+          // Try next simple ID
+          counter++;
+          alternativeSimpleId = `bed${i + counter}`;
+          
+          // Safety break to avoid infinite loop
+          if (counter > 100) {
+            alternativeSimpleId = position.id; // Fall back to original
+            break;
+          }
+        }
+        
+        normalizedPositions.push({
+          ...position,
+          id: alternativeSimpleId
+        });
       } else {
-        // Use the simple ID
+        // No conflict or conflict is within same room - use simple ID
         normalizedPositions.push({
           ...position,
           id: simpleId

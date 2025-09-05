@@ -7,6 +7,9 @@ import { StudentAcademicInfo } from './entities/student-academic-info.entity';
 import { StudentFinancialInfo, FeeType } from './entities/student-financial-info.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { ConfigureStudentDto } from './dto/configure-student.dto';
+import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.entity';
+import { Bed, BedStatus } from '../rooms/entities/bed.entity';
+import { BedSyncService } from '../rooms/bed-sync.service';
 
 @Injectable()
 export class StudentsService {
@@ -21,6 +24,7 @@ export class StudentsService {
     private financialRepository: Repository<StudentFinancialInfo>,
     @InjectRepository(LedgerEntry)
     private ledgerRepository: Repository<LedgerEntry>,
+    private bedSyncService: BedSyncService,
   ) {}
 
   async findAll(filters: any = {}) {
@@ -354,6 +358,43 @@ export class StudentsService {
       await this.studentRepository.update(studentId, {
         roomId: null
       });
+    }
+
+    // CRITICAL FIX: Update booking-guest status and free up the bed using BedSyncService
+    try {
+      // Find the booking guest record for this student
+      const bookingGuestRepository = this.studentRepository.manager.getRepository(BookingGuest);
+      
+      // Find booking guest by student name (matching logic from enhanced service)
+      const bookingGuest = await bookingGuestRepository.findOne({
+        where: [
+          { guestName: student.name },
+          { email: student.email }
+        ]
+      });
+
+      if (bookingGuest) {
+        // Update booking guest status to CHECKED_OUT
+        await bookingGuestRepository.update(bookingGuest.id, {
+          status: GuestStatus.CHECKED_OUT,
+          actualCheckOutDate: checkoutDetails.checkoutDate || new Date()
+        });
+
+        // Use BedSyncService to properly handle bed release
+        if (bookingGuest.bedId) {
+          await this.bedSyncService.handleBookingCancellation(
+            [bookingGuest.bedId], 
+            `Student checkout: ${student.name}`
+          );
+          
+          console.log(`✅ Bed ${bookingGuest.bedId} freed up for student ${student.name} using BedSyncService`);
+        }
+      } else {
+        console.warn(`⚠️ No booking guest found for student ${student.name} during checkout`);
+      }
+    } catch (error) {
+      console.error('❌ Error updating bed availability during checkout:', error);
+      // Don't fail the entire checkout process, but log the error
     }
 
     // Calculate final settlement

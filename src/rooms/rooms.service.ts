@@ -391,6 +391,19 @@ export class RoomsService {
     }
   }
 
+  // Get color for bed status visualization
+  private getBedStatusColor(status: string): string {
+    const colorMap: Record<string, string> = {
+      'Available': '#10B981', // Green
+      'Occupied': '#EF4444',  // Red
+      'Reserved': '#F59E0B',  // Yellow/Orange
+      'Maintenance': '#6B7280', // Gray
+      'Out_Of_Order': '#6B7280' // Gray
+    };
+
+    return colorMap[status] || '#6B7280'; // Default to gray
+  }
+
   // Transform normalized data back to exact API format
   private async transformToApiResponse(room: Room): Promise<any> {
     // Get active layout
@@ -468,10 +481,45 @@ export class RoomsService {
 
       // Merge bed entity data into positions if beds exist
       if (bedPositions && room.beds && room.beds.length > 0) {
-        enhancedLayout.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
-          bedPositions,
-          room.beds
-        );
+        // SIMPLE FIX: Map bedPosition IDs to match bed identifiers for frontend consistency
+        const activeBeds = room.beds.filter(bed => bed.status !== 'Out_Of_Order');
+        
+        enhancedLayout.bedPositions = bedPositions.map((position, index) => {
+          // Try to find matching bed by position index or identifier
+          let matchingBed = activeBeds.find(bed => bed.bedIdentifier === position.id);
+          
+          // If no exact match, use bed by index (fallback)
+          if (!matchingBed && activeBeds[index]) {
+            matchingBed = activeBeds[index];
+          }
+          
+          if (matchingBed) {
+            // Update position ID to match bed identifier for frontend mapping
+            return {
+              ...position,
+              id: matchingBed.bedIdentifier, // KEY FIX: Ensure IDs match
+              status: matchingBed.status,
+              occupantId: matchingBed.currentOccupantId,
+              occupantName: matchingBed.currentOccupantName,
+              gender: matchingBed.gender,
+              color: this.getBedStatusColor(matchingBed.status),
+              bedDetails: {
+                bedNumber: matchingBed.bedNumber,
+                monthlyRate: matchingBed.monthlyRate,
+                lastCleaned: matchingBed.lastCleaned,
+                maintenanceNotes: matchingBed.maintenanceNotes,
+                occupiedSince: matchingBed.occupiedSince
+              }
+            };
+          }
+          
+          // Return original position with default data if no matching bed
+          return {
+            ...position,
+            color: this.getBedStatusColor('Available'),
+            status: 'Available'
+          };
+        });
       } else if (bedPositions) {
         // Ensure bedPositions are included even without bed entities
         enhancedLayout.bedPositions = bedPositions;

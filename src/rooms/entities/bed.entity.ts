@@ -24,7 +24,7 @@ export class Bed extends BaseEntity {
   bedNumber: string;
 
   @Column({ name: 'bed_identifier', length: 50, unique: true })
-  bedIdentifier: string; // e.g., "bed1", "bed6" - matches the payload
+  bedIdentifier: string; // e.g., "R01-bed1", "R02-bed1" - globally unique but room-specific
 
   @Column({
     type: 'enum',
