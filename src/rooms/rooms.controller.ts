@@ -140,6 +140,18 @@ export class RoomsController {
   // BED MANAGEMENT ENDPOINTS
   // ========================================
 
+  @Get('beds')
+  @ApiOperation({ summary: 'Get all beds' })
+  @ApiResponse({ status: 200, description: 'All beds retrieved successfully' })
+  async getAllBeds() {
+    const beds = await this.bedService.findAll();
+    
+    return {
+      status: HttpStatus.OK,
+      data: beds
+    };
+  }
+
   @Get(':roomId/beds')
   @ApiOperation({ summary: 'Get all beds in a room' })
   @ApiResponse({ status: 200, description: 'Beds retrieved successfully' })

@@ -579,9 +579,10 @@ export class StudentsService {
       // For now, we'll store them as notes in financial info
     }
 
-    // Mark student as configured
+    // Mark student as configured and active
     await this.studentRepository.update(studentId, {
-      isConfigured: true
+      isConfigured: true,
+      status: StudentStatus.ACTIVE
     });
 
     return {

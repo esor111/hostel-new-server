@@ -290,15 +290,35 @@ export class MultiGuestBookingService {
           await this.bedSyncService.handleBookingConfirmation(id, guestAssignments);
         }
 
-        this.logger.log(`✅ Confirmed multi-guest booking ${booking.bookingReference} (${confirmedGuestCount}/${booking.totalGuests} guests)`);
+        // Create student profiles for confirmed guests
+        const createdStudents = [];
+        for (const guest of booking.guests) {
+          if (successfulAssignments.includes(guest.bedId)) {
+            try {
+              const student = await this.createStudentFromGuest(manager, guest, booking, {
+                processedBy: processedBy || 'admin',
+                assignedRoom: null, // Will be handled by bed assignment
+                createStudent: true
+              });
+              createdStudents.push(student);
+              this.logger.log(`✅ Created student profile for guest: ${guest.guestName}`);
+            } catch (studentError) {
+              this.logger.error(`❌ Failed to create student for guest ${guest.guestName}: ${studentError.message}`);
+            }
+          }
+        }
+
+        this.logger.log(`✅ Confirmed multi-guest booking ${booking.bookingReference} (${confirmedGuestCount}/${booking.totalGuests} guests, ${createdStudents.length} students created)`);
 
         return {
           success: true,
           message: failedAssignments.length > 0 
-            ? `Booking partially confirmed: ${confirmedGuestCount}/${booking.totalGuests} guests assigned`
-            : 'Multi-guest booking confirmed successfully',
+            ? `Booking partially confirmed: ${confirmedGuestCount}/${booking.totalGuests} guests assigned, ${createdStudents.length} students created`
+            : `Multi-guest booking confirmed successfully, ${createdStudents.length} students created`,
           bookingId: id,
           confirmedGuests: confirmedGuestCount,
+          createdStudents: createdStudents.length,
+          students: createdStudents,
           failedAssignments: failedAssignments.length > 0 ? failedAssignments : undefined
         };
       } catch (error) {
@@ -1098,10 +1118,51 @@ export class MultiGuestBookingService {
       }
     }
 
+    // Generate unique email and phone for each guest to avoid unique constraint violations
+    let guestEmail = guest.email || `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}@guest.booking`;
+    
+    // Check if email already exists and modify if needed
+    const existingEmailStudent = await manager.findOne(Student, { where: { email: guestEmail } });
+    if (existingEmailStudent) {
+      const timestamp = Date.now().toString().slice(-6);
+      guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}.${timestamp}@guest.booking`;
+      this.logger.warn(`Email ${guest.email || 'generated email'} already exists, using ${guestEmail} instead`);
+    }
+    
+    // Generate unique phone number with strict 20-character limit
+    let guestPhone = guest.phone;
+    if (!guestPhone) {
+      // Generate phone from booking contact phone with unique suffix
+      const basePhone = booking.contactPhone.replace(/[^0-9]/g, ''); // Keep only digits
+      const uniqueSuffix = guest.id.slice(-4); // Last 4 chars of guest ID
+      const timestamp = Date.now().toString().slice(-3); // Last 3 digits of timestamp
+      
+      // Ensure total length stays under 20 characters
+      const maxBaseLength = 20 - uniqueSuffix.length - timestamp.length;
+      const truncatedBase = basePhone.slice(0, maxBaseLength);
+      guestPhone = `${truncatedBase}${uniqueSuffix}${timestamp}`;
+    } else {
+      // Check if provided phone already exists and modify if needed
+      const existingStudent = await manager.findOne(Student, { where: { phone: guestPhone } });
+      if (existingStudent) {
+        // Generate unique phone by modifying the existing one
+        const basePhone = guestPhone.replace(/[^0-9]/g, '').slice(0, 15); // Keep only digits, max 15
+        const timestamp = Date.now().toString().slice(-4); // Last 4 digits
+        guestPhone = `${basePhone}${timestamp}`;
+        this.logger.warn(`Phone ${guest.phone} already exists, using ${guestPhone} instead`);
+      }
+    }
+    
+    // Final safety check: ensure phone is within 20 character limit
+    if (guestPhone.length > 20) {
+      guestPhone = guestPhone.slice(0, 20);
+      this.logger.warn(`Phone number truncated to fit database limit: ${guestPhone}`);
+    }
+
     const student = manager.create(Student, {
       name: guest.guestName,
-      phone: guest.phone || booking.contactPhone,
-      email: guest.email || booking.contactEmail,
+      phone: guestPhone,
+      email: guestEmail,
       enrollmentDate: new Date(),
       status: StudentStatus.PENDING_CONFIGURATION, // Fixed: Use correct status for pending configuration
       address: guest.address || booking.address,
