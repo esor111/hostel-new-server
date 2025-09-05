@@ -12,7 +12,6 @@ import { BedSyncService } from '../rooms/bed-sync.service';
 import { BookingValidationService } from './validation/booking-validation.service';
 
 
-
 export interface BookingFilters {
   page?: number;
   limit?: number;

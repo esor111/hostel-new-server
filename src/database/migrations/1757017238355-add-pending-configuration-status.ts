@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddPendingConfigurationStatus1725476400000 implements MigrationInterface {
-  name = 'AddPendingConfigurationStatus1725476400000';
+export class AddPendingConfigurationStatus1757017238355 implements MigrationInterface {
+  name = 'AddPendingConfigurationStatus1757017238355';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Check if the existing enum has the new value

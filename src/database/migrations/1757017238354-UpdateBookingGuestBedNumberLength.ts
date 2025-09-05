@@ -4,28 +4,30 @@ export class UpdateBookingGuestBedNumberLength1757017238354 implements Migration
     name = 'UpdateBookingGuestBedNumberLength1757017238354'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "beds" DROP CONSTRAINT "FK_beds_room_id"`);
-        await queryRunner.query(`ALTER TABLE "admin_charges" DROP CONSTRAINT "FK_admin_charges_student_id"`);
-        await queryRunner.query(`ALTER TABLE "booking_guests" DROP CONSTRAINT "fk_booking_guests_booking_id"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_beds_room_id"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_beds_status"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_beds_bed_identifier"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_beds_bed_number"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_beds_gender"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_admin_charges_student_id"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_admin_charges_status"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_admin_charges_charge_type"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_admin_charges_due_date"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_admin_charges_created_at"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_booking_guests_booking_id"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_booking_guests_bed_id"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_booking_guests_status"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_booking_guests_gender"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_multi_guest_bookings_status"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_multi_guest_bookings_contact_email"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_multi_guest_bookings_contact_phone"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_multi_guest_bookings_check_in_date"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_e1ba9929f00a8e2ee0ca1e30b8"`);
+        // Drop constraints if they exist
+        await queryRunner.query(`ALTER TABLE "beds" DROP CONSTRAINT IF EXISTS "FK_beds_room_id"`);
+        await queryRunner.query(`ALTER TABLE "admin_charges" DROP CONSTRAINT IF EXISTS "FK_admin_charges_student_id"`);
+        await queryRunner.query(`ALTER TABLE "booking_guests" DROP CONSTRAINT IF EXISTS "fk_booking_guests_booking_id"`);
+        await queryRunner.query(`ALTER TABLE "booking_guests" DROP CONSTRAINT IF EXISTS "FK_booking_guests_booking_id"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_beds_room_id"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_beds_status"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_beds_bed_identifier"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_beds_bed_number"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_beds_gender"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_admin_charges_student_id"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_admin_charges_status"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_admin_charges_charge_type"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_admin_charges_due_date"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_admin_charges_created_at"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_booking_guests_booking_id"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_booking_guests_bed_id"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_booking_guests_status"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_booking_guests_gender"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_multi_guest_bookings_status"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_multi_guest_bookings_contact_email"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_multi_guest_bookings_contact_phone"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_multi_guest_bookings_check_in_date"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_e1ba9929f00a8e2ee0ca1e30b8"`);
         await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "month"`);
         await queryRunner.query(`ALTER TABLE "invoices" ADD "month" character varying(20) NOT NULL`);
         await queryRunner.query(`ALTER TYPE "public"."invoices_status_enum" RENAME TO "invoices_status_enum_old"`);
