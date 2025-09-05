@@ -140,6 +140,32 @@ export class DashboardService {
       });
     });
 
+    // Get recent ledger entries (admin charges, discounts, adjustments)
+    const recentLedgerEntries = await this.ledgerRepository
+      .createQueryBuilder('ledger')
+      .leftJoinAndSelect('ledger.student', 'student')
+      .where('ledger.type IN (:...types)', { types: ['Adjustment', 'Discount'] })
+      .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
+      .orderBy('ledger.createdAt', 'DESC')
+      .limit(5)
+      .getMany();
+
+    recentLedgerEntries.forEach(entry => {
+      const isCharge = entry.debit > 0;
+      const amount = isCharge ? entry.debit : entry.credit;
+      const actionType = isCharge ? 'charge' : 'discount';
+      
+      activities.push({
+        id: `ledger-${entry.id}`,
+        type: actionType,
+        message: `${isCharge ? 'Admin charge' : 'Discount'} applied to ${entry.student?.name || 'Unknown'} - NPR ${amount.toLocaleString()}`,
+        time: this.getRelativeTime(entry.createdAt),
+        timestamp: entry.createdAt,
+        icon: isCharge ? 'Plus' : 'Minus',
+        color: isCharge ? 'text-red-600' : 'text-blue-600'
+      });
+    });
+
     // Get recent student check-ins (new students)
     const recentStudents = await this.studentRepository
       .createQueryBuilder('student')
