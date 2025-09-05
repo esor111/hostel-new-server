@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { MultiGuestBooking } from './multi-guest-booking.entity';
+import { Bed } from '../../rooms/entities/bed.entity';
 
 export enum GuestStatus {
   PENDING = 'Pending',
@@ -19,7 +20,7 @@ export class BookingGuest extends BaseEntity {
   @Column({ name: 'booking_id' })
   bookingId: string;
 
-  @Column({ name: 'bed_id', length: 50 })
+  @Column({ name: 'bed_id' })
   bedId: string;
 
   @Column({ name: 'guest_name', length: 255 })
@@ -90,4 +91,8 @@ export class BookingGuest extends BaseEntity {
   @ManyToOne(() => MultiGuestBooking, (booking) => booking.guests, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'booking_id' })
   booking: MultiGuestBooking;
+
+  @ManyToOne(() => Bed, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'bed_id' })
+  bed: Bed;
 }
