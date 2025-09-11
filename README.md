@@ -98,4 +98,17 @@ while request for the room booking for the request json will be
   }
 }
 
-by using json what are the places going to be effected?  
+by using json what are the places going to be effected?
+information 
+course & institution ???
+where is the actual GAP?
+
+
+is there any api related to room booking not the bed booking?
+what are information that are irrrelevent
+information gap between single guest booking and multi guest booking
+
+mismatch with bedids
+
+
+need to talk about the room layout and bed  layout

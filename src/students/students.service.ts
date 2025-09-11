@@ -98,7 +98,7 @@ export class StudentsService {
       status: createStudentDto.status || StudentStatus.ACTIVE,
       address: createStudentDto.address,
       roomId: createStudentDto.roomNumber, // This will need room lookup
-      bookingRequestId: createStudentDto.bookingRequestId
+      // bookingRequestId: createStudentDto.bookingRequestId // Removed during transition
     });
 
     const savedStudent = await this.studentRepository.save(student);
@@ -208,7 +208,7 @@ export class StudentsService {
       institution: currentAcademic?.institution || null,
       idProofType: null, // Will add to student entity if needed
       idProofNumber: null, // Will add to student entity if needed
-      bookingRequestId: student.bookingRequestId,
+      // bookingRequestId: student.bookingRequestId, // Removed during transition
       updatedAt: student.updatedAt,
       isConfigured: student.isConfigured || false,
       bedNumber: student.bedNumber
@@ -368,8 +368,8 @@ export class StudentsService {
       // Find booking guest by student name (matching logic from enhanced service)
       const bookingGuest = await bookingGuestRepository.findOne({
         where: [
-          { guestName: student.name },
-          { email: student.email }
+          { guestName: student.name }
+          // Removed: { email: student.email } - email field no longer exists in BookingGuest
         ]
       });
 

@@ -328,28 +328,29 @@ export class SeedController {
     }
   }
 
-  @Post('bookings')
-  async seedBookings(@Query('force') force?: string) {
-    try {
-      const forceReseed = force === 'true';
-      const result = await this.seedService.seedBookings(forceReseed);
-      
-      return {
-        status: 201,
-        message: 'Booking requests seeded successfully',
-        data: result
-      };
-    } catch (error) {
-      throw new HttpException(
-        {
-          status: 500,
-          message: 'Failed to seed booking requests',
-          error: error.message
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
-  }
+  // Temporarily disabled during BookingRequest entity removal
+  // @Post('bookings')
+  // async seedBookings(@Query('force') force?: string) {
+  //   try {
+  //     const forceReseed = force === 'true';
+  //     const result = await this.seedService.seedBookings(forceReseed);
+  //     
+  //     return {
+  //       status: 201,
+  //       message: 'Booking requests seeded successfully',
+  //       data: result
+  //     };
+  //   } catch (error) {
+  //     throw new HttpException(
+  //       {
+  //         status: 500,
+  //         message: 'Failed to seed booking requests',
+  //         error: error.message
+  //       },
+  //       HttpStatus.INTERNAL_SERVER_ERROR
+  //     );
+  //   }
+  // }
 
   @Post('custom')
   @ApiOperation({ summary: 'Seed custom data into the database' })

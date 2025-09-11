@@ -5,7 +5,7 @@ import { Student, StudentStatus } from '../students/entities/student.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { Payment, PaymentStatus } from '../payments/entities/payment.entity';
 import { Invoice, InvoiceStatus } from '../invoices/entities/invoice.entity';
-import { BookingRequest, BookingStatus } from '../bookings/entities/booking-request.entity';
+import { MultiGuestBooking, MultiGuestBookingStatus } from '../bookings/entities/multi-guest-booking.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
 
@@ -20,8 +20,8 @@ export class DashboardService {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Invoice)
     private invoiceRepository: Repository<Invoice>,
-    @InjectRepository(BookingRequest)
-    private bookingRepository: Repository<BookingRequest>,
+    @InjectRepository(MultiGuestBooking)
+    private bookingRepository: Repository<MultiGuestBooking>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
     @InjectRepository(RoomOccupant)
@@ -211,7 +211,7 @@ export class DashboardService {
     // Get recent booking requests
     const recentBookings = await this.bookingRepository
       .createQueryBuilder('booking')
-      .where('booking.status = :status', { status: BookingStatus.PENDING })
+      .where('booking.status = :status', { status: MultiGuestBookingStatus.PENDING })
       .orderBy('booking.createdAt', 'DESC')
       .limit(2)
       .getMany();
@@ -220,7 +220,7 @@ export class DashboardService {
       activities.push({
         id: `booking-${booking.id}`,
         type: 'booking',
-        message: `New booking request from ${booking.name}`,
+        message: `New booking request from ${booking.contactName}`,
         time: this.getRelativeTime(booking.createdAt),
         timestamp: booking.createdAt,
         icon: 'Gift',

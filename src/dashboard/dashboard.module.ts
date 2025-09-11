@@ -6,7 +6,7 @@ import { Student } from '../students/entities/student.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { Invoice } from '../invoices/entities/invoice.entity';
-import { BookingRequest } from '../bookings/entities/booking-request.entity';
+import { MultiGuestBooking } from '../bookings/entities/multi-guest-booking.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
 
@@ -16,7 +16,7 @@ import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
     LedgerEntry,
     Payment,
     Invoice,
-    BookingRequest,
+    MultiGuestBooking,
     Room,
     RoomOccupant
   ])],

@@ -1,8 +1,8 @@
 import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { BookingsService } from './bookings.service';
+// Removed: import { BookingsService } from './bookings.service';
 import { MultiGuestBookingService } from './multi-guest-booking.service';
-import { BookingTransformationService } from './booking-transformation.service';
+// Removed: import { BookingTransformationService } from './booking-transformation.service';
 import { CreateBookingDto, ApproveBookingDto, RejectBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
@@ -15,32 +15,24 @@ export class BookingsController {
   private readonly logger = new Logger(BookingsController.name);
 
   constructor(
-    private readonly bookingsService: BookingsService,
+    // Removed: private readonly bookingsService: BookingsService,
     private readonly multiGuestBookingService: MultiGuestBookingService,
-    private readonly transformationService: BookingTransformationService
+    // Removed: private readonly transformationService: BookingTransformationService
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all booking requests' })
   @ApiResponse({ status: 200, description: 'List of booking requests retrieved successfully' })
   async getAllBookingRequests(@Query() query: any) {
-    this.logger.log('Getting all booking requests via unified system');
+    this.logger.log('Getting all booking requests via unified multi-guest system');
     
-    // Use MultiGuestBookingService internally but return in BookingRequest format
+    // Use MultiGuestBookingService directly (no transformation needed)
     const result = await this.multiGuestBookingService.getAllBookings(query);
     
-    // Transform to BookingRequest format for backward compatibility
-    const transformedItems = result.items.map(booking => 
-      this.transformationService.transformToBookingRequestFormat(booking)
-    );
-    
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response in the expected format
     return {
       status: HttpStatus.OK,
-      data: {
-        items: transformedItems,
-        pagination: result.pagination
-      }
+      data: result
     };
   }
 
@@ -48,18 +40,15 @@ export class BookingsController {
   @ApiOperation({ summary: 'Get booking statistics' })
   @ApiResponse({ status: 200, description: 'Booking statistics retrieved successfully' })
   async getBookingStats() {
-    this.logger.log('Getting booking statistics via unified system');
+    this.logger.log('Getting booking statistics via unified multi-guest system');
     
-    // Use enhanced stats from MultiGuestBookingService
-    const multiGuestStats = await this.multiGuestBookingService.getEnhancedBookingStats();
+    // Use enhanced stats from MultiGuestBookingService directly
+    const stats = await this.multiGuestBookingService.getEnhancedBookingStats();
     
-    // Transform to BookingRequest stats format for backward compatibility
-    const transformedStats = this.transformationService.transformStatsToBookingRequestFormat(multiGuestStats);
-    
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response
     return {
       status: HttpStatus.OK,
-      data: transformedStats
+      data: stats
     };
   }
 
@@ -67,20 +56,15 @@ export class BookingsController {
   @ApiOperation({ summary: 'Get pending booking requests' })
   @ApiResponse({ status: 200, description: 'Pending bookings retrieved successfully' })
   async getPendingBookings() {
-    this.logger.log('Getting pending bookings via unified system');
+    this.logger.log('Getting pending bookings via unified multi-guest system');
     
-    // Use MultiGuestBookingService internally
+    // Use MultiGuestBookingService directly
     const pendingBookings = await this.multiGuestBookingService.getPendingBookings();
     
-    // Transform to BookingRequest format for backward compatibility
-    const transformedBookings = pendingBookings.map(booking => 
-      this.transformationService.transformToBookingRequestFormat(booking)
-    );
-    
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response
     return {
       status: HttpStatus.OK,
-      data: transformedBookings
+      data: pendingBookings
     };
   }
 
@@ -162,18 +146,15 @@ export class BookingsController {
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Booking not found' })
   async getBookingRequestById(@Param('id') id: string) {
-    this.logger.log(`Getting booking by ID: ${id} via unified system`);
+    this.logger.log(`Getting booking by ID: ${id} via unified multi-guest system`);
     
-    // Get the raw entity for transformation to BookingRequest format
-    const booking = await this.multiGuestBookingService.findBookingEntityById(id);
+    // Get booking directly from MultiGuestBookingService
+    const booking = await this.multiGuestBookingService.findBookingById(id);
     
-    // Transform to BookingRequest format for backward compatibility
-    const transformedBooking = this.transformationService.transformToBookingRequestFormat(booking);
-    
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response
     return {
       status: HttpStatus.OK,
-      data: transformedBooking
+      data: booking
     };
   }
 
@@ -181,13 +162,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'Create new booking request' })
   @ApiResponse({ status: 201, description: 'Booking request created successfully' })
   async createBookingRequest(@Body() createBookingDto: CreateBookingDto) {
-    this.logger.log(`Creating single guest booking for ${createBookingDto.name} via unified system`);
+    this.logger.log(`Creating single guest booking for ${createBookingDto.name} via unified multi-guest system`);
     
     // Use MultiGuestBookingService for single guest bookings
     const booking = await this.multiGuestBookingService.createSingleGuestBooking(createBookingDto);
     
-    // booking is already in BookingRequest format from createSingleGuestBooking
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response
     return {
       status: HttpStatus.CREATED,
       data: booking
@@ -198,13 +178,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'Update booking request' })
   @ApiResponse({ status: 200, description: 'Booking updated successfully' })
   async updateBookingRequest(@Param('id') id: string, @Body() updateBookingDto: UpdateBookingDto) {
-    this.logger.log(`Updating booking ${id} via unified system`);
+    this.logger.log(`Updating booking ${id} via unified multi-guest system`);
     
-    // For now, fall back to original service for updates
-    // TODO: Implement update functionality in MultiGuestBookingService
-    const booking = await this.bookingsService.update(id, updateBookingDto);
+    // Use MultiGuestBookingService for updates
+    const booking = await this.multiGuestBookingService.updateBooking(id, updateBookingDto);
     
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response
     return {
       status: HttpStatus.OK,
       data: booking
@@ -215,12 +194,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'Approve booking request' })
   @ApiResponse({ status: 200, description: 'Booking approved successfully' })
   async approveBookingRequest(@Param('id') id: string, @Body() approvalDto: ApproveBookingDto) {
-    this.logger.log(`Approving booking ${id} via unified system`);
+    this.logger.log(`Approving booking ${id} via unified multi-guest system`);
     
-    // Use MultiGuestBookingService for approval
-    const result = await this.multiGuestBookingService.approveBooking(id, approvalDto);
+    // Use MultiGuestBookingService confirmBooking method
+    const result = await this.multiGuestBookingService.confirmBooking(id, approvalDto.processedBy || 'admin');
     
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response
     return {
       status: HttpStatus.OK,
       data: result
@@ -231,12 +210,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'Reject booking request' })
   @ApiResponse({ status: 200, description: 'Booking rejected successfully' })
   async rejectBookingRequest(@Param('id') id: string, @Body() rejectionDto: RejectBookingDto) {
-    this.logger.log(`Rejecting booking ${id} via unified system`);
+    this.logger.log(`Rejecting booking ${id} via unified multi-guest system`);
     
-    // Use MultiGuestBookingService for rejection
-    const result = await this.multiGuestBookingService.rejectBooking(id, rejectionDto);
+    // Use MultiGuestBookingService cancelBooking method
+    const result = await this.multiGuestBookingService.cancelBooking(id, rejectionDto.reason, rejectionDto.processedBy || 'admin');
     
-    // Return EXACT same format as original BookingRequest API
+    // Return direct response
     return {
       status: HttpStatus.OK,
       data: result

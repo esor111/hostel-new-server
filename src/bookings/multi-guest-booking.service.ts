@@ -198,6 +198,57 @@ export class MultiGuestBookingService {
     return booking;
   }
 
+  async updateBooking(id: string, updateDto: any): Promise<any> {
+    this.logger.log(`Updating multi-guest booking ${id}`);
+
+    return await this.dataSource.transaction(async manager => {
+      try {
+        const booking = await manager.findOne(MultiGuestBooking, {
+          where: { id },
+          relations: ['guests']
+        });
+
+        if (!booking) {
+          throw new NotFoundException('Multi-guest booking not found');
+        }
+
+        // Map legacy fields to multi-guest fields
+        const updateData: any = {};
+        
+        if (updateDto.name) updateData.contactName = updateDto.name;
+        if (updateDto.phone) updateData.contactPhone = updateDto.phone;
+        if (updateDto.email) updateData.contactEmail = updateDto.email;
+        if (updateDto.guardianName) updateData.guardianName = updateDto.guardianName;
+        if (updateDto.guardianPhone) updateData.guardianPhone = updateDto.guardianPhone;
+        if (updateDto.preferredRoom) updateData.preferredRoom = updateDto.preferredRoom;
+        if (updateDto.course) updateData.course = updateDto.course;
+        if (updateDto.institution) updateData.institution = updateDto.institution;
+        if (updateDto.checkInDate) updateData.checkInDate = new Date(updateDto.checkInDate);
+        if (updateDto.duration) updateData.duration = updateDto.duration;
+        if (updateDto.notes) updateData.notes = updateDto.notes;
+        if (updateDto.emergencyContact) updateData.emergencyContact = updateDto.emergencyContact;
+        if (updateDto.address) updateData.address = updateDto.address;
+        if (updateDto.idProofType) updateData.idProofType = updateDto.idProofType;
+        if (updateDto.idProofNumber) updateData.idProofNumber = updateDto.idProofNumber;
+
+        // Update the booking
+        await manager.update(MultiGuestBooking, id, updateData);
+
+        // Return the updated booking
+        const updatedBooking = await manager.findOne(MultiGuestBooking, {
+          where: { id },
+          relations: ['guests']
+        });
+
+        this.logger.log(`✅ Updated multi-guest booking ${id}`);
+        return this.transformToApiResponse(updatedBooking);
+      } catch (error) {
+        this.logger.error(`❌ Error updating booking ${id}: ${error.message}`);
+        throw error;
+      }
+    });
+  }
+
   async confirmBooking(id: string, processedBy?: string): Promise<ConfirmationResult> {
     this.logger.log(`Confirming multi-guest booking ${id}`);
 
@@ -1006,20 +1057,20 @@ export class MultiGuestBookingService {
     return {
       id: booking.id,
       name: primaryGuest?.guestName || booking.contactName,
-      phone: primaryGuest?.phone || booking.contactPhone,
-      email: primaryGuest?.email || booking.contactEmail,
-      guardianName: booking.guardianName || primaryGuest?.guardianName,
-      guardianPhone: booking.guardianPhone || primaryGuest?.guardianPhone,
+      phone: booking.contactPhone, // Use booking contact phone
+      email: booking.contactEmail, // Use booking contact email
+      guardianName: booking.guardianName, // Use booking guardian info
+      guardianPhone: booking.guardianPhone, // Use booking guardian info
       preferredRoom: booking.preferredRoom,
-      course: booking.course || primaryGuest?.course,
-      institution: booking.institution || primaryGuest?.institution,
+      course: booking.course, // Use booking course info
+      institution: booking.institution, // Use booking institution info
       requestDate: booking.requestDate,
       checkInDate: booking.checkInDate,
       duration: booking.duration,
       status: this.mapMultiGuestStatusToBooking(booking.status),
       notes: booking.notes,
       emergencyContact: booking.emergencyContact,
-      address: booking.address || primaryGuest?.address,
+      address: booking.address, // Use booking address
       idProofType: booking.idProofType || primaryGuest?.idProofType,
       idProofNumber: booking.idProofNumber || primaryGuest?.idProofNumber,
       approvedDate: booking.approvedDate,
@@ -1118,19 +1169,19 @@ export class MultiGuestBookingService {
     }
 
     // Generate unique email and phone for each guest to avoid unique constraint violations
-    let guestEmail = guest.email || `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}@guest.booking`;
+    let guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}@guest.booking`;
     
     // Check if email already exists and modify if needed
     const existingEmailStudent = await manager.findOne(Student, { where: { email: guestEmail } });
     if (existingEmailStudent) {
       const timestamp = Date.now().toString().slice(-6);
       guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}.${timestamp}@guest.booking`;
-      this.logger.warn(`Email ${guest.email || 'generated email'} already exists, using ${guestEmail} instead`);
+      this.logger.warn(`Generated email already exists, using ${guestEmail} instead`);
     }
     
     // Generate unique phone number with strict 20-character limit
-    let guestPhone = guest.phone;
-    if (!guestPhone) {
+    let guestPhone = booking.contactPhone; // Use booking contact phone as base
+    if (guestPhone) {
       // Generate phone from booking contact phone with unique suffix
       const basePhone = booking.contactPhone.replace(/[^0-9]/g, ''); // Keep only digits
       const uniqueSuffix = guest.id.slice(-4); // Last 4 chars of guest ID
@@ -1141,14 +1192,14 @@ export class MultiGuestBookingService {
       const truncatedBase = basePhone.slice(0, maxBaseLength);
       guestPhone = `${truncatedBase}${uniqueSuffix}${timestamp}`;
     } else {
-      // Check if provided phone already exists and modify if needed
+      // Since we don't have guest phone, use booking phone with uniqueness
       const existingStudent = await manager.findOne(Student, { where: { phone: guestPhone } });
       if (existingStudent) {
         // Generate unique phone by modifying the existing one
         const basePhone = guestPhone.replace(/[^0-9]/g, '').slice(0, 15); // Keep only digits, max 15
         const timestamp = Date.now().toString().slice(-4); // Last 4 digits
         guestPhone = `${basePhone}${timestamp}`;
-        this.logger.warn(`Phone ${guest.phone} already exists, using ${guestPhone} instead`);
+        this.logger.warn(`Phone already exists, using ${guestPhone} instead`);
       }
     }
     
@@ -1164,11 +1215,11 @@ export class MultiGuestBookingService {
       email: guestEmail,
       enrollmentDate: new Date(),
       status: StudentStatus.PENDING_CONFIGURATION, // Fixed: Use correct status for pending configuration
-      address: guest.address || booking.address,
+      address: booking.address, // Use booking address instead of guest address
       bedNumber: guest.assignedBedNumber,
       roomId: roomUuid, // Fixed: Use UUID instead of room number
       isConfigured: false, // Ensure this is false for pending configuration
-      bookingRequestId: null // Fixed: Don't link to booking_requests table since we're using multi_guest_bookings
+      // bookingRequestId: null // Removed: Don't reference deleted booking_requests
     });
 
     const savedStudent = await manager.save(Student, student);

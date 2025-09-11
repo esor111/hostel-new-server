@@ -9,7 +9,6 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { Discount } from '../discounts/entities/discount.entity';
-import { BookingRequest } from '../bookings/entities/booking-request.entity';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
@@ -19,8 +18,7 @@ import { BookingRequest } from '../bookings/entities/booking-request.entity';
     Invoice,
     Payment,
     LedgerEntry,
-    Discount,
-    BookingRequest
+    Discount
   ])],
   controllers: [ReportsController],
   providers: [ReportsService],
