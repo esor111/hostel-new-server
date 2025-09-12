@@ -30,7 +30,7 @@ import { LedgerEntry } from '../../ledger/entities/ledger-entry.entity';
 import { Discount } from '../../discounts/entities/discount.entity';
 import { DiscountType } from '../../discounts/entities/discount-type.entity';
 
-import { BookingRequest } from '../../bookings/entities/booking-request.entity';
+// import { BookingRequest } from '../../bookings/entities/booking-request.entity'; // Removed in transition
 
 import { Report } from '../../reports/entities/report.entity';
 import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
@@ -66,7 +66,7 @@ import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
       DiscountType,
       
       // Booking entities
-      BookingRequest,
+      // BookingRequest, // Removed in transition
       
       // Report entities
       Report,

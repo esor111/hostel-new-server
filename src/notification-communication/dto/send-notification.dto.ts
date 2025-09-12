@@ -1,0 +1,138 @@
+import { IsArray, IsString, IsOptional, IsEnum, ValidateNested } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { PushNotificationTypeEnum } from '../enums/notification-types.enum';
+
+class NotificationMetaUser {
+  @ApiProperty({ description: 'User ID' })
+  @IsString()
+  id: string;
+
+  @ApiProperty({ description: 'Link ID for user', required: false })
+  @IsString()
+  @IsOptional()
+  linkId?: string;
+}
+
+class NotificationMetaBusiness {
+  @ApiProperty({ description: 'Business ID' })
+  @IsString()
+  id: string;
+
+  @ApiProperty({ description: 'Link ID for business', required: false })
+  @IsString()
+  @IsOptional()
+  linkId?: string;
+}
+
+class NotificationMetaBooking {
+  @ApiProperty({ description: 'Booking ID' })
+  @IsString()
+  id: string;
+
+  @ApiProperty({ description: 'Check-in date' })
+  @IsString()
+  checkInDate: string;
+
+  @ApiProperty({ description: 'Guest count', required: false })
+  @IsOptional()
+  guestCount?: number;
+}
+
+class NotificationMeta {
+  @ApiProperty({ enum: PushNotificationTypeEnum, description: 'Notification type' })
+  @IsEnum(PushNotificationTypeEnum)
+  type: PushNotificationTypeEnum;
+
+  @ApiProperty({ type: NotificationMetaUser, required: false })
+  @ValidateNested()
+  @Type(() => NotificationMetaUser)
+  @IsOptional()
+  user?: NotificationMetaUser;
+
+  @ApiProperty({ type: NotificationMetaBusiness, required: false })
+  @ValidateNested()
+  @Type(() => NotificationMetaBusiness)
+  @IsOptional()
+  business?: NotificationMetaBusiness;
+
+  @ApiProperty({ type: NotificationMetaBooking, required: false })
+  @ValidateNested()
+  @Type(() => NotificationMetaBooking)
+  @IsOptional()
+  booking?: NotificationMetaBooking;
+}
+
+export class SendPushNotificationDto {
+  @ApiProperty({ 
+    type: [String], 
+    description: 'Array of user IDs to receive notification',
+    required: false 
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  receiverUserIds?: string[];
+
+  @ApiProperty({ 
+    type: [String], 
+    description: 'Array of business IDs to receive notification',
+    required: false 
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  receiverBusinessIds?: string[];
+
+  @ApiProperty({ description: 'Notification title' })
+  @IsString()
+  title: string;
+
+  @ApiProperty({ description: 'Notification message' })
+  @IsString()
+  message: string;
+
+  @ApiProperty({ enum: PushNotificationTypeEnum, description: 'Notification type' })
+  @IsEnum(PushNotificationTypeEnum)
+  type: PushNotificationTypeEnum;
+
+  @ApiProperty({ type: NotificationMeta, description: 'Additional notification metadata' })
+  @ValidateNested()
+  @Type(() => NotificationMeta)
+  meta: NotificationMeta;
+}
+
+// Simplified DTOs for specific booking notifications
+export class BookingNotificationDto {
+  @ApiProperty({ description: 'Booking ID' })
+  @IsString()
+  bookingId: string;
+
+  @ApiProperty({ description: 'Contact person user ID' })
+  @IsString()
+  contactPersonId: string;
+
+  @ApiProperty({ description: 'Hostel business ID' })
+  @IsString()
+  hostelId: string;
+
+  @ApiProperty({ description: 'Check-in date' })
+  @IsString()
+  checkInDate: string;
+
+  @ApiProperty({ description: 'Contact person name' })
+  @IsString()
+  contactName: string;
+
+  @ApiProperty({ description: 'Hostel name' })
+  @IsString()
+  hostelName: string;
+
+  @ApiProperty({ description: 'Guest count', required: false })
+  @IsOptional()
+  guestCount?: number;
+
+  @ApiProperty({ description: 'Rejection reason', required: false })
+  @IsOptional()
+  reason?: string;
+}

@@ -65,27 +65,27 @@ export class BookingGuest extends BaseEntity {
   @Column({ name: 'assigned_bed_number', length: 50, nullable: true })
   assignedBedNumber: string;
 
-  // Enhanced fields for single-guest compatibility
-  @Column({ name: 'guardian_name', length: 255, nullable: true })
-  guardianName: string;
+  // Enhanced fields removed during cleanup - these are now only in MultiGuestBooking
+  // @Column({ name: 'guardian_name', length: 255, nullable: true })
+  // guardianName: string;
 
-  @Column({ name: 'guardian_phone', length: 20, nullable: true })
-  guardianPhone: string;
+  // @Column({ name: 'guardian_phone', length: 20, nullable: true })
+  // guardianPhone: string;
 
-  @Column({ length: 255, nullable: true })
-  course: string;
+  // @Column({ length: 255, nullable: true })
+  // course: string;
 
-  @Column({ length: 255, nullable: true })
-  institution: string;
+  // @Column({ length: 255, nullable: true })
+  // institution: string;
 
-  @Column({ type: 'text', nullable: true })
-  address: string;
+  // @Column({ type: 'text', nullable: true })
+  // address: string;
 
-  @Column({ name: 'phone', length: 20, nullable: true })
-  phone: string;
+  // @Column({ name: 'phone', length: 20, nullable: true })
+  // phone: string;
 
-  @Column({ name: 'email', length: 255, nullable: true })
-  email: string;
+  // @Column({ name: 'email', length: 255, nullable: true })
+  // email: string;
 
   // Relations
   @ManyToOne(() => MultiGuestBooking, (booking) => booking.guests, { onDelete: 'CASCADE' })

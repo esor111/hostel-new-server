@@ -8,7 +8,6 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { Discount } from '../discounts/entities/discount.entity';
-import { BookingRequest } from '../bookings/entities/booking-request.entity';
 
 @Injectable()
 export class ReportsService {
@@ -27,8 +26,6 @@ export class ReportsService {
     private ledgerRepository: Repository<LedgerEntry>,
     @InjectRepository(Discount)
     private discountRepository: Repository<Discount>,
-    @InjectRepository(BookingRequest)
-    private bookingRepository: Repository<BookingRequest>,
   ) {}
 
   async findAll(filters: any = {}) {

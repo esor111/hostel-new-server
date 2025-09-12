@@ -56,10 +56,10 @@ import {
   DiscountCategory,
 } from "../../discounts/entities/discount-type.entity";
 
-import {
-  BookingRequest,
-  BookingStatus,
-} from "../../bookings/entities/booking-request.entity";
+// import {
+//   BookingRequest,
+//   BookingStatus,
+// } from "../../bookings/entities/booking-request.entity"; // Removed in transition
 
 import { Report } from "../../reports/entities/report.entity";
 import { AdminCharge, AdminChargeType, AdminChargeStatus } from "../../admin-charges/entities/admin-charge.entity";
@@ -113,9 +113,9 @@ export class SeedService {
     @InjectRepository(DiscountType)
     private discountTypeRepository: Repository<DiscountType>,
 
-    // Booking repository
-    @InjectRepository(BookingRequest)
-    private bookingRepository: Repository<BookingRequest>,
+    // Booking repository (commented out during transition)
+    // @InjectRepository(BookingRequest)
+    // private bookingRepository: Repository<BookingRequest>,
 
     // Report repository
     @InjectRepository(Report)
@@ -145,7 +145,7 @@ export class SeedService {
       paymentAllocations: await this.paymentAllocationRepository.count(),
       ledgerEntries: await this.ledgerRepository.count(),
       adminCharges: await this.adminChargeRepository.count(),
-      bookings: await this.bookingRepository.count(),
+      // bookings: await this.bookingRepository.count(), // Commented out during transition
       reports: await this.reportRepository.count(),
       lastSeeded: new Date().toISOString(),
     };
@@ -196,8 +196,8 @@ export class SeedService {
         // 9. Ledger entries depend on all financial entities
         ledgerEntries: await this.seedLedgerEntries(false),
 
-        // 10. Bookings are independent
-        bookings: await this.seedBookings(false),
+        // 10. Bookings are temporarily disabled during transition
+        // bookings: await this.seedBookings(false),
       };
 
       this.logger.log("Complete database seeding finished", results);
@@ -1317,159 +1317,16 @@ export class SeedService {
     return { count: savedEntries.length, data: savedEntries };
   }
 
-  async seedBookings(force = false) {
-    if (!force && (await this.bookingRepository.count()) > 0) {
-      return {
-        message: "Booking requests already exist, use ?force=true to reseed",
-        count: 0,
-      };
-    }
-
-    const bookings = [
-      {
-        name: "Rajesh Maharjan",
-        phone: "+9779841234580",
-        email: "rajesh.maharjan@email.com",
-        guardianName: "Gopal Maharjan",
-        guardianPhone: "+9779841234581",
-        preferredRoom: "Single AC",
-        course: "Computer Science",
-        institution: "Tribhuvan University",
-        requestDate: new Date("2024-07-15"),
-        checkInDate: new Date("2024-08-01"),
-        duration: "12 months",
-        status: BookingStatus.PENDING,
-        notes: "Prefers ground floor room",
-        emergencyContact: "+9779841234581",
-        address: "Lalitpur, Nepal",
-        idProofType: "Citizenship",
-        idProofNumber: "12-01-75-12345",
-        priorityScore: 85,
-        source: "website",
-      },
-      {
-        name: "Anita Gurung",
-        phone: "+9779841234582",
-        email: "anita.gurung@email.com",
-        guardianName: "Dhan Bahadur Gurung",
-        guardianPhone: "+9779841234583",
-        preferredRoom: "Double AC",
-        course: "Business Administration",
-        institution: "Kathmandu University",
-        requestDate: new Date("2024-07-20"),
-        checkInDate: new Date("2024-08-15"),
-        duration: "10 months",
-        status: BookingStatus.APPROVED,
-        notes: "Approved for room 102",
-        emergencyContact: "+9779841234583",
-        address: "Pokhara, Nepal",
-        idProofType: "Citizenship",
-        idProofNumber: "11-02-76-54321",
-        priorityScore: 92,
-        source: "referral",
-        approvedDate: new Date("2024-07-22"),
-        processedBy: "admin",
-        assignedRoom: "102",
-      },
-      {
-        name: "Suresh Tamang",
-        phone: "+9779841234584",
-        email: "suresh.tamang@email.com",
-        guardianName: "Pemba Tamang",
-        guardianPhone: "+9779841234585",
-        preferredRoom: "Triple Non-AC",
-        course: "Civil Engineering",
-        institution: "Pulchowk Campus",
-        requestDate: new Date("2024-07-25"),
-        checkInDate: new Date("2024-08-20"),
-        duration: "8 months",
-        status: BookingStatus.PENDING,
-        notes: "Budget-friendly option preferred",
-        emergencyContact: "+9779841234585",
-        address: "Sindhupalchok, Nepal",
-        idProofType: "Citizenship",
-        idProofNumber: "13-03-77-98765",
-        priorityScore: 78,
-        source: "walk-in",
-      },
-      {
-        name: "Kamala Rai",
-        phone: "+9779841234586",
-        email: "kamala.rai@email.com",
-        guardianName: "Tek Bahadur Rai",
-        guardianPhone: "+9779841234587",
-        preferredRoom: "Single AC",
-        course: "Pharmacy",
-        institution: "KU School of Pharmacy",
-        requestDate: new Date("2024-07-28"),
-        checkInDate: new Date("2024-08-25"),
-        duration: "12 months",
-        status: BookingStatus.PENDING,
-        notes: "Quiet environment needed for studies",
-        emergencyContact: "+9779841234587",
-        address: "Dharan, Nepal",
-        idProofType: "Citizenship",
-        idProofNumber: "14-04-78-11111",
-        priorityScore: 88,
-        source: "website",
-      },
-      {
-        name: "Alice Brown",
-        phone: "9876543240",
-        email: "alice.brown@email.com",
-        guardianName: "Tom Brown",
-        guardianPhone: "9876543241",
-        preferredRoom: "Single AC",
-        course: "Computer Science",
-        institution: "Tech University",
-        requestDate: new Date("2024-08-01"),
-        checkInDate: new Date("2024-09-01"),
-        duration: "12 months",
-        status: BookingStatus.PENDING,
-        notes: "International student",
-        emergencyContact: "9876543241",
-        address: "321 Applicant Street, City",
-        idProofType: "Passport",
-        idProofNumber: "A12345678",
-        priorityScore: 85,
-        source: "website",
-      },
-      {
-        name: "Bob Wilson",
-        phone: "9876543250",
-        email: "bob.wilson@email.com",
-        guardianName: "Sarah Wilson",
-        guardianPhone: "9876543251",
-        preferredRoom: "Double AC",
-        course: "Mechanical Engineering",
-        institution: "Engineering College",
-        requestDate: new Date("2024-08-05"),
-        checkInDate: new Date("2024-09-15"),
-        duration: "10 months",
-        status: BookingStatus.APPROVED,
-        notes: "Approved for room 103",
-        emergencyContact: "9876543251",
-        address: "654 Applicant Avenue, City",
-        idProofType: "Passport",
-        idProofNumber: "B87654321",
-        priorityScore: 92,
-        source: "referral",
-        approvedDate: new Date("2024-08-07"),
-        processedBy: "admin",
-        assignedRoom: "103",
-      },
-    ];
-
-    if (force) {
-      await this.bookingRepository.createQueryBuilder().delete().execute();
-    }
-
-    const savedBookings = await this.bookingRepository.save(bookings);
-
-    this.logger.log(`Seeded ${savedBookings.length} booking requests`);
-
-    return { count: savedBookings.length, data: savedBookings };
-  }
+  // Temporarily disabled during BookingRequest entity removal
+  // async seedBookings(force = false) {
+  //   if (!force && (await this.bookingRepository.count()) > 0) {
+  //     return {
+  //       message: "Booking requests already exist, use ?force=true to reseed",
+  //       count: 0,
+  //     };
+  //   }
+  // ... (booking seed data commented out)
+  // }
 
   async seedAdminCharges(force = false) {
     this.logger.log("Seeding admin charges...");
@@ -1622,10 +1479,10 @@ export class SeedService {
         .createQueryBuilder()
         .delete()
         .execute();
-      results.bookings = await this.bookingRepository
-        .createQueryBuilder()
-        .delete()
-        .execute();
+      // results.bookings = await this.bookingRepository // Commented out during transition
+      //   .createQueryBuilder()
+      //   .delete()
+      //   .execute();
       results.ledgerEntries = await this.ledgerRepository
         .createQueryBuilder()
         .delete()
@@ -1789,10 +1646,11 @@ export class SeedService {
           .execute();
         break;
       case "bookings":
-        result = await this.bookingRepository
-          .createQueryBuilder()
-          .delete()
-          .execute();
+        // result = await this.bookingRepository // Commented out during transition
+        //   .createQueryBuilder()
+        //   .delete()
+        //   .execute();
+        throw new Error(`Bookings entity temporarily disabled during transition`);
         break;
       case "reports":
         result = await this.reportRepository

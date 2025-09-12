@@ -20,6 +20,7 @@ import { SeedModule } from './database/seeds/seed.module';
 import { AdminChargesModule } from './admin-charges/admin-charges.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BillingModule } from './billing/billing.module';
+import { NotificationCommunicationModule } from './notification-communication/notification-communication.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { BillingModule } from './billing/billing.module';
     AdminChargesModule,
     DashboardModule,
     BillingModule,
+    NotificationCommunicationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

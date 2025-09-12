@@ -1,0 +1,42 @@
+export enum PushNotificationTypeEnum {
+  // Existing notification types
+  USER_REGISTRATION = 'user_registration',
+  BUSINESS_REGISTRATION = 'business_registration',
+  BUSINESS_STATUS = 'business_status',
+  ORDER_STATUS = 'order_status',
+  DOORBELL = 'doorbell',
+  CHAT_MESSAGE = 'chat_message',
+  EMERGENCY = 'emergency',
+  PAYMENT = 'payment',
+  GENERAL = 'general',
+  PRODUCT = 'product',
+  OFFER = 'offer',
+  SUBSCRIPTION = 'subscription',
+  ACCOUNT_DELETION = 'account_deletion',
+  APP_UPDATE = 'app_update',
+  BANNER = 'banner',
+  RINGER = 'ringer',
+
+  // Hostel-specific booking notification types
+  BOOKING_REQUEST = 'booking_request',
+  BOOKING_APPROVED = 'booking_approved',
+  BOOKING_REJECTED = 'booking_rejected',
+  BOOKING_CONFIRMED = 'booking_confirmed',
+  BOOKING_CANCELLED = 'booking_cancelled',
+  
+  // Future hostel notification types (for reference)
+  STUDENT_ENROLLMENT = 'student_enrollment',
+  STUDENT_CHECKOUT = 'student_checkout',
+  PAYMENT_RECEIVED = 'payment_received',
+  PAYMENT_OVERDUE = 'payment_overdue',
+  INVOICE_GENERATED = 'invoice_generated',
+  ADMIN_CHARGE = 'admin_charge',
+  ROOM_ASSIGNMENT = 'room_assignment',
+  ROOM_VACATION = 'room_vacation',
+  MAINTENANCE_REQUEST = 'maintenance_request',
+  MAINTENANCE_COMPLETED = 'maintenance_completed',
+  BALANCE_LOW = 'balance_low',
+  BALANCE_ADJUSTMENT = 'balance_adjustment',
+  BED_AVAILABILITY = 'bed_availability',
+  MONTHLY_BILLING = 'monthly_billing',
+}

@@ -28,7 +28,7 @@ import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { Discount } from '../discounts/entities/discount.entity';
 import { DiscountType } from '../discounts/entities/discount-type.entity';
 
-import { BookingRequest } from '../bookings/entities/booking-request.entity';
+// Removed: import { BookingRequest } from '../bookings/entities/booking-request.entity';
 import { MultiGuestBooking } from '../bookings/entities/multi-guest-booking.entity';
 import { BookingGuest } from '../bookings/entities/booking-guest.entity';
 
@@ -78,7 +78,7 @@ export const dataSourceOptions: DataSourceOptions = {
     DiscountType,
     
     // Booking entities
-    BookingRequest,
+    // Removed: BookingRequest,
     MultiGuestBooking,
     BookingGuest,
     

@@ -2,7 +2,7 @@ import { Entity, Column, OneToMany, ManyToOne, JoinColumn, Index } from 'typeorm
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Room } from '../../rooms/entities/room.entity';
 import { RoomOccupant } from '../../rooms/entities/room-occupant.entity';
-import { BookingRequest } from '../../bookings/entities/booking-request.entity';
+// Removed: import { BookingRequest } from '../../bookings/entities/booking-request.entity';
 import { Invoice } from '../../invoices/entities/invoice.entity';
 import { Payment } from '../../payments/entities/payment.entity';
 import { LedgerEntry } from '../../ledger/entities/ledger-entry.entity';
@@ -59,17 +59,17 @@ export class Student extends BaseEntity {
   @Column({ name: 'room_id', nullable: true })
   roomId: string;
 
-  @Column({ name: 'booking_request_id', nullable: true })
-  bookingRequestId: string;
+  // Removed: @Column({ name: 'booking_request_id', nullable: true })
+  // Removed: bookingRequestId: string;
 
   // Relations
   @ManyToOne(() => Room, room => room.students, { nullable: true })
   @JoinColumn({ name: 'room_id' })
   room: Room;
 
-  @ManyToOne(() => BookingRequest, booking => booking.student, { nullable: true })
-  @JoinColumn({ name: 'booking_request_id' })
-  bookingRequest: BookingRequest;
+  // Removed: @ManyToOne(() => BookingRequest, booking => booking.student, { nullable: true })
+  // Removed: @JoinColumn({ name: 'booking_request_id' })
+  // Removed: bookingRequest: BookingRequest;
 
   @OneToMany(() => StudentContact, contact => contact.student, { cascade: true })
   contacts: StudentContact[];
