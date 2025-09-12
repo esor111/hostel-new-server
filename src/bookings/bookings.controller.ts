@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, Headers, BadRequestException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 // Removed: import { BookingsService } from './bookings.service';
 import { MultiGuestBookingService } from './multi-guest-booking.service';
 // Removed: import { BookingTransformationService } from './booking-transformation.service';
@@ -8,6 +8,8 @@ import { UpdateBookingDto } from './dto/update-booking.dto';
 import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
 import { ConfirmBookingDto } from './dto/confirm-booking.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
+import { GetMyBookingsDto, MyBookingsResponseDto, CancelMyBookingDto } from './dto/my-bookings.dto';
+import { CurrentUser, ApiUserAuth } from '../common/decorators/user-auth.decorator';
 
 @ApiTags('bookings')
 @Controller('booking-requests')
@@ -141,6 +143,53 @@ export class BookingsController {
     };
   }
 
+  // User booking endpoints (MUST come before parameterized routes)
+  @Get('my-bookings')
+  @ApiOperation({ 
+    summary: 'Get user\'s bookings',
+    description: 'Retrieves bookings for the authenticated user. Authentication is handled automatically in production via JWT tokens.'
+  })
+  @ApiResponse({ status: 200, description: 'User bookings retrieved successfully', type: MyBookingsResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad request - missing user identification' })
+  @ApiUserAuth()
+  async getMyBookings(
+    @Query() query: GetMyBookingsDto,
+    @CurrentUser() user: { email: string }
+  ) {
+    this.logger.log(`Getting bookings for user: ${user.email}`);
+    
+    const result = await this.multiGuestBookingService.getMyBookings(user.email, query);
+    
+    return {
+      status: HttpStatus.OK,
+      ...result
+    };
+  }
+
+  @Post('my-bookings/:id/cancel')
+  @ApiOperation({ 
+    summary: 'Cancel user\'s booking',
+    description: 'Allows users to cancel their own bookings. User authentication is handled automatically in production via JWT tokens.'
+  })
+  @ApiResponse({ status: 200, description: 'Booking cancelled successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - missing user identification or invalid booking' })
+  @ApiResponse({ status: 404, description: 'Booking not found or user does not have permission' })
+  @ApiUserAuth()
+  async cancelMyBooking(
+    @Param('id') bookingId: string,
+    @Body() cancelDto: CancelMyBookingDto,
+    @CurrentUser() user: { email: string }
+  ) {
+    this.logger.log(`User ${user.email} cancelling booking ${bookingId}`);
+    
+    const result = await this.multiGuestBookingService.cancelMyBooking(bookingId, user.email, cancelDto.reason);
+    
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get booking request by ID' })
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
@@ -212,8 +261,8 @@ export class BookingsController {
   async rejectBookingRequest(@Param('id') id: string, @Body() rejectionDto: RejectBookingDto) {
     this.logger.log(`Rejecting booking ${id} via unified multi-guest system`);
     
-    // Use MultiGuestBookingService cancelBooking method
-    const result = await this.multiGuestBookingService.cancelBooking(id, rejectionDto.reason, rejectionDto.processedBy || 'admin');
+    // Use MultiGuestBookingService rejectBooking method instead of cancelBooking
+    const result = await this.multiGuestBookingService.rejectBooking(id, rejectionDto.reason, rejectionDto.processedBy || 'admin');
     
     // Return direct response
     return {
@@ -221,6 +270,5 @@ export class BookingsController {
       data: result
     };
   }
-
 
 }

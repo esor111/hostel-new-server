@@ -6,6 +6,7 @@ export enum MultiGuestBookingStatus {
   PENDING = 'Pending',
   CONFIRMED = 'Confirmed',
   PARTIALLY_CONFIRMED = 'Partially_Confirmed',
+  REJECTED = 'Rejected',
   CANCELLED = 'Cancelled',
   COMPLETED = 'Completed'
 }

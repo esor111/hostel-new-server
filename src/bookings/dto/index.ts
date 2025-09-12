@@ -25,3 +25,15 @@ export {
 } from './validation-error.dto';
 export { IsGenderCompatible } from './validators/gender-compatibility.validator';
 export { HasUniqueBedAssignments } from './validators/bed-availability.validator';
+export {
+  GetMyBookingsDto,
+  MyBookingsResponseDto,
+  MyBookingDto,
+  CancelMyBookingDto,
+  HostelInfoDto,
+  RoomInfoDto,
+  BedInfoDto,
+  GuestInfoDto,
+  BookingDetailDto,
+  PaginationDto
+} from './my-bookings.dto';

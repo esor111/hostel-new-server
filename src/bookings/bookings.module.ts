@@ -12,6 +12,7 @@ import { Student } from '../students/entities/student.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { Bed } from '../rooms/entities/bed.entity';
 import { RoomsModule } from '../rooms/rooms.module';
+import { NotificationCommunicationModule } from '../notification-communication/notification-communication.module';
 
 
 @Module({
@@ -24,7 +25,8 @@ import { RoomsModule } from '../rooms/rooms.module';
       Room,
       Bed
     ]),
-    RoomsModule // Import RoomsModule to access BedSyncService
+    RoomsModule, // Import RoomsModule to access BedSyncService
+    NotificationCommunicationModule, // Import notification module
   ],
   controllers: [BookingsController],
   providers: [/* Removed: BookingsService, */ MultiGuestBookingService, /* Removed: BookingTransformationService, */ BookingValidationService],
