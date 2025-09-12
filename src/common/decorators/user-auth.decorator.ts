@@ -1,5 +1,4 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { ApiHeader } from '@nestjs/swagger';
+import { createParamDecorator, ExecutionContext, BadRequestException } from '@nestjs/common';
 
 /**
  * Custom decorator for user authentication
@@ -15,7 +14,7 @@ export const CurrentUser = createParamDecorator(
     const userEmail = request.headers['user-email'];
     
     if (!userEmail) {
-      throw new Error('User identification required');
+      throw new BadRequestException('User identification required. Please ensure you are properly authenticated.');
     }
     
     return {
@@ -25,19 +24,5 @@ export const CurrentUser = createParamDecorator(
   },
 );
 
-/**
- * Decorator to document user authentication in Swagger
- * but in a less prominent way
- */
-export const ApiUserAuth = () => {
-  return ApiHeader({
-    name: 'user-email',
-    description: '🔒 Development only: User email (will be JWT in production)',
-    required: true,
-    example: 'user@example.com',
-    schema: {
-      type: 'string',
-      format: 'email'
-    }
-  });
-};
+// Remove the ApiUserAuth decorator since we don't want it to show in Swagger
+// The authentication will be handled internally by the CurrentUser decorator

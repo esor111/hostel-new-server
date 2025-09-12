@@ -9,7 +9,6 @@ import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
 import { ConfirmBookingDto } from './dto/confirm-booking.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { GetMyBookingsDto, MyBookingsResponseDto, CancelMyBookingDto } from './dto/my-bookings.dto';
-import { CurrentUser, ApiUserAuth } from '../common/decorators/user-auth.decorator';
 
 @ApiTags('bookings')
 @Controller('booking-requests')
@@ -144,73 +143,81 @@ export class BookingsController {
   }
 
   // User booking endpoints (MUST come before parameterized routes)
-  @Get('my-bookings')
-  @ApiOperation({ 
-    summary: 'Get user\'s bookings',
-    description: 'Retrieves bookings for the authenticated user. Authentication is handled automatically in production via JWT tokens.'
-  })
-  @ApiResponse({ status: 200, description: 'User bookings retrieved successfully', type: MyBookingsResponseDto })
-  @ApiResponse({ status: 400, description: 'Bad request - missing user identification' })
-  @ApiUserAuth()
-  async getMyBookings(
-    @Query() query: GetMyBookingsDto,
-    @CurrentUser() user: { email: string }
-  ) {
-    this.logger.log(`Getting bookings for user: ${user.email}`);
-    
-    const result = await this.multiGuestBookingService.getMyBookings(user.email, query);
-    
-    return {
-      status: HttpStatus.OK,
-      ...result
-    };
-  }
-
   @Get('debug/all-bookings')
   @ApiOperation({ 
-    summary: 'Debug: Get all bookings (development only)',
-    description: 'Debug endpoint to see all bookings in the system. Remove in production.'
+    summary: 'Debug: Get all bookings in system',
+    description: 'Debug endpoint to view all bookings in the system. For development and troubleshooting only.'
   })
-  async debugGetAllBookings() {
-    this.logger.log('DEBUG: Getting all bookings for debugging');
+  @ApiResponse({ status: 200, description: 'All bookings retrieved for debugging' })
+  async debugAllBookings() {
+    this.logger.log('Debug: Getting all bookings in system');
     
-    const allBookings = await this.multiGuestBookingService.getAllBookings({ limit: 100 });
+    try {
+      const result = await this.multiGuestBookingService.getAllBookings({});
+      
+      return {
+        status: HttpStatus.OK,
+        message: 'All bookings for debugging',
+        data: result.items || result || [],
+        total: result.pagination?.total || result.length || 0
+      };
+    } catch (error) {
+      this.logger.error('Debug endpoint error:', error);
+      return {
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        message: 'Debug endpoint error',
+        error: error.message,
+        data: [],
+        total: 0
+      };
+    }
+  }
+
+  @Get('my-bookings')
+  @ApiOperation({ 
+    summary: 'Get user\'s bookings (TEST MODE - Returns all bookings)',
+    description: 'Retrieves bookings for testing purposes. Currently returns ALL bookings with user email included for identification. In production, this will be filtered by JWT token-based user authentication.'
+  })
+  @ApiResponse({ status: 200, description: 'User bookings retrieved successfully (all bookings for testing)', type: MyBookingsResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async getMyBookings(
+    @Query() query: GetMyBookingsDto
+  ) {
+    this.logger.log('Getting all bookings for testing - no JWT auth filtering applied');
+    
+    // For testing: Return all bookings with email identification
+    // TODO: In production, implement JWT auth and filter by actual user ID
+    const result = await this.multiGuestBookingService.getMyBookings('all', query);
     
     return {
       status: HttpStatus.OK,
-      message: 'All bookings for debugging',
-      data: allBookings.items.map(booking => ({
-        id: booking.id,
-        contactEmail: booking.contactEmail,
-        contactName: booking.contactName,
-        status: booking.status,
-        totalGuests: booking.totalGuests,
-        createdAt: booking.createdAt
-      })),
-      total: allBookings.pagination.total
+      message: 'All bookings returned for testing - each booking includes user email for identification',
+      ...result
     };
   }
 
   @Post('my-bookings/:id/cancel')
   @ApiOperation({ 
-    summary: 'Cancel user\'s booking',
-    description: 'Allows users to cancel their own bookings. User authentication is handled automatically in production via JWT tokens.'
+    summary: 'Cancel user\'s booking (TEST MODE)',
+    description: 'Allows cancellation of bookings for testing purposes. Currently accepts user email in request body. In production, authentication will be handled via JWT tokens.'
   })
   @ApiResponse({ status: 200, description: 'Booking cancelled successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - missing user identification or invalid booking' })
   @ApiResponse({ status: 404, description: 'Booking not found or user does not have permission' })
-  @ApiUserAuth()
   async cancelMyBooking(
     @Param('id') bookingId: string,
-    @Body() cancelDto: CancelMyBookingDto,
-    @CurrentUser() user: { email: string }
+    @Body() cancelDto: CancelMyBookingDto & { userEmail?: string }
   ) {
-    this.logger.log(`User ${user.email} cancelling booking ${bookingId}`);
+    // For testing: Allow user email to be passed in request body
+    // TODO: In production, get user email from JWT token
+    const userEmail = cancelDto.userEmail || 'test@example.com';
+    this.logger.log(`User ${userEmail} cancelling booking ${bookingId} (TEST MODE)`);
     
-    const result = await this.multiGuestBookingService.cancelMyBooking(bookingId, user.email, cancelDto.reason);
+    const result = await this.multiGuestBookingService.cancelMyBooking(bookingId, userEmail, cancelDto.reason);
     
     return {
       status: HttpStatus.OK,
+      message: 'Booking cancelled successfully (TEST MODE)',
       data: result
     };
   }
