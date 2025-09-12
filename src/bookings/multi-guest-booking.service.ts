@@ -1501,7 +1501,8 @@ export class MultiGuestBookingService {
     }));
 
     return {
-      id: booking.bookingReference, // Use booking reference as display ID
+      id: booking.id, // Use actual booking ID (UUID) instead of booking reference
+      bookingReference: booking.bookingReference, // Keep booking reference for display/reference purposes
       status: booking.status.toLowerCase(),
       userEmail: userEmail || booking.contactEmail, // Include user email for identification
       hostelInfo,

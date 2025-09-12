@@ -120,8 +120,11 @@ export class BookingDetailDto {
 }
 
 export class MyBookingDto {
-  @ApiProperty({ description: 'Booking ID' })
+  @ApiProperty({ description: 'Booking ID (UUID)' })
   id: string;
+
+  @ApiProperty({ description: 'Booking reference (MGB format for display)' })
+  bookingReference: string;
 
   @ApiProperty({ description: 'Booking status' })
   status: string;

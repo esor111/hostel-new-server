@@ -22,7 +22,7 @@ export class BookingsController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all booking requests' })
+  @ApiOperation({ summary: 'Get all booking requests' })  
   @ApiResponse({ status: 200, description: 'List of booking requests retrieved successfully' })
   async getAllBookingRequests(@Query() query: any) {
     this.logger.log('Getting all booking requests via unified multi-guest system');
