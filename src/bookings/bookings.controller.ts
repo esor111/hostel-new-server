@@ -166,6 +166,31 @@ export class BookingsController {
     };
   }
 
+  @Get('debug/all-bookings')
+  @ApiOperation({ 
+    summary: 'Debug: Get all bookings (development only)',
+    description: 'Debug endpoint to see all bookings in the system. Remove in production.'
+  })
+  async debugGetAllBookings() {
+    this.logger.log('DEBUG: Getting all bookings for debugging');
+    
+    const allBookings = await this.multiGuestBookingService.getAllBookings({ limit: 100 });
+    
+    return {
+      status: HttpStatus.OK,
+      message: 'All bookings for debugging',
+      data: allBookings.items.map(booking => ({
+        id: booking.id,
+        contactEmail: booking.contactEmail,
+        contactName: booking.contactName,
+        status: booking.status,
+        totalGuests: booking.totalGuests,
+        createdAt: booking.createdAt
+      })),
+      total: allBookings.pagination.total
+    };
+  }
+
   @Post('my-bookings/:id/cancel')
   @ApiOperation({ 
     summary: 'Cancel user\'s booking',

@@ -1318,18 +1318,41 @@ export class MultiGuestBookingService {
     this.logger.log(`Getting bookings for user: ${userEmail} with filters:`, filters);
 
     // Build query conditions
-    const queryConditions: any = {
-      contactEmail: userEmail
-    };
+    const queryConditions: any = {};
+    
+    // In development, if email is 'debug' or 'all', return all bookings
+    if (userEmail !== 'debug' && userEmail !== 'all') {
+      queryConditions.contactEmail = userEmail;
+    } else {
+      this.logger.warn(`DEBUG MODE: Returning all bookings for email: ${userEmail}`);
+    }
 
     if (status) {
       queryConditions.status = status;
     }
 
+    // DEBUG: Log the exact query conditions
+    this.logger.log(`Query conditions:`, queryConditions);
+
     // Get total count for pagination
     const totalCount = await this.multiGuestBookingRepository.count({
       where: queryConditions
     });
+
+    this.logger.log(`Total bookings found for email ${userEmail}: ${totalCount}`);
+
+    // If no bookings found, let's also check total bookings in system
+    if (totalCount === 0) {
+      const totalSystemBookings = await this.multiGuestBookingRepository.count();
+      this.logger.log(`Total bookings in system: ${totalSystemBookings}`);
+      
+      // Get a sample of existing contact emails for debugging
+      const sampleBookings = await this.multiGuestBookingRepository.find({
+        select: ['contactEmail', 'contactName'],
+        take: 5
+      });
+      this.logger.log(`Sample contact emails in system:`, sampleBookings.map(b => b.contactEmail));
+    }
 
     // Get bookings with guests, beds, and rooms
     const bookings = await this.multiGuestBookingRepository.find({
