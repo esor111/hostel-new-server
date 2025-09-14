@@ -112,3 +112,9 @@ mismatch with bedids
 
 
 need to talk about the room layout and bed  layout
+
+
+
+for now we are not going to do the cache implementation
+
+also no need to do PHASE 6: DEPLOYMENT & MIGRATION

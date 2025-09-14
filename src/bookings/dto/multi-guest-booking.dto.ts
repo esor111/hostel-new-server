@@ -251,24 +251,29 @@ export class CreateMultiGuestBookingDto {
     type: MultiGuestBookingDataDto,
     example: {
       contactPerson: {
-        name: 'Sabiln',
-        phone: '98621515111',
-        email: 'Saw@sadas.cas'
+        name: 'John Doe',
+        phone: '+9779876543210',
+        email: 'john.doe@example.com'
       },
       guests: [
         {
-          bedId: 'bed1',
-          name: 'abc',
-          age: '20',
-          gender: 'Male'
+          bedId: '550e8400-e29b-41d4-a716-446655440000',
+          name: 'Alice Smith',
+          age: 22,
+          gender: 'Female'
         },
         {
-          bedId: 'bed6',
-          name: 'xyz',
-          age: '15',
-          gender: 'Female'
+          bedId: '550e8400-e29b-41d4-a716-446655440001',
+          name: 'Bob Johnson',
+          age: 24,
+          gender: 'Male'
         }
-      ]
+      ],
+      checkInDate: '2024-02-01',
+      duration: '6 months',
+      notes: 'Group booking for university students',
+      emergencyContact: '+9779876543211',
+      source: 'mobile_app'
     }
   })
   @ValidateNested({ message: 'Booking data is invalid' })

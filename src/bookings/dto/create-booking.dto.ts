@@ -1,12 +1,11 @@
 import { IsString, IsNumber, IsOptional, IsDateString, IsEmail, IsPhoneNumber, IsBoolean, Min, Max } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateBookingDto {
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Booking ID (optional, auto-generated if not provided)',
-    example: 'booking-123',
-    required: false
+    example: 'booking-123'
   })
   @IsOptional()
   @IsString()
@@ -21,7 +20,7 @@ export class CreateBookingDto {
 
   @ApiProperty({ 
     description: 'Phone number of the booking person',
-    example: '+1234567890'
+    example: '+9779876543210'
   })
   @IsString()
   phone: string;
@@ -33,75 +32,67 @@ export class CreateBookingDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Guardian or parent name (if applicable)',
-    example: 'Jane Doe',
-    required: false
+    example: 'Jane Doe'
   })
   @IsOptional()
   @IsString()
   guardianName?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Guardian or parent phone number',
-    example: '+0987654321',
-    required: false
+    example: '+9779876543211'
   })
   @IsOptional()
   @IsString()
   guardianPhone?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Preferred room number or type',
-    example: 'Single Room 101',
-    required: false
+    example: 'Single Room 101'
   })
   @IsOptional()
   @IsString()
   preferredRoom?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Course or program of study',
-    example: 'Computer Science',
-    required: false
+    example: 'Computer Science'
   })
   @IsOptional()
   @IsString()
   course?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Educational institution name',
-    example: 'University of Example',
-    required: false
+    example: 'University of Example'
   })
   @IsOptional()
   @IsString()
   institution?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Date when the booking request was made',
-    example: '2024-01-15T10:30:00Z',
-    required: false
+    example: '2024-01-15T10:30:00Z'
   })
   @IsOptional()
   @IsDateString()
   requestDate?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Preferred check-in date',
-    example: '2024-02-01T14:00:00Z',
-    required: false
+    example: '2024-02-01T14:00:00Z'
   })
   @IsOptional()
   @IsDateString()
   checkInDate?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Duration of stay in months',
     example: 6,
     minimum: 1,
-    maximum: 24,
-    required: false
+    maximum: 24
   })
   @IsOptional()
   @IsNumber()
@@ -110,66 +101,59 @@ export class CreateBookingDto {
   @Transform(({ value }) => parseInt(value))
   duration?: number;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Booking status',
     example: 'pending',
-    enum: ['pending', 'approved', 'rejected', 'cancelled'],
-    required: false
+    enum: ['pending', 'approved', 'rejected', 'cancelled']
   })
   @IsOptional()
   @IsString()
   status?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Additional notes or special requests',
-    example: 'Requires ground floor room due to mobility issues',
-    required: false
+    example: 'Requires ground floor room due to mobility issues'
   })
   @IsOptional()
   @IsString()
   notes?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Emergency contact phone number',
-    example: '+1555123456',
-    required: false
+    example: '+9779876543212'
   })
   @IsOptional()
   @IsString()
   emergencyContact?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Home address of the booking person',
-    example: '123 Main St, City, State 12345',
-    required: false
+    example: '123 Main St, Kathmandu, Nepal'
   })
   @IsOptional()
   @IsString()
   address?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Type of ID proof document',
-    example: 'Passport',
-    required: false
+    example: 'Passport'
   })
   @IsOptional()
   @IsString()
   idProofType?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'ID proof document number',
-    example: 'A12345678',
-    required: false
+    example: 'A12345678'
   })
   @IsOptional()
   @IsString()
   idProofNumber?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Source of the booking request',
     example: 'website',
-    enum: ['website', 'mobile_app', 'phone', 'walk_in'],
-    required: false
+    enum: ['website', 'mobile_app', 'phone', 'walk_in']
   })
   @IsOptional()
   @IsString()
@@ -177,46 +161,41 @@ export class CreateBookingDto {
 }
 
 export class ApproveBookingDto {
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'ID of the person processing the approval',
-    example: 'admin-123',
-    required: false
+    example: 'admin-123'
   })
   @IsOptional()
   @IsString()
   processedBy?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Room assigned to the booking',
-    example: 'Room 101',
-    required: false
+    example: 'Room 101'
   })
   @IsOptional()
   @IsString()
   assignedRoom?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Bed assigned to the booking',
-    example: 'B1',
-    required: false
+    example: 'B1'
   })
   @IsOptional()
   @IsString()
   assignedBed?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Whether to create a student record automatically',
-    example: true,
-    required: false
+    example: true
   })
   @IsOptional()
   @IsBoolean()
   createStudent?: boolean;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Additional notes for the approval',
-    example: 'Approved with standard rate',
-    required: false
+    example: 'Approved with standard rate'
   })
   @IsOptional()
   @IsString()
@@ -224,10 +203,9 @@ export class ApproveBookingDto {
 }
 
 export class RejectBookingDto {
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'ID of the person processing the rejection',
-    example: 'admin-123',
-    required: false
+    example: 'admin-123'
   })
   @IsOptional()
   @IsString()
@@ -240,10 +218,9 @@ export class RejectBookingDto {
   @IsString()
   reason: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Additional notes for the rejection',
-    example: 'Suggested alternative dates provided',
-    required: false
+    example: 'Suggested alternative dates provided'
   })
   @IsOptional()
   @IsString()

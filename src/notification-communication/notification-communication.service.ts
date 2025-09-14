@@ -47,7 +47,7 @@ export class NotificationCommunicationService {
   }
 
   /**
-   * Send booking request notification to admins
+   * Send booking request notification to admins (business notification)
    */
   async sendBookingRequestNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_REQUEST];
@@ -58,16 +58,12 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverBusinessIds: [data.hostelId],
+      receiverBusinessIds: [data.hostelId], // Only use receiverBusinessIds for business notifications
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_REQUEST,
       meta: {
         type: PushNotificationTypeEnum.BOOKING_REQUEST,
-        business: {
-          id: data.hostelId,
-          linkId: ''
-        },
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,
@@ -80,7 +76,7 @@ export class NotificationCommunicationService {
   }
 
   /**
-   * Send booking approval notification to contact person
+   * Send booking approval notification to contact person (user notification)
    */
   async sendBookingApprovedNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_APPROVED];
@@ -90,16 +86,12 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_APPROVED,
       meta: {
         type: PushNotificationTypeEnum.BOOKING_APPROVED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,
@@ -112,7 +104,7 @@ export class NotificationCommunicationService {
   }
 
   /**
-   * Send booking rejection notification to contact person
+   * Send booking rejection notification to contact person (user notification)
    */
   async sendBookingRejectedNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_REJECTED];
@@ -122,16 +114,12 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_REJECTED,
       meta: {
         type: PushNotificationTypeEnum.BOOKING_REJECTED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,
@@ -144,7 +132,7 @@ export class NotificationCommunicationService {
   }
 
   /**
-   * Send multi-guest booking confirmation notification to contact person
+   * Send multi-guest booking confirmation notification to contact person (user notification)
    */
   async sendBookingConfirmedNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_CONFIRMED];
@@ -155,16 +143,12 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_CONFIRMED,
       meta: {
         type: PushNotificationTypeEnum.BOOKING_CONFIRMED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,
@@ -177,7 +161,7 @@ export class NotificationCommunicationService {
   }
 
   /**
-   * Send booking cancellation notification to contact person
+   * Send booking cancellation notification to contact person (user notification)
    */
   async sendBookingCancelledNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_CANCELLED];
@@ -187,16 +171,12 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_CANCELLED,
       meta: {
         type: PushNotificationTypeEnum.BOOKING_CANCELLED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,
