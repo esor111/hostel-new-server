@@ -4,98 +4,172 @@ export class AddHostelIdToEntities1757600000000 implements MigrationInterface {
     name = 'AddHostelIdToEntities1757600000000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        // Add hostelId to rooms table
-        await queryRunner.query(`ALTER TABLE "rooms" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_rooms_hostelId" ON "rooms" ("hostelId")`);
+        console.log('Starting multi-hostel migration...');
 
-        // Add hostelId to students table
-        await queryRunner.query(`ALTER TABLE "students" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_students_hostelId" ON "students" ("hostelId")`);
+        // Step 1: Create hostels table if it doesn't exist (using hostel_profiles as the hostel table)
+        const hostelTableExists = await queryRunner.hasTable('hostel_profiles');
+        if (!hostelTableExists) {
+            await queryRunner.query(`
+                CREATE TABLE "hostel_profiles" (
+                    "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+                    "hostel_name" character varying NOT NULL,
+                    "owner_name" character varying NOT NULL,
+                    "email" character varying NOT NULL,
+                    "phone" character varying NOT NULL,
+                    "address" character varying NOT NULL,
+                    "province" character varying NOT NULL,
+                    "district" character varying NOT NULL,
+                    "description" text NOT NULL,
+                    "amenities" json NOT NULL,
+                    "policies" json NOT NULL,
+                    "pricing" json NOT NULL,
+                    "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+                    "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
+                    CONSTRAINT "PK_hostel_profiles" PRIMARY KEY ("id")
+                )
+            `);
+        }
 
-        // Add hostelId to multi_guest_bookings table
-        await queryRunner.query(`ALTER TABLE "multi_guest_bookings" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_multi_guest_bookings_hostelId" ON "multi_guest_bookings" ("hostelId")`);
+        // Step 2: Create default hostel record if no hostels exist
+        const existingHostels = await queryRunner.query(`SELECT COUNT(*) as count FROM "hostel_profiles"`);
+        let defaultHostelId: string;
+        
+        if (parseInt(existingHostels[0].count) === 0) {
+            console.log('Creating default hostel record...');
+            const defaultHostelResult = await queryRunner.query(`
+                INSERT INTO "hostel_profiles" (
+                    "hostel_name", "owner_name", "email", "phone", "address", 
+                    "province", "district", "description", "amenities", "policies", "pricing"
+                ) VALUES (
+                    'Default Hostel', 'System Admin', 'admin@defaulthostel.com', '+1234567890', 
+                    'Default Address', 'Default Province', 'Default District', 
+                    'Default hostel created during multi-hostel migration',
+                    '[]', '{}', '{}'
+                ) RETURNING "id"
+            `);
+            defaultHostelId = defaultHostelResult[0].id;
+        } else {
+            // Use the first existing hostel as default
+            const firstHostel = await queryRunner.query(`SELECT "id" FROM "hostel_profiles" LIMIT 1`);
+            defaultHostelId = firstHostel[0].id;
+        }
 
-        // Add hostelId to invoices table
-        await queryRunner.query(`ALTER TABLE "invoices" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_invoices_hostelId" ON "invoices" ("hostelId")`);
+        console.log(`Using default hostel ID: ${defaultHostelId}`);
 
-        // Add hostelId to payments table
-        await queryRunner.query(`ALTER TABLE "payments" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_payments_hostelId" ON "payments" ("hostelId")`);
+        // Step 3: Add hostelId columns (nullable initially) to all required tables
+        const tables = [
+            'rooms', 'students', 'beds', 'multi_guest_bookings', 'invoices', 
+            'payments', 'ledger_entries', 'discounts', 'admin_charges', 'reports'
+        ];
 
-        // Add hostelId to ledger_entries table
-        await queryRunner.query(`ALTER TABLE "ledger_entries" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_ledger_entries_hostelId" ON "ledger_entries" ("hostelId")`);
+        for (const table of tables) {
+            const tableExists = await queryRunner.hasTable(table);
+            if (tableExists) {
+                const columnExists = await queryRunner.hasColumn(table, 'hostelId');
+                if (!columnExists) {
+                    console.log(`Adding hostelId column to ${table}...`);
+                    await queryRunner.query(`ALTER TABLE "${table}" ADD "hostelId" uuid`);
+                }
+            }
+        }
 
-        // Add hostelId to discounts table
-        await queryRunner.query(`ALTER TABLE "discounts" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_discounts_hostelId" ON "discounts" ("hostelId")`);
+        // Step 4: Update all existing records with default hostelId
+        for (const table of tables) {
+            const tableExists = await queryRunner.hasTable(table);
+            if (tableExists) {
+                console.log(`Updating existing records in ${table} with default hostelId...`);
+                await queryRunner.query(`UPDATE "${table}" SET "hostelId" = $1 WHERE "hostelId" IS NULL`, [defaultHostelId]);
+            }
+        }
 
-        // Add hostelId to buildings table
-        await queryRunner.query(`ALTER TABLE "buildings" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_buildings_hostelId" ON "buildings" ("hostelId")`);
+        // Step 5: Make hostelId columns non-nullable and add foreign key constraints
+        for (const table of tables) {
+            const tableExists = await queryRunner.hasTable(table);
+            if (tableExists) {
+                console.log(`Making hostelId non-nullable and adding constraints for ${table}...`);
+                
+                // Make column non-nullable
+                await queryRunner.query(`ALTER TABLE "${table}" ALTER COLUMN "hostelId" SET NOT NULL`);
+                
+                // Add foreign key constraint
+                const constraintName = `FK_${table}_hostelId`;
+                await queryRunner.query(`
+                    ALTER TABLE "${table}" 
+                    ADD CONSTRAINT "${constraintName}" 
+                    FOREIGN KEY ("hostelId") REFERENCES "hostel_profiles"("id") 
+                    ON DELETE RESTRICT ON UPDATE CASCADE
+                `);
+            }
+        }
 
-        // Add hostelId to room_types table
-        await queryRunner.query(`ALTER TABLE "room_types" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_room_types_hostelId" ON "room_types" ("hostelId")`);
+        // Step 6: Add indexes for performance
+        for (const table of tables) {
+            const tableExists = await queryRunner.hasTable(table);
+            if (tableExists) {
+                console.log(`Adding index for ${table}.hostelId...`);
+                const indexName = `IDX_${table}_hostelId`;
+                await queryRunner.query(`CREATE INDEX "${indexName}" ON "${table}" ("hostelId")`);
+            }
+        }
 
-        // Add hostelId to amenities table
-        await queryRunner.query(`ALTER TABLE "amenities" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_amenities_hostelId" ON "amenities" ("hostelId")`);
+        // Step 7: Handle beds table special case - hostelId should be derived from room
+        const bedsTableExists = await queryRunner.hasTable('beds');
+        const roomsTableExists = await queryRunner.hasTable('rooms');
+        
+        if (bedsTableExists && roomsTableExists) {
+            console.log('Updating beds hostelId from room relationship...');
+            await queryRunner.query(`
+                UPDATE "beds" 
+                SET "hostelId" = "rooms"."hostelId" 
+                FROM "rooms" 
+                WHERE "beds"."room_id" = "rooms"."id"
+            `);
+        }
 
-        // Add hostelId to reports table
-        await queryRunner.query(`ALTER TABLE "reports" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_reports_hostelId" ON "reports" ("hostelId")`);
-
-        // Add hostelId to maintenance_requests table
-        await queryRunner.query(`ALTER TABLE "maintenance_requests" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_maintenance_requests_hostelId" ON "maintenance_requests" ("hostelId")`);
-
-        // Add hostelId to notifications table
-        await queryRunner.query(`ALTER TABLE "notifications" ADD "hostelId" uuid`);
-        await queryRunner.query(`CREATE INDEX "IDX_notifications_hostelId" ON "notifications" ("hostelId")`);
+        console.log('Multi-hostel migration completed successfully!');
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        // Remove indexes and columns in reverse order
-        await queryRunner.query(`DROP INDEX "IDX_notifications_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "notifications" DROP COLUMN "hostelId"`);
+        console.log('Rolling back multi-hostel migration...');
 
-        await queryRunner.query(`DROP INDEX "IDX_maintenance_requests_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "maintenance_requests" DROP COLUMN "hostelId"`);
+        const tables = [
+            'reports', 'admin_charges', 'discounts', 'ledger_entries', 
+            'payments', 'invoices', 'multi_guest_bookings', 'beds', 'students', 'rooms'
+        ];
 
-        await queryRunner.query(`DROP INDEX "IDX_reports_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "reports" DROP COLUMN "hostelId"`);
+        // Remove foreign key constraints, indexes, and columns in reverse order
+        for (const table of tables) {
+            const tableExists = await queryRunner.hasTable(table);
+            if (tableExists) {
+                const columnExists = await queryRunner.hasColumn(table, 'hostelId');
+                if (columnExists) {
+                    console.log(`Removing hostelId constraints and column from ${table}...`);
+                    
+                    // Drop foreign key constraint
+                    const constraintName = `FK_${table}_hostelId`;
+                    try {
+                        await queryRunner.query(`ALTER TABLE "${table}" DROP CONSTRAINT "${constraintName}"`);
+                    } catch (error) {
+                        console.log(`Constraint ${constraintName} may not exist, continuing...`);
+                    }
+                    
+                    // Drop index
+                    const indexName = `IDX_${table}_hostelId`;
+                    try {
+                        await queryRunner.query(`DROP INDEX "${indexName}"`);
+                    } catch (error) {
+                        console.log(`Index ${indexName} may not exist, continuing...`);
+                    }
+                    
+                    // Drop column
+                    await queryRunner.query(`ALTER TABLE "${table}" DROP COLUMN "hostelId"`);
+                }
+            }
+        }
 
-        await queryRunner.query(`DROP INDEX "IDX_amenities_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "amenities" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_room_types_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "room_types" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_buildings_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "buildings" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_discounts_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "discounts" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_ledger_entries_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "ledger_entries" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_payments_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "payments" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_invoices_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "invoices" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_multi_guest_bookings_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "multi_guest_bookings" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_students_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "students" DROP COLUMN "hostelId"`);
-
-        await queryRunner.query(`DROP INDEX "IDX_rooms_hostelId"`);
-        await queryRunner.query(`ALTER TABLE "rooms" DROP COLUMN "hostelId"`);
+        // Note: We don't drop the hostel_profiles table as it might contain important data
+        // and other hostels might be using the system
+        console.log('Multi-hostel migration rollback completed!');
+        console.log('Note: hostel_profiles table was not dropped to preserve data integrity');
     }
 }

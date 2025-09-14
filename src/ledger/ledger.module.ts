@@ -7,6 +7,7 @@ import { Student } from '../students/entities/student.entity';
 import { Invoice } from '../invoices/entities/invoice.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { Discount } from '../discounts/entities/discount.entity';
+import { Hostel } from '../hostel/entities/hostel.entity';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
@@ -14,7 +15,8 @@ import { Discount } from '../discounts/entities/discount.entity';
     Student,
     Invoice,
     Payment,
-    Discount
+    Discount,
+    Hostel
   ])],
   controllers: [LedgerController],
   providers: [LedgerService],

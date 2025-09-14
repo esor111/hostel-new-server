@@ -11,6 +11,7 @@ import { StudentContact } from './student-contact.entity';
 import { StudentAcademicInfo } from './student-academic-info.entity';
 import { StudentFinancialInfo } from './student-financial-info.entity';
 import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum StudentStatus {
   ACTIVE = 'Active',
@@ -25,6 +26,7 @@ export enum StudentStatus {
 @Index(['phone'], { unique: true })
 @Index(['status'])
 @Index(['enrollmentDate'])
+@Index(['hostelId'])
 export class Student extends BaseEntity {
   @Column({ length: 255 })
   name: string;
@@ -56,6 +58,9 @@ export class Student extends BaseEntity {
 
 
   // Foreign Keys
+  @Column({ name: 'hostel_id' })
+  hostelId: string;
+
   @Column({ name: 'room_id', nullable: true })
   roomId: string;
 
@@ -63,6 +68,10 @@ export class Student extends BaseEntity {
   // Removed: bookingRequestId: string;
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.students, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostel_id' })
+  hostel: Hostel;
+
   @ManyToOne(() => Room, room => room.students, { nullable: true })
   @JoinColumn({ name: 'room_id' })
   room: Room;

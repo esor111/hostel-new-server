@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Student } from '../../students/entities/student.entity';
 import { PaymentInvoiceAllocation } from './payment-invoice-allocation.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum PaymentMethod {
   CASH = 'Cash',
@@ -27,9 +28,13 @@ export enum PaymentStatus {
 @Index(['paymentMethod'])
 @Index(['status'])
 @Index(['amount'])
+@Index(['hostelId'])
 export class Payment extends BaseEntity {
   @Column({ name: 'student_id' })
   studentId: string;
+
+  @Column({ name: 'hostel_id' })
+  hostelId: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   amount: number;
@@ -81,6 +86,10 @@ export class Payment extends BaseEntity {
   }
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.payments, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostel_id' })
+  hostel: Hostel;
+
   @ManyToOne(() => Student, student => student.payments, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'student_id' })
   student: Student;

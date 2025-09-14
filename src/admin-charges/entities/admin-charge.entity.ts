@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Student } from '../../students/entities/student.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum AdminChargeType {
   ONE_TIME = 'one-time',
@@ -20,9 +21,13 @@ export enum AdminChargeStatus {
 @Index(['chargeType'])
 @Index(['dueDate'])
 @Index(['createdAt'])
+@Index(['hostelId'])
 export class AdminCharge extends BaseEntity {
   @Column({ name: 'student_id' })
   studentId: string;
+
+  @Column({ name: 'hostel_id' })
+  hostelId: string;
 
   @Column({ type: 'varchar', length: 255 })
   title: string;
@@ -70,6 +75,10 @@ export class AdminCharge extends BaseEntity {
   createdBy: string;
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.adminCharges, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostel_id' })
+  hostel: Hostel;
+
   @ManyToOne(() => Student, student => student.adminCharges, { eager: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'student_id' })
   student: Student;

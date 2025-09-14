@@ -2,12 +2,14 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HostelController } from './hostel.controller';
 import { HostelService } from './hostel.service';
-import { HostelProfile } from './entities/hostel-profile.entity';
+import { Hostel } from './entities/hostel.entity';
+import { HostelContextMiddleware } from './middleware/hostel-context.middleware';
+import { HostelAuditService } from './services/hostel-audit.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([HostelProfile])],
+  imports: [TypeOrmModule.forFeature([Hostel])],
   controllers: [HostelController],
-  providers: [HostelService],
-  exports: [HostelService],
+  providers: [HostelService, HostelContextMiddleware, HostelAuditService],
+  exports: [HostelService, HostelContextMiddleware, HostelAuditService, TypeOrmModule],
 })
 export class HostelModule {}

@@ -11,9 +11,10 @@ import { RoomOccupant } from './entities/room-occupant.entity';
 import { Student } from '../students/entities/student.entity';
 
 import { BedSyncService } from './bed-sync.service';
+import { HostelScopedService } from '../common/services/hostel-scoped.service';
 
 @Injectable()
-export class RoomsService {
+export class RoomsService extends HostelScopedService<Room> {
   constructor(
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
@@ -32,9 +33,14 @@ export class RoomsService {
     private studentRepository: Repository<Student>,
 
     private bedSyncService: BedSyncService,
-  ) { }
+  ) { 
+    super(roomRepository, 'Room');
+  }
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for room operations');
+    }
     const { status = 'all', type = 'all', search = '', page = 1, limit = 20 } = filters;
 
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
@@ -45,7 +51,8 @@ export class RoomsService {
       .leftJoinAndSelect('room.amenities', 'roomAmenities')
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
       .leftJoinAndSelect('room.layout', 'layout')
-      .leftJoinAndSelect('room.beds', 'beds');
+      .leftJoinAndSelect('room.beds', 'beds')
+      .where('room.hostelId = :hostelId', { hostelId });
 
     // Apply status filter
     if (status !== 'all') {
@@ -101,9 +108,12 @@ export class RoomsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for room operations');
+    }
     const room = await this.roomRepository.findOne({
-      where: { id },
+      where: { id, hostelId },
       relations: [
         'building',
         'roomType',
@@ -134,7 +144,10 @@ export class RoomsService {
     return await this.transformToApiResponse(room);
   }
 
-  async create(createRoomDto: any) {
+  async create(createRoomDto: any, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for room operations');
+    }
     console.log('🏠 Creating new room');
     console.log('📤 Create data received:', JSON.stringify(createRoomDto, null, 2));
 
@@ -159,7 +172,7 @@ export class RoomsService {
       }
     }
 
-    // Create room entity
+    // Create room entity with hostelId
     const room = this.roomRepository.create({
       id: createRoomDto.id,
       name: createRoomDto.name,
@@ -173,6 +186,7 @@ export class RoomsService {
       lastCleaned: createRoomDto.lastCleaned,
       description: createRoomDto.description,
       roomTypeId: roomType?.id,
+      hostelId, // Inject hostelId from context
       // Map floor to building (simplified for now)
       buildingId: null // Will implement building logic later
     });
@@ -208,14 +222,17 @@ export class RoomsService {
       await this.bedSyncService.syncBedsFromLayout(savedRoom.id, createRoomDto.layout.bedPositions);
     }
 
-    return this.findOne(savedRoom.id);
+    return this.findOne(savedRoom.id, hostelId);
   }
 
-  async update(id: string, updateRoomDto: any) {
+  async update(id: string, updateRoomDto: any, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for room operations');
+    }
     console.log('🏠 Updating room:', id);
     console.log('📤 Update data received:', JSON.stringify(updateRoomDto, null, 2));
 
-    const room = await this.findOne(id);
+    const room = await this.findOne(id, hostelId);
 
     // Update main room entity
     const updateData: any = {};
@@ -262,7 +279,7 @@ export class RoomsService {
       if (updateData.bedCount !== undefined) {
         console.log('🔄 Bed count changed, ensuring bed synchronization');
         const updatedRoom = await this.roomRepository.findOne({
-          where: { id },
+          where: { id, hostelId },
           relations: ['layout', 'beds']
         });
 
@@ -282,16 +299,21 @@ export class RoomsService {
       await this.updateRoomLayout(id, updateRoomDto.layout);
     }
 
-    return this.findOne(id);
+    return this.findOne(id, hostelId);
   }
 
-  async getStats() {
-    const totalRooms = await this.roomRepository.count();
+  async getStats(hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for room operations');
+    }
+    const totalRooms = await this.roomRepository.count({
+      where: { hostelId }
+    });
     const activeRooms = await this.roomRepository.count({
-      where: { status: 'ACTIVE' }
+      where: { status: 'ACTIVE', hostelId }
     });
     const maintenanceRooms = await this.roomRepository.count({
-      where: { status: 'MAINTENANCE' }
+      where: { status: 'MAINTENANCE', hostelId }
     });
 
     // Get accurate occupancy data from RoomOccupant records
@@ -299,6 +321,7 @@ export class RoomsService {
       .createQueryBuilder('room')
       .select('SUM(room.bedCount)', 'totalBeds')
       .where('room.status = :status', { status: 'ACTIVE' })
+      .andWhere('room.hostelId = :hostelId', { hostelId })
       .getRawOne();
 
     // Count actual active occupants
@@ -308,6 +331,7 @@ export class RoomsService {
       .select('COUNT(occupant.id)', 'totalOccupied')
       .where('occupant.status = :status', { status: 'Active' })
       .andWhere('room.status = :roomStatus', { roomStatus: 'ACTIVE' })
+      .andWhere('room.hostelId = :hostelId', { hostelId })
       .getRawOne();
 
     const totalBeds = parseInt(occupancyResult?.totalBeds) || 0;
@@ -327,9 +351,12 @@ export class RoomsService {
     };
   }
 
-  async getAvailableRooms() {
+  async getAvailableRooms(hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for room operations');
+    }
     const availableRooms = await this.roomRepository.find({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', hostelId },
       relations: ['roomType', 'amenities', 'amenities.amenity', 'occupants', 'beds', 'layout']
     });
 

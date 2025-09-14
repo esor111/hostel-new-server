@@ -13,6 +13,7 @@ import { Room } from '../rooms/entities/room.entity';
 import { Bed } from '../rooms/entities/bed.entity';
 import { RoomsModule } from '../rooms/rooms.module';
 import { NotificationCommunicationModule } from '../notification-communication/notification-communication.module';
+import { Hostel } from '../hostel/entities/hostel.entity';
 
 
 @Module({
@@ -23,7 +24,8 @@ import { NotificationCommunicationModule } from '../notification-communication/n
       BookingGuest,
       Student,
       Room,
-      Bed
+      Bed,
+      Hostel
     ]),
     RoomsModule, // Import RoomsModule to access BedSyncService
     NotificationCommunicationModule, // Import notification module

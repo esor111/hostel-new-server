@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Room } from './room.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum BedStatus {
   AVAILABLE = 'Available',
@@ -16,9 +17,13 @@ export enum BedStatus {
 @Index(['bedIdentifier'])
 @Index(['bedNumber'])
 @Index(['gender'])
+@Index(['hostelId'])
 export class Bed extends BaseEntity {
   @Column({ name: 'room_id' })
   roomId: string;
+
+  @Column({ name: 'hostel_id' })
+  hostelId: string;
 
   @Column({ name: 'bed_number', length: 10 })
   bedNumber: string;
@@ -65,4 +70,8 @@ export class Bed extends BaseEntity {
   @ManyToOne(() => Room, room => room.beds, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'room_id' })
   room: Room;
+
+  @ManyToOne(() => Hostel, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostel_id' })
+  hostel: Hostel;
 }

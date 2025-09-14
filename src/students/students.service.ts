@@ -10,9 +10,10 @@ import { ConfigureStudentDto } from './dto/configure-student.dto';
 import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { BedSyncService } from '../rooms/bed-sync.service';
+import { HostelScopedService } from '../common/services/hostel-scoped.service';
 
 @Injectable()
-export class StudentsService {
+export class StudentsService extends HostelScopedService<Student> {
   constructor(
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
@@ -25,16 +26,22 @@ export class StudentsService {
     @InjectRepository(LedgerEntry)
     private ledgerRepository: Repository<LedgerEntry>,
     private bedSyncService: BedSyncService,
-  ) {}
+  ) {
+    super(studentRepository, 'Student');
+  }
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for student operations');
+    }
     const { status = 'all', search = '', page = 1, limit = 50 } = filters;
     
     const queryBuilder = this.studentRepository.createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
       .leftJoinAndSelect('student.contacts', 'contacts')
       .leftJoinAndSelect('student.academicInfo', 'academic')
-      .leftJoinAndSelect('student.financialInfo', 'financial');
+      .leftJoinAndSelect('student.financialInfo', 'financial')
+      .where('student.hostelId = :hostelId', { hostelId });
     
     // Apply status filter
     if (status !== 'all') {
@@ -74,9 +81,12 @@ export class StudentsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for student operations');
+    }
     const student = await this.studentRepository.findOne({
-      where: { id },
+      where: { id, hostelId },
       relations: ['room', 'contacts', 'academicInfo', 'financialInfo']
     });
     
@@ -87,8 +97,11 @@ export class StudentsService {
     return this.transformToApiResponse(student);
   }
 
-  async create(createStudentDto: any) {
-    // Create student entity
+  async create(createStudentDto: any, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for student operations');
+    }
+    // Create student entity with hostelId
     const student = this.studentRepository.create({
       id: createStudentDto.id,
       name: createStudentDto.name,
@@ -98,6 +111,7 @@ export class StudentsService {
       status: createStudentDto.status || StudentStatus.ACTIVE,
       address: createStudentDto.address,
       roomId: createStudentDto.roomNumber, // This will need room lookup
+      hostelId, // Inject hostelId from context
       // bookingRequestId: createStudentDto.bookingRequestId // Removed during transition
     });
 
@@ -107,11 +121,14 @@ export class StudentsService {
     await this.createRelatedEntities(savedStudent.id, createStudentDto);
 
     // Return in API format
-    return this.findOne(savedStudent.id);
+    return this.findOne(savedStudent.id, hostelId);
   }
 
-  async update(id: string, updateStudentDto: any) {
-    const student = await this.findOne(id);
+  async update(id: string, updateStudentDto: any, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for student operations');
+    }
+    const student = await this.findOne(id, hostelId);
     
     // Update main student entity
     await this.studentRepository.update(id, {
@@ -127,16 +144,21 @@ export class StudentsService {
     // Update related entities
     await this.updateRelatedEntities(id, updateStudentDto);
 
-    return this.findOne(id);
+    return this.findOne(id, hostelId);
   }
 
-  async getStats() {
-    const totalStudents = await this.studentRepository.count();
+  async getStats(hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context required for student operations');
+    }
+    const totalStudents = await this.studentRepository.count({
+      where: { hostelId }
+    });
     const activeStudents = await this.studentRepository.count({ 
-      where: { status: StudentStatus.ACTIVE } 
+      where: { status: StudentStatus.ACTIVE, hostelId } 
     });
     const inactiveStudents = await this.studentRepository.count({ 
-      where: { status: StudentStatus.INACTIVE } 
+      where: { status: StudentStatus.INACTIVE, hostelId } 
     });
     
     // Calculate financial totals from ledger entries (will implement when ledger is ready)
@@ -174,7 +196,7 @@ export class StudentsService {
     const balanceResult = await this.ledgerRepository
       .createQueryBuilder('ledger')
       .select('SUM(ledger.debit)', 'totalDebits')
-      .addSelect('SUM(ledger.credit)', 'totalCredits')
+      .addSelect('SUM(ledger.credit)', 'totalCredits')My Recommendation
       .where('ledger.studentId = :studentId', { studentId: student.id })
       .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
       .getRawOne();
