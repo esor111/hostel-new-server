@@ -107,7 +107,7 @@ export abstract class HostelScopedService<T extends HostelScopedEntity> {
       }
 
       // Perform update
-      await this.repository.update(entityId, updateData);
+      await this.repository.update(entityId, updateData as any);
       
       const updatedEntity = await this.repository.findOne({
         where: { id: entityId } as any

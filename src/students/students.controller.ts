@@ -8,7 +8,7 @@ import {
   CheckoutStudentDto, 
   BulkUpdateStudentDto 
 } from './dto';
-import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
 
 @ApiTags('students')
 @Controller('students')
@@ -18,7 +18,7 @@ export class StudentsController {
   @Get()
   @ApiOperation({ summary: 'Get all students' })
   @ApiResponse({ status: 200, description: 'List of students retrieved successfully' })
-  async getAllStudents(@Query() query: any, @GetHostelId() hostelId: string) {
+  async getAllStudents(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
     const result = await this.studentsService.findAll(query, hostelId);
     
     // Return EXACT same format as current Express API
@@ -31,7 +31,7 @@ export class StudentsController {
   @Get('stats')
   @ApiOperation({ summary: 'Get student statistics' })
   @ApiResponse({ status: 200, description: 'Student statistics retrieved successfully' })
-  async getStudentStats(@GetHostelId() hostelId: string) {
+  async getStudentStats(@GetOptionalHostelId() hostelId?: string) {
     const stats = await this.studentsService.getStats(hostelId);
     
     // Return EXACT same format as current Express API
@@ -45,7 +45,7 @@ export class StudentsController {
   @ApiOperation({ summary: 'Get student by ID' })
   @ApiResponse({ status: 200, description: 'Student retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Student not found' })
-  async getStudentById(@Param('id') id: string, @GetHostelId() hostelId: string) {
+  async getStudentById(@Param('id') id: string, @GetOptionalHostelId() hostelId?: string) {
     const student = await this.studentsService.findOne(id, hostelId);
     
     // Return EXACT same format as current Express API
@@ -58,7 +58,7 @@ export class StudentsController {
   @Post()
   @ApiOperation({ summary: 'Create new student' })
   @ApiResponse({ status: 201, description: 'Student created successfully' })
-  async createStudent(@Body(ValidationPipe) createStudentDto: CreateStudentDto, @GetHostelId() hostelId: string) {
+  async createStudent(@Body(ValidationPipe) createStudentDto: CreateStudentDto, @GetOptionalHostelId() hostelId?: string) {
     const student = await this.studentsService.create(createStudentDto, hostelId);
     
     // Return EXACT same format as current Express API
@@ -71,7 +71,7 @@ export class StudentsController {
   @Put(':id')
   @ApiOperation({ summary: 'Update student' })
   @ApiResponse({ status: 200, description: 'Student updated successfully' })
-  async updateStudent(@Param('id') id: string, @Body(ValidationPipe) updateStudentDto: UpdateStudentDto, @GetHostelId() hostelId: string) {
+  async updateStudent(@Param('id') id: string, @Body(ValidationPipe) updateStudentDto: UpdateStudentDto, @GetOptionalHostelId() hostelId?: string) {
     const student = await this.studentsService.update(id, updateStudentDto, hostelId);
     
     // Return EXACT same format as current Express API

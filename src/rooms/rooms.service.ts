@@ -38,9 +38,6 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   async findAll(filters: any = {}, hostelId?: string) {
-    if (!hostelId) {
-      throw new Error('Hostel context required for room operations');
-    }
     const { status = 'all', type = 'all', search = '', page = 1, limit = 20 } = filters;
 
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
@@ -51,8 +48,12 @@ export class RoomsService extends HostelScopedService<Room> {
       .leftJoinAndSelect('room.amenities', 'roomAmenities')
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
       .leftJoinAndSelect('room.layout', 'layout')
-      .leftJoinAndSelect('room.beds', 'beds')
-      .where('room.hostelId = :hostelId', { hostelId });
+      .leftJoinAndSelect('room.beds', 'beds');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    }
 
     // Apply status filter
     if (status !== 'all') {
@@ -109,11 +110,14 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   async findOne(id: string, hostelId?: string) {
-    if (!hostelId) {
-      throw new Error('Hostel context required for room operations');
+    // Build where condition conditionally
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
     }
+
     const room = await this.roomRepository.findOne({
-      where: { id, hostelId },
+      where: whereCondition,
       relations: [
         'building',
         'roomType',
@@ -145,9 +149,6 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   async create(createRoomDto: any, hostelId?: string) {
-    if (!hostelId) {
-      throw new Error('Hostel context required for room operations');
-    }
     console.log('🏠 Creating new room');
     console.log('📤 Create data received:', JSON.stringify(createRoomDto, null, 2));
 
@@ -186,7 +187,7 @@ export class RoomsService extends HostelScopedService<Room> {
       lastCleaned: createRoomDto.lastCleaned,
       description: createRoomDto.description,
       roomTypeId: roomType?.id,
-      hostelId, // Inject hostelId from context
+      hostelId: hostelId || null, // Inject hostelId from context if provided
       // Map floor to building (simplified for now)
       buildingId: null // Will implement building logic later
     });
@@ -226,9 +227,6 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   async update(id: string, updateRoomDto: any, hostelId?: string) {
-    if (!hostelId) {
-      throw new Error('Hostel context required for room operations');
-    }
     console.log('🏠 Updating room:', id);
     console.log('📤 Update data received:', JSON.stringify(updateRoomDto, null, 2));
 
@@ -278,8 +276,12 @@ export class RoomsService extends HostelScopedService<Room> {
       // If bed count changed, ensure bed entities are synchronized
       if (updateData.bedCount !== undefined) {
         console.log('🔄 Bed count changed, ensuring bed synchronization');
+        const whereCondition: any = { id };
+        if (hostelId) {
+          whereCondition.hostelId = hostelId;
+        }
         const updatedRoom = await this.roomRepository.findOne({
-          where: { id, hostelId },
+          where: whereCondition,
           relations: ['layout', 'beds']
         });
 
@@ -303,36 +305,47 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   async getStats(hostelId?: string) {
-    if (!hostelId) {
-      throw new Error('Hostel context required for room operations');
+    // Build where conditions conditionally
+    const baseWhere: any = {};
+    if (hostelId) {
+      baseWhere.hostelId = hostelId;
     }
+
     const totalRooms = await this.roomRepository.count({
-      where: { hostelId }
+      where: baseWhere
     });
     const activeRooms = await this.roomRepository.count({
-      where: { status: 'ACTIVE', hostelId }
+      where: { ...baseWhere, status: 'ACTIVE' }
     });
     const maintenanceRooms = await this.roomRepository.count({
-      where: { status: 'MAINTENANCE', hostelId }
+      where: { ...baseWhere, status: 'MAINTENANCE' }
     });
 
     // Get accurate occupancy data from RoomOccupant records
-    const occupancyResult = await this.roomRepository
+    const occupancyQueryBuilder = this.roomRepository
       .createQueryBuilder('room')
       .select('SUM(room.bedCount)', 'totalBeds')
-      .where('room.status = :status', { status: 'ACTIVE' })
-      .andWhere('room.hostelId = :hostelId', { hostelId })
-      .getRawOne();
+      .where('room.status = :status', { status: 'ACTIVE' });
+    
+    if (hostelId) {
+      occupancyQueryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    }
+    
+    const occupancyResult = await occupancyQueryBuilder.getRawOne();
 
     // Count actual active occupants
-    const actualOccupiedResult = await this.roomOccupantRepository
+    const occupiedQueryBuilder = this.roomOccupantRepository
       .createQueryBuilder('occupant')
       .innerJoin('occupant.room', 'room')
       .select('COUNT(occupant.id)', 'totalOccupied')
       .where('occupant.status = :status', { status: 'Active' })
-      .andWhere('room.status = :roomStatus', { roomStatus: 'ACTIVE' })
-      .andWhere('room.hostelId = :hostelId', { hostelId })
-      .getRawOne();
+      .andWhere('room.status = :roomStatus', { roomStatus: 'ACTIVE' });
+    
+    if (hostelId) {
+      occupiedQueryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    }
+    
+    const actualOccupiedResult = await occupiedQueryBuilder.getRawOne();
 
     const totalBeds = parseInt(occupancyResult?.totalBeds) || 0;
     const totalOccupied = parseInt(actualOccupiedResult?.totalOccupied) || 0;
@@ -352,11 +365,14 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   async getAvailableRooms(hostelId?: string) {
-    if (!hostelId) {
-      throw new Error('Hostel context required for room operations');
+    // Build where condition conditionally
+    const whereCondition: any = { status: 'ACTIVE' };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
     }
+
     const availableRooms = await this.roomRepository.find({
-      where: { status: 'ACTIVE', hostelId },
+      where: whereCondition,
       relations: ['roomType', 'amenities', 'amenities.amenity', 'occupants', 'beds', 'layout']
     });
 

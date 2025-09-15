@@ -52,6 +52,30 @@ export class SeedController {
     }
   }
 
+  @Post('hostel')
+  @ApiOperation({ summary: 'Seed database with hostel-specific data' })
+  @ApiResponse({ status: 201, description: 'Database seeded successfully with hostel ID' })
+  async seedWithHostelId(@Body() body: { hostelId: string, force?: boolean }) {
+    try {
+      const result = await this.seedService.seedAllWithHostelId(body.hostelId, body.force || false);
+      
+      return {
+        status: 201,
+        message: 'Database seeded successfully with hostel ID',
+        data: result
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: 500,
+          message: 'Failed to seed database with hostel ID',
+          error: error.message
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
   @Post('buildings')
   async seedBuildings(@Query('force') force?: string) {
     try {

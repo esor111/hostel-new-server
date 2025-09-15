@@ -22,7 +22,7 @@ export class Bed extends BaseEntity {
   @Column({ name: 'room_id' })
   roomId: string;
 
-  @Column({ name: 'hostel_id' })
+  @Column({ name: 'hostelId' })
   hostelId: string;
 
   @Column({ name: 'bed_number', length: 10 })
@@ -72,6 +72,6 @@ export class Bed extends BaseEntity {
   room: Room;
 
   @ManyToOne(() => Hostel, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'hostel_id' })
+  @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 }

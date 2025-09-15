@@ -33,7 +33,7 @@ export class Payment extends BaseEntity {
   @Column({ name: 'student_id' })
   studentId: string;
 
-  @Column({ name: 'hostel_id' })
+  @Column({ name: 'hostelId' })
   hostelId: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
@@ -87,7 +87,7 @@ export class Payment extends BaseEntity {
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.payments, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'hostel_id' })
+  @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 
   @ManyToOne(() => Student, student => student.payments, { onDelete: 'CASCADE' })

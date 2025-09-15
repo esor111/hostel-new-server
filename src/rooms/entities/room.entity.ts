@@ -83,7 +83,7 @@ export class Room extends BaseEntity {
   description: string;
 
   // Foreign Keys
-  @Column({ name: 'hostel_id' })
+  @Column({ name: 'hostelId' })
   hostelId: string;
 
   @Column({ nullable: true })
@@ -104,7 +104,7 @@ export class Room extends BaseEntity {
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.rooms, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'hostel_id' })
+  @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 
   @ManyToOne(() => Building, building => building.rooms, { nullable: true })

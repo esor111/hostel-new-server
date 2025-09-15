@@ -26,7 +26,7 @@ export class AdminCharge extends BaseEntity {
   @Column({ name: 'student_id' })
   studentId: string;
 
-  @Column({ name: 'hostel_id' })
+  @Column({ name: 'hostelId' })
   hostelId: string;
 
   @Column({ type: 'varchar', length: 255 })
@@ -76,7 +76,7 @@ export class AdminCharge extends BaseEntity {
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.adminCharges, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'hostel_id' })
+  @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 
   @ManyToOne(() => Student, student => student.adminCharges, { eager: true, onDelete: 'CASCADE' })

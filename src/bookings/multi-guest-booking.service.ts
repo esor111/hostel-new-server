@@ -72,9 +72,9 @@ export class MultiGuestBookingService {
     private validationService: BookingValidationService,
     private notificationService: NotificationCommunicationService,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
-  async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto): Promise<any> {
+  async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string): Promise<any> {
     // Extract data from the nested structure
     const bookingData = createDto.data;
     this.logger.log(`Creating multi-guest booking for ${bookingData.contactPerson.name} with ${bookingData.guests.length} guests`);
@@ -89,7 +89,7 @@ export class MultiGuestBookingService {
         }
 
         const bedIds = bookingData.guests.map(guest => guest.bedId);
-        
+
         // Validate bed IDs
         const bedValidation = await this.validationService.validateBedIds(bedIds);
         if (!bedValidation.isValid) {
@@ -101,7 +101,7 @@ export class MultiGuestBookingService {
           bedId: guest.bedId,
           gender: guest.gender
         }));
-        
+
         const genderValidation = await this.validationService.validateGenderCompatibility(guestAssignments);
         if (!genderValidation.isValid) {
           throw new BadRequestException(`Gender compatibility validation failed: ${genderValidation.errors.join('; ')}`);
@@ -152,8 +152,8 @@ export class MultiGuestBookingService {
 
         // Reserve beds temporarily using BedSyncService for proper synchronization
         await this.bedSyncService.handleBookingStatusChange(
-          bedIds, 
-          BedStatus.RESERVED, 
+          bedIds,
+          BedStatus.RESERVED,
           savedBooking.bookingReference
         );
 
@@ -164,7 +164,7 @@ export class MultiGuestBookingService {
           await this.notificationService.sendBookingRequestNotification({
             bookingId: savedBooking.id,
             contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-            hostelId: this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
+            hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
             checkInDate: bookingData.checkInDate,
             contactName: bookingData.contactPerson.name,
             hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
@@ -180,7 +180,7 @@ export class MultiGuestBookingService {
           where: { id: savedBooking.id },
           relations: ['guests']
         });
-        
+
         return this.transformToApiResponse(bookingWithGuests);
       } catch (error) {
         this.logger.error(`❌ Error creating multi-guest booking: ${error.message}`);
@@ -234,7 +234,7 @@ export class MultiGuestBookingService {
 
         // Map legacy fields to multi-guest fields
         const updateData: any = {};
-        
+
         if (updateDto.name) updateData.contactName = updateDto.name;
         if (updateDto.phone) updateData.contactPhone = updateDto.phone;
         if (updateDto.email) updateData.contactEmail = updateDto.email;
@@ -269,7 +269,7 @@ export class MultiGuestBookingService {
     });
   }
 
-  async confirmBooking(id: string, processedBy?: string): Promise<ConfirmationResult> {
+  async confirmBooking(id: string, processedBy?: string, hostelId?: string): Promise<ConfirmationResult> {
     this.logger.log(`Confirming multi-guest booking ${id}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -333,7 +333,7 @@ export class MultiGuestBookingService {
 
         // Update guest statuses and assign beds
         const guestAssignments = [];
-        
+
         for (const guest of booking.guests) {
           if (successfulAssignments.includes(guest.bedId)) {
             // Confirm guest
@@ -385,7 +385,7 @@ export class MultiGuestBookingService {
           await this.notificationService.sendBookingConfirmedNotification({
             bookingId: id,
             contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-            hostelId: this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
+            hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
             checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             contactName: booking.contactName,
             hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
@@ -398,7 +398,7 @@ export class MultiGuestBookingService {
 
         return {
           success: true,
-          message: failedAssignments.length > 0 
+          message: failedAssignments.length > 0
             ? `Booking partially confirmed: ${confirmedGuestCount}/${booking.totalGuests} guests assigned, ${createdStudents.length} students created`
             : `Multi-guest booking confirmed successfully, ${createdStudents.length} students created`,
           bookingId: id,
@@ -414,7 +414,7 @@ export class MultiGuestBookingService {
     });
   }
 
-  async cancelBooking(id: string, reason: string, processedBy?: string): Promise<CancellationResult> {
+  async cancelBooking(id: string, reason: string, processedBy?: string, hostelId?: string): Promise<CancellationResult> {
     this.logger.log(`Cancelling multi-guest booking ${id}: ${reason}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -452,7 +452,7 @@ export class MultiGuestBookingService {
         // Release beds using BedSyncService for proper synchronization
         const bedIds = booking.guests.map(guest => guest.bedId);
         await this.bedSyncService.handleBookingCancellation(bedIds, reason);
-        
+
         // All beds are considered released for the response
         const releasedBeds = bedIds;
 
@@ -472,50 +472,55 @@ export class MultiGuestBookingService {
     });
   }
 
-  async getAllBookings(filters: BookingFilters = {}): Promise<any> {
-    const { 
-      page = 1, 
-      limit = 50, 
-      status, 
-      contactEmail, 
-      contactPhone, 
-      checkInDate, 
-      source 
+  async getAllBookings(filters: BookingFilters = {}, hostelId?: string): Promise<any> {
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      contactEmail,
+      contactPhone,
+      checkInDate,
+      source
     } = filters;
-    
+
     this.logger.log(`Fetching multi-guest bookings with filters: ${JSON.stringify(filters)}`);
-    
+
     const queryBuilder = this.multiGuestBookingRepository.createQueryBuilder('booking')
       .leftJoinAndSelect('booking.guests', 'guests');
-    
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('booking.hostelId = :hostelId', { hostelId });
+    }
+
     // Apply filters
     if (status) {
       queryBuilder.andWhere('booking.status = :status', { status });
     }
-    
+
     if (contactEmail) {
       queryBuilder.andWhere('booking.contactEmail ILIKE :email', { email: `%${contactEmail}%` });
     }
-    
+
     if (contactPhone) {
       queryBuilder.andWhere('booking.contactPhone ILIKE :phone', { phone: `%${contactPhone}%` });
     }
-    
+
     if (checkInDate) {
       queryBuilder.andWhere('booking.checkInDate = :checkInDate', { checkInDate });
     }
-    
+
     if (source) {
       queryBuilder.andWhere('booking.source = :source', { source });
     }
-    
+
     // Pagination
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
     queryBuilder.orderBy('booking.createdAt', 'DESC');
-    
+
     const [bookings, total] = await queryBuilder.getManyAndCount();
-    
+
     return {
       items: bookings, // Return raw bookings for controller to transform
       pagination: {
@@ -529,7 +534,7 @@ export class MultiGuestBookingService {
     };
   }
 
-  async getBookingStats(): Promise<BookingStats> {
+  async getBookingStats(hostelId?: string): Promise<BookingStats> {
     this.logger.log('Generating multi-guest booking statistics');
 
     try {
@@ -545,20 +550,20 @@ export class MultiGuestBookingService {
         averageGuestsResult
       ] = await Promise.all([
         this.multiGuestBookingRepository.count(),
-        this.multiGuestBookingRepository.count({ 
-          where: { status: MultiGuestBookingStatus.PENDING } 
+        this.multiGuestBookingRepository.count({
+          where: { status: MultiGuestBookingStatus.PENDING }
         }),
-        this.multiGuestBookingRepository.count({ 
-          where: { status: MultiGuestBookingStatus.CONFIRMED } 
+        this.multiGuestBookingRepository.count({
+          where: { status: MultiGuestBookingStatus.CONFIRMED }
         }),
-        this.multiGuestBookingRepository.count({ 
-          where: { status: MultiGuestBookingStatus.PARTIALLY_CONFIRMED } 
+        this.multiGuestBookingRepository.count({
+          where: { status: MultiGuestBookingStatus.PARTIALLY_CONFIRMED }
         }),
-        this.multiGuestBookingRepository.count({ 
-          where: { status: MultiGuestBookingStatus.CANCELLED } 
+        this.multiGuestBookingRepository.count({
+          where: { status: MultiGuestBookingStatus.CANCELLED }
         }),
-        this.multiGuestBookingRepository.count({ 
-          where: { status: MultiGuestBookingStatus.COMPLETED } 
+        this.multiGuestBookingRepository.count({
+          where: { status: MultiGuestBookingStatus.COMPLETED }
         }),
         this.bookingGuestRepository.count(),
         this.bookingGuestRepository.count({
@@ -571,10 +576,10 @@ export class MultiGuestBookingService {
       ]);
 
       const effectiveConfirmedBookings = confirmedBookings + partiallyConfirmedBookings;
-      const confirmationRate = totalBookings > 0 ? 
+      const confirmationRate = totalBookings > 0 ?
         (effectiveConfirmedBookings / totalBookings) * 100 : 0;
-      
-      const averageGuestsPerBooking = averageGuestsResult?.average ? 
+
+      const averageGuestsPerBooking = averageGuestsResult?.average ?
         parseFloat(averageGuestsResult.average) : 0;
 
       const stats: BookingStats = {
@@ -590,7 +595,7 @@ export class MultiGuestBookingService {
       };
 
       this.logger.log(`✅ Generated booking stats: ${totalBookings} total, ${effectiveConfirmedBookings} confirmed, ${confirmationRate.toFixed(1)}% rate`);
-      
+
       return stats;
     } catch (error) {
       this.logger.error(`❌ Error generating booking statistics: ${error.message}`);
@@ -635,9 +640,15 @@ export class MultiGuestBookingService {
   /**
    * Get bookings by status
    */
-  async getBookingsByStatus(status: MultiGuestBookingStatus): Promise<MultiGuestBooking[]> {
+  async getBookingsByStatus(status: MultiGuestBookingStatus, hostelId?: string): Promise<MultiGuestBooking[]> {
+    // Build where condition conditionally
+    const whereCondition: any = { status };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const bookings = await this.multiGuestBookingRepository.find({
-      where: { status },
+      where: whereCondition,
       relations: ['guests'],
       order: { createdAt: 'DESC' }
     });
@@ -648,20 +659,24 @@ export class MultiGuestBookingService {
   /**
    * Get pending bookings (for admin dashboard)
    */
-  async getPendingBookings(): Promise<any[]> {
-    return this.getBookingsByStatus(MultiGuestBookingStatus.PENDING);
+  async getPendingBookings(hostelId?: string): Promise<any[]> {
+    return this.getBookingsByStatus(MultiGuestBookingStatus.PENDING, hostelId);
   }
 
   /**
    * Search bookings by contact information
    */
-  async searchBookings(searchTerm: string): Promise<any[]> {
+  async searchBookings(searchTerm: string, hostelId?: string): Promise<any[]> {
     const queryBuilder = this.multiGuestBookingRepository.createQueryBuilder('booking')
-      .leftJoinAndSelect('booking.guests', 'guests')
-      .where('booking.contactName ILIKE :term', { term: `%${searchTerm}%` })
-      .orWhere('booking.contactEmail ILIKE :term', { term: `%${searchTerm}%` })
-      .orWhere('booking.contactPhone ILIKE :term', { term: `%${searchTerm}%` })
-      .orWhere('booking.bookingReference ILIKE :term', { term: `%${searchTerm}%` })
+      .leftJoinAndSelect('booking.guests', 'guests');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('booking.hostelId = :hostelId', { hostelId });
+    }
+
+    queryBuilder
+      .andWhere('(booking.contactName ILIKE :term OR booking.contactEmail ILIKE :term OR booking.contactPhone ILIKE :term OR booking.bookingReference ILIKE :term)', { term: `%${searchTerm}%` })
       .orderBy('booking.createdAt', 'DESC');
 
     const bookings = await queryBuilder.getMany();
@@ -671,14 +686,20 @@ export class MultiGuestBookingService {
   /**
    * Get bookings for a specific date range
    */
-  async getBookingsByDateRange(startDate: Date, endDate: Date): Promise<any[]> {
+  async getBookingsByDateRange(startDate: Date, endDate: Date, hostelId?: string): Promise<any[]> {
+    // Build where condition conditionally
+    const whereCondition: any = {
+      checkInDate: {
+        gte: startDate,
+        lte: endDate
+      } as any
+    };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const bookings = await this.multiGuestBookingRepository.find({
-      where: {
-        checkInDate: {
-          gte: startDate,
-          lte: endDate
-        } as any
-      },
+      where: whereCondition,
       relations: ['guests'],
       order: { checkInDate: 'ASC' }
     });
@@ -700,7 +721,7 @@ export class MultiGuestBookingService {
   /**
    * Get booking summary for reporting
    */
-  async getBookingSummary(startDate?: Date, endDate?: Date): Promise<any> {
+  async getBookingSummary(startDate?: Date, endDate?: Date, hostelId?: string): Promise<any> {
     const queryBuilder = this.multiGuestBookingRepository.createQueryBuilder('booking');
 
     if (startDate && endDate) {
@@ -716,8 +737,8 @@ export class MultiGuestBookingService {
         .leftJoin('booking.guests', 'guest')
         .leftJoin(Bed, 'bed', 'bed.id = guest.bedId')
         .select('SUM(bed.monthlyRate)', 'total')
-        .where('booking.status IN (:...statuses)', { 
-          statuses: [MultiGuestBookingStatus.CONFIRMED, MultiGuestBookingStatus.PARTIALLY_CONFIRMED] 
+        .where('booking.status IN (:...statuses)', {
+          statuses: [MultiGuestBookingStatus.CONFIRMED, MultiGuestBookingStatus.PARTIALLY_CONFIRMED]
         })
         .getRawOne()
     ]);
@@ -725,14 +746,14 @@ export class MultiGuestBookingService {
     const summary = {
       totalBookings: bookings.length,
       totalGuests: bookings.reduce((sum, booking) => sum + booking.totalGuests, 0),
-      confirmedBookings: bookings.filter(b => 
-        b.status === MultiGuestBookingStatus.CONFIRMED || 
+      confirmedBookings: bookings.filter(b =>
+        b.status === MultiGuestBookingStatus.CONFIRMED ||
         b.status === MultiGuestBookingStatus.PARTIALLY_CONFIRMED
       ).length,
       pendingBookings: bookings.filter(b => b.status === MultiGuestBookingStatus.PENDING).length,
       cancelledBookings: bookings.filter(b => b.status === MultiGuestBookingStatus.CANCELLED).length,
       estimatedRevenue: totalRevenue?.total ? parseFloat(totalRevenue.total) : 0,
-      averageGuestsPerBooking: bookings.length > 0 ? 
+      averageGuestsPerBooking: bookings.length > 0 ?
         bookings.reduce((sum, booking) => sum + booking.totalGuests, 0) / bookings.length : 0
     };
 
@@ -757,7 +778,7 @@ export class MultiGuestBookingService {
 
     for (const bedId of bedIds) {
       const bed = beds.find(b => b.id === bedId);
-      
+
       if (!bed) {
         unavailable.push(bedId);
         conflicts.push({ bedId, reason: 'Bed not found' });
@@ -871,7 +892,7 @@ export class MultiGuestBookingService {
   /**
    * Approve booking (enhanced for single guest compatibility)
    */
-  async approveBooking(id: string, approvalData: ApproveBookingDto): Promise<any> {
+  async approveBooking(id: string, approvalData: ApproveBookingDto, hostelId?: string): Promise<any> {
     this.logger.log(`Approving booking ${id}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -922,7 +943,7 @@ export class MultiGuestBookingService {
           await this.notificationService.sendBookingApprovedNotification({
             bookingId: id,
             contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-            hostelId: this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
+            hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
             checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             contactName: booking.contactName,
             hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
@@ -950,7 +971,7 @@ export class MultiGuestBookingService {
   /**
    * Reject booking (updated for new rejection flow)
    */
-  async rejectBooking(bookingId: string, reason: string, processedBy: string) {
+  async rejectBooking(bookingId: string, reason: string, processedBy: string, hostelId?: string) {
     this.logger.log(`Admin ${processedBy} rejecting booking ${bookingId} with reason: ${reason}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -999,7 +1020,7 @@ export class MultiGuestBookingService {
         await this.notificationService.sendBookingRejectedNotification({
           bookingId: booking.id,
           contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-          hostelId: this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
+          hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
           checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           contactName: booking.contactName,
           hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
@@ -1041,25 +1062,25 @@ export class MultiGuestBookingService {
         monthlyTrend
       ] = await Promise.all([
         this.multiGuestBookingRepository.count(),
-        this.multiGuestBookingRepository.count({ 
-          where: { status: MultiGuestBookingStatus.PENDING } 
+        this.multiGuestBookingRepository.count({
+          where: { status: MultiGuestBookingStatus.PENDING }
         }),
-        this.multiGuestBookingRepository.count({ 
+        this.multiGuestBookingRepository.count({
           where: [
             { status: MultiGuestBookingStatus.CONFIRMED },
             { status: MultiGuestBookingStatus.PARTIALLY_CONFIRMED }
           ]
         }),
-        this.multiGuestBookingRepository.count({ 
+        this.multiGuestBookingRepository.count({
           where: { status: MultiGuestBookingStatus.CANCELLED, rejectionReason: Not(IsNull()) }
         }),
-        this.multiGuestBookingRepository.count({ 
+        this.multiGuestBookingRepository.count({
           where: { status: MultiGuestBookingStatus.CANCELLED }
         }),
-        this.multiGuestBookingRepository.count({ 
+        this.multiGuestBookingRepository.count({
           where: { totalGuests: 1 }
         }),
-        this.multiGuestBookingRepository.count({ 
+        this.multiGuestBookingRepository.count({
           where: { totalGuests: MoreThan(1) }
         }),
         this.bookingGuestRepository.count(),
@@ -1076,8 +1097,8 @@ export class MultiGuestBookingService {
           .createQueryBuilder('booking')
           .select('DATE_TRUNC(\'month\', booking.requestDate)', 'month')
           .addSelect('COUNT(*)', 'count')
-          .where('booking.requestDate >= :sixMonthsAgo', { 
-            sixMonthsAgo: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) 
+          .where('booking.requestDate >= :sixMonthsAgo', {
+            sixMonthsAgo: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000)
           })
           .groupBy('DATE_TRUNC(\'month\', booking.requestDate)')
           .orderBy('month', 'ASC')
@@ -1110,7 +1131,7 @@ export class MultiGuestBookingService {
       };
 
       this.logger.log(`✅ Generated enhanced booking stats: ${totalBookings} total, ${approvedBookings} approved, ${approvalRate.toFixed(1)}% rate`);
-      
+
       return stats;
     } catch (error) {
       this.logger.error(`❌ Error generating enhanced booking statistics: ${error.message}`);
@@ -1123,7 +1144,7 @@ export class MultiGuestBookingService {
    */
   private transformToBookingRequestFormat(booking: MultiGuestBooking, guests?: BookingGuest[]): any {
     const primaryGuest = guests?.[0] || booking.guests?.[0];
-    
+
     return {
       id: booking.id,
       name: primaryGuest?.guestName || booking.contactName,
@@ -1195,23 +1216,23 @@ export class MultiGuestBookingService {
    */
   private calculatePriorityScore(bookingData: CreateBookingDto): number {
     let score = 0;
-    
+
     // Early application bonus
-    const daysUntilCheckIn = bookingData.checkInDate ? 
+    const daysUntilCheckIn = bookingData.checkInDate ?
       Math.floor((new Date(bookingData.checkInDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
-    
+
     if (daysUntilCheckIn > 30) score += 10;
     else if (daysUntilCheckIn > 7) score += 5;
-    
+
     // Complete information bonus
     if (bookingData.guardianName && bookingData.guardianPhone) score += 5;
     if (bookingData.emergencyContact) score += 3;
     if (bookingData.idProofType && bookingData.idProofNumber) score += 5;
-    
+
     // Duration bonus (longer stays get priority)
     if (bookingData.duration && bookingData.duration > 12) score += 10;
     else if (bookingData.duration && bookingData.duration > 6) score += 5;
-    
+
     return score;
   }
 
@@ -1219,16 +1240,16 @@ export class MultiGuestBookingService {
    * Create student from guest (for approval workflow)
    */
   private async createStudentFromGuest(
-    manager: any, 
-    guest: BookingGuest, 
-    booking: MultiGuestBooking, 
+    manager: any,
+    guest: BookingGuest,
+    booking: MultiGuestBooking,
     approvalData: ApproveBookingDto
   ): Promise<Student> {
     // Fixed: Convert room number to UUID using validation service
     let roomUuid = null;
     if (approvalData.assignedRoom) {
       const roomValidation = await this.validationService.validateAndConvertRoomNumber(approvalData.assignedRoom);
-      
+
       if (roomValidation.isValid) {
         roomUuid = roomValidation.roomUuid;
         this.logger.log(`✅ Found room UUID ${roomUuid} for room number ${approvalData.assignedRoom}`);
@@ -1240,7 +1261,7 @@ export class MultiGuestBookingService {
 
     // Generate unique email and phone for each guest to avoid unique constraint violations
     let guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}@guest.booking`;
-    
+
     // Check if email already exists and modify if needed
     const existingEmailStudent = await manager.findOne(Student, { where: { email: guestEmail } });
     if (existingEmailStudent) {
@@ -1248,7 +1269,7 @@ export class MultiGuestBookingService {
       guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}.${timestamp}@guest.booking`;
       this.logger.warn(`Generated email already exists, using ${guestEmail} instead`);
     }
-    
+
     // Generate unique phone number with strict 20-character limit
     let guestPhone = booking.contactPhone; // Use booking contact phone as base
     if (guestPhone) {
@@ -1256,7 +1277,7 @@ export class MultiGuestBookingService {
       const basePhone = booking.contactPhone.replace(/[^0-9]/g, ''); // Keep only digits
       const uniqueSuffix = guest.id.slice(-4); // Last 4 chars of guest ID
       const timestamp = Date.now().toString().slice(-3); // Last 3 digits of timestamp
-      
+
       // Ensure total length stays under 20 characters
       const maxBaseLength = 20 - uniqueSuffix.length - timestamp.length;
       const truncatedBase = basePhone.slice(0, maxBaseLength);
@@ -1272,7 +1293,7 @@ export class MultiGuestBookingService {
         this.logger.warn(`Phone already exists, using ${guestPhone} instead`);
       }
     }
-    
+
     // Final safety check: ensure phone is within 20 character limit
     if (guestPhone.length > 20) {
       guestPhone = guestPhone.slice(0, 20);
@@ -1293,9 +1314,9 @@ export class MultiGuestBookingService {
     });
 
     const savedStudent = await manager.save(Student, student);
-    
+
     this.logger.log(`✅ Created student profile for ${guest.guestName} (ID: ${savedStudent.id}) with room UUID: ${roomUuid}`);
-    
+
     return savedStudent;
   }
 
@@ -1319,7 +1340,7 @@ export class MultiGuestBookingService {
 
     // Build query conditions
     const queryConditions: any = {};
-    
+
     // In development, if email is 'debug' or 'all', return all bookings
     if (userEmail !== 'debug' && userEmail !== 'all') {
       queryConditions.contactEmail = userEmail;
@@ -1345,7 +1366,7 @@ export class MultiGuestBookingService {
     if (totalCount === 0) {
       const totalSystemBookings = await this.multiGuestBookingRepository.count();
       this.logger.log(`Total bookings in system: ${totalSystemBookings}`);
-      
+
       // Get a sample of existing contact emails for debugging
       const sampleBookings = await this.multiGuestBookingRepository.find({
         select: ['contactEmail', 'contactName'],
@@ -1391,14 +1412,14 @@ export class MultiGuestBookingService {
   /**
    * Cancel a user's booking
    */
-  async cancelMyBooking(bookingId: string, userEmail: string, reason: string) {
+  async cancelMyBooking(bookingId: string, userEmail: string, reason: string, hostelId?: string) {
     this.logger.log(`User ${userEmail} attempting to cancel booking ${bookingId} with reason: ${reason}`);
 
     return await this.dataSource.transaction(async manager => {
       // Find the booking and verify ownership
       const booking = await manager.findOne(MultiGuestBooking, {
-        where: { 
-          id: bookingId, 
+        where: {
+          id: bookingId,
           contactEmail: userEmail // Ensure user owns this booking
         },
         relations: ['guests']
@@ -1443,7 +1464,7 @@ export class MultiGuestBookingService {
         await this.notificationService.sendBookingCancelledNotification({
           bookingId: booking.id,
           contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-          hostelId: this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
+          hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
           checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           contactName: booking.contactName,
           hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),

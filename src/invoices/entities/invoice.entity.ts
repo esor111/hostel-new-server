@@ -24,7 +24,7 @@ export class Invoice extends BaseEntity {
   @Column({ name: 'student_id' })
   studentId: string;
 
-  @Column({ name: 'hostel_id' })
+  @Column({ name: 'hostelId' })
   hostelId: string;
 
   @Column({ length: 20 }) // YYYY-MM format with extra space for safety
@@ -76,7 +76,7 @@ export class Invoice extends BaseEntity {
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.invoices, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'hostel_id' })
+  @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 
   @ManyToOne(() => Student, student => student.invoices, { onDelete: 'CASCADE' })

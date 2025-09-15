@@ -5,7 +5,7 @@ import { BedService } from './bed.service';
 import { BedSyncService } from './bed-sync.service';
 import { CreateRoomDto, UpdateRoomDto, AssignStudentDto, VacateStudentDto, MaintenanceDto } from './dto';
 import { BedStatus } from './entities/bed.entity';
-import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
 
 @ApiTags('rooms')
 @Controller('rooms')
@@ -19,7 +19,7 @@ export class RoomsController {
   @Get()
   @ApiOperation({ summary: 'Get all rooms' })
   @ApiResponse({ status: 200, description: 'List of rooms retrieved successfully' })
-  async getAllRooms(@Query() query: any, @GetHostelId() hostelId: string) {
+  async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
     const result = await this.roomsService.findAll(query, hostelId);
     
     // Return EXACT same format as current Express API
@@ -32,7 +32,7 @@ export class RoomsController {
   @Get('stats')
   @ApiOperation({ summary: 'Get room statistics' })
   @ApiResponse({ status: 200, description: 'Room statistics retrieved successfully' })
-  async getRoomStats(@GetHostelId() hostelId: string) {
+  async getRoomStats(@GetOptionalHostelId() hostelId?: string) {
     const stats = await this.roomsService.getStats(hostelId);
     
     // Return EXACT same format as current Express API
@@ -45,7 +45,7 @@ export class RoomsController {
   @Get('available')
   @ApiOperation({ summary: 'Get available rooms' })
   @ApiResponse({ status: 200, description: 'Available rooms retrieved successfully' })
-  async getAvailableRooms(@GetHostelId() hostelId: string) {
+  async getAvailableRooms(@GetOptionalHostelId() hostelId?: string) {
     const availableRooms = await this.roomsService.getAvailableRooms(hostelId);
     
     // Return EXACT same format as current Express API
@@ -62,7 +62,7 @@ export class RoomsController {
   @ApiOperation({ summary: 'Get room by ID' })
   @ApiResponse({ status: 200, description: 'Room retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Room not found' })
-  async getRoomById(@Param('id') id: string, @GetHostelId() hostelId: string) {
+  async getRoomById(@Param('id') id: string, @GetOptionalHostelId() hostelId?: string) {
     const room = await this.roomsService.findOne(id, hostelId);
     
     // Return EXACT same format as current Express API
@@ -75,7 +75,7 @@ export class RoomsController {
   @Post()
   @ApiOperation({ summary: 'Create new room' })
   @ApiResponse({ status: 201, description: 'Room created successfully' })
-  async createRoom(@Body() createRoomDto: CreateRoomDto, @GetHostelId() hostelId: string) {
+  async createRoom(@Body() createRoomDto: CreateRoomDto, @GetOptionalHostelId() hostelId?: string) {
     const room = await this.roomsService.create(createRoomDto, hostelId);
     
     // Return EXACT same format as current Express API
@@ -88,7 +88,7 @@ export class RoomsController {
   @Put(':id')
   @ApiOperation({ summary: 'Update room' })
   @ApiResponse({ status: 200, description: 'Room updated successfully' })
-  async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetHostelId() hostelId: string) {
+  async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetOptionalHostelId() hostelId?: string) {
     const room = await this.roomsService.update(id, updateRoomDto, hostelId);
     
     // Return EXACT same format as current Express API

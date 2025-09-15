@@ -15,7 +15,7 @@ export class InvoicesService {
     private ledgerService: LedgerService,
   ) {}
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
     const { page = 1, limit = 50, status, studentId, month, search } = filters;
     
     const queryBuilder = this.invoiceRepository.createQueryBuilder('invoice')
@@ -24,6 +24,11 @@ export class InvoicesService {
       .leftJoinAndSelect('invoice.items', 'items')
       .leftJoinAndSelect('invoice.paymentAllocations', 'paymentAllocations')
       .leftJoinAndSelect('paymentAllocations.payment', 'payment');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('invoice.hostelId = :hostelId', { hostelId });
+    }
     
     // Apply filters
     if (status) {
@@ -68,9 +73,15 @@ export class InvoicesService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, hostelId?: string) {
+    // Build where condition conditionally
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const invoice = await this.invoiceRepository.findOne({
-      where: { id },
+      where: whereCondition,
       relations: [
         'student',
         'student.room',
@@ -144,28 +155,39 @@ export class InvoicesService {
     return this.findOne(id);
   }
 
-  async getStats() {
-    const totalInvoices = await this.invoiceRepository.count();
+  async getStats(hostelId?: string) {
+    // Build where conditions conditionally
+    const baseWhere: any = {};
+    if (hostelId) {
+      baseWhere.hostelId = hostelId;
+    }
+
+    const totalInvoices = await this.invoiceRepository.count({ where: baseWhere });
     const paidInvoices = await this.invoiceRepository.count({ 
-      where: { status: InvoiceStatus.PAID } 
+      where: { ...baseWhere, status: InvoiceStatus.PAID } 
     });
     const unpaidInvoices = await this.invoiceRepository.count({ 
-      where: { status: InvoiceStatus.UNPAID } 
+      where: { ...baseWhere, status: InvoiceStatus.UNPAID } 
     });
     const partiallyPaidInvoices = await this.invoiceRepository.count({ 
-      where: { status: InvoiceStatus.PARTIALLY_PAID } 
+      where: { ...baseWhere, status: InvoiceStatus.PARTIALLY_PAID } 
     });
     const overdueInvoices = await this.invoiceRepository.count({ 
-      where: { status: InvoiceStatus.OVERDUE } 
+      where: { ...baseWhere, status: InvoiceStatus.OVERDUE } 
     });
     
-    const amountResult = await this.invoiceRepository
+    const amountQueryBuilder = this.invoiceRepository
       .createQueryBuilder('invoice')
       .select('SUM(invoice.total)', 'totalAmount')
       .addSelect('SUM(invoice.paymentTotal)', 'totalPaid')
       .addSelect('SUM(invoice.total - invoice.paymentTotal)', 'totalOutstanding')
-      .addSelect('AVG(invoice.total)', 'averageAmount')
-      .getRawOne();
+      .addSelect('AVG(invoice.total)', 'averageAmount');
+    
+    if (hostelId) {
+      amountQueryBuilder.andWhere('invoice.hostelId = :hostelId', { hostelId });
+    }
+    
+    const amountResult = await amountQueryBuilder.getRawOne();
 
     return {
       totalInvoices,

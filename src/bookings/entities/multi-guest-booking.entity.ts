@@ -20,7 +20,7 @@ export enum MultiGuestBookingStatus {
 @Index(['hostelId'])
 export class MultiGuestBooking extends BaseEntity {
   // Foreign Keys
-  @Column({ name: 'hostel_id' })
+  @Column({ name: 'hostelId' })
   hostelId: string;
 
   // Contact Person Information
@@ -117,7 +117,7 @@ export class MultiGuestBooking extends BaseEntity {
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.multiGuestBookings, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'hostel_id' })
+  @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 
   @OneToMany(() => BookingGuest, (guest) => guest.booking, { cascade: true })

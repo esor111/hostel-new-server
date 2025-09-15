@@ -15,7 +15,7 @@ export class DiscountsService {
     private ledgerService: LedgerService,
   ) {}
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
     const { 
       page = 1, 
       limit = 50, 
@@ -30,6 +30,11 @@ export class DiscountsService {
       .leftJoinAndSelect('discount.student', 'student')
       .leftJoinAndSelect('student.room', 'room')
       .leftJoinAndSelect('discount.discountType', 'discountType');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('discount.hostelId = :hostelId', { hostelId });
+    }
     
     // Apply filters
     if (studentId) {
@@ -78,9 +83,15 @@ export class DiscountsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, hostelId?: string) {
+    // Build where condition conditionally
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const discount = await this.discountRepository.findOne({
-      where: { id },
+      where: whereCondition,
       relations: ['student', 'student.room', 'discountType']
     });
     
@@ -205,31 +216,48 @@ export class DiscountsService {
     };
   }
 
-  async getStats() {
-    const totalDiscounts = await this.discountRepository.count();
+  async getStats(hostelId?: string) {
+    // Build where conditions conditionally
+    const baseWhere: any = {};
+    if (hostelId) {
+      baseWhere.hostelId = hostelId;
+    }
+
+    const totalDiscounts = await this.discountRepository.count({ where: baseWhere });
     const activeDiscounts = await this.discountRepository.count({ 
-      where: { status: DiscountStatus.ACTIVE } 
+      where: { ...baseWhere, status: DiscountStatus.ACTIVE } 
     });
     const expiredDiscounts = await this.discountRepository.count({ 
-      where: { status: DiscountStatus.EXPIRED } 
+      where: { ...baseWhere, status: DiscountStatus.EXPIRED } 
     });
     
-    const amountResult = await this.discountRepository
+    const amountQueryBuilder = this.discountRepository
       .createQueryBuilder('discount')
       .select('SUM(discount.amount)', 'totalAmount')
       .addSelect('AVG(discount.amount)', 'averageAmount')
       .addSelect('COUNT(DISTINCT discount.studentId)', 'studentsWithDiscounts')
-      .where('discount.status = :status', { status: DiscountStatus.ACTIVE })
-      .getRawOne();
+      .where('discount.status = :status', { status: DiscountStatus.ACTIVE });
+    
+    if (hostelId) {
+      amountQueryBuilder.andWhere('discount.hostelId = :hostelId', { hostelId });
+    }
+    
+    const amountResult = await amountQueryBuilder.getRawOne();
 
     // Discount type breakdown
-    const typeResult = await this.discountRepository
+    const typeQueryBuilder = this.discountRepository
       .createQueryBuilder('discount')
       .leftJoin('discount.discountType', 'discountType')
       .select('discountType.name', 'typeName')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(discount.amount)', 'amount')
-      .where('discount.status = :status', { status: DiscountStatus.ACTIVE })
+      .where('discount.status = :status', { status: DiscountStatus.ACTIVE });
+    
+    if (hostelId) {
+      typeQueryBuilder.andWhere('discount.hostelId = :hostelId', { hostelId });
+    }
+    
+    const typeResult = await typeQueryBuilder
       .groupBy('discountType.name')
       .getRawMany();
 

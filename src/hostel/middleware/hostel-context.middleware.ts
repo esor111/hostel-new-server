@@ -28,10 +28,10 @@ export class HostelContextMiddleware implements NestMiddleware {
 
       const { id: userId, kahaId, businessId } = req.user;
 
-      // Check if businessId exists (Business Token)
+      // If no businessId, skip hostel context setup (optional hostel filtering)
       if (!businessId) {
-        this.logger.warn(`User ${userId} attempted to access hostel-scoped endpoint without businessId`);
-        throw new ForbiddenException('Business token required for hostel-scoped operations');
+        this.logger.debug(`User ${userId} accessing endpoint without businessId - using global data access`);
+        return next();
       }
 
       this.logger.debug(`Setting up hostel context for businessId: ${businessId}`);
@@ -40,8 +40,8 @@ export class HostelContextMiddleware implements NestMiddleware {
       const hostel = await this.hostelService.ensureHostelExists(businessId);
       
       if (!hostel || !hostel.isActive) {
-        this.logger.error(`Invalid or inactive hostel for businessId: ${businessId}`);
-        throw new ForbiddenException('Invalid or inactive hostel');
+        this.logger.warn(`Invalid or inactive hostel for businessId: ${businessId} - falling back to global access`);
+        return next();
       }
 
       // Set hostel context in request
@@ -57,21 +57,9 @@ export class HostelContextMiddleware implements NestMiddleware {
     } catch (error) {
       this.logger.error('Error in hostel context middleware:', error);
       
-      if (error instanceof ForbiddenException || error instanceof BadRequestException) {
-        throw error;
-      }
-      
-      // Log security violations
-      this.logger.error(`Security violation: Hostel context validation failed for user ${req.user?.id}`, {
-        userId: req.user?.id,
-        businessId: req.user?.businessId,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-        ip: req.ip,
-        userAgent: req.get('User-Agent')
-      });
-      
-      throw new ForbiddenException('Hostel access validation failed');
+      // Instead of throwing errors, log them and continue without hostel context
+      this.logger.warn(`Hostel context setup failed, continuing with global access: ${error.message}`);
+      next();
     }
   }
 }

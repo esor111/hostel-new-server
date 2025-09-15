@@ -22,7 +22,7 @@ export class LedgerService {
     private discountRepository: Repository<Discount>,
   ) { }
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
     const {
       page = 1,
       limit = 50,
@@ -35,6 +35,11 @@ export class LedgerService {
 
     const queryBuilder = this.ledgerRepository.createQueryBuilder('ledger')
       .leftJoinAndSelect('ledger.student', 'student');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('ledger.hostelId = :hostelId', { hostelId });
+    }
 
     // Apply filters
     if (studentId) {

@@ -35,7 +35,7 @@ export enum ReportStatus {
 @Index(['isScheduled'])
 @Index(['hostelId'])
 export class Report extends BaseEntity {
-  @Column({ name: 'hostel_id' })
+  @Column({ name: 'hostelId' })
   hostelId: string;
 
   @Column({ length: 255 })
@@ -102,6 +102,6 @@ export class Report extends BaseEntity {
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.reports, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'hostel_id' })
+  @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 }
