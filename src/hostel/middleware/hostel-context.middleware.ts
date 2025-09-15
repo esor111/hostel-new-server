@@ -20,6 +20,8 @@ export class HostelContextMiddleware implements NestMiddleware {
 
   async use(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
+      this.logger.log(`🔧 Middleware called for ${req.method} ${req.url}`);
+      
       // Skip hostel context for non-authenticated requests
       if (!req.user) {
         this.logger.debug('No user in request, skipping hostel context');
@@ -27,6 +29,7 @@ export class HostelContextMiddleware implements NestMiddleware {
       }
 
       const { id: userId, kahaId, businessId } = req.user;
+      this.logger.log(`👤 User found: ${userId}, businessId: ${businessId}`);
 
       // If no businessId, skip hostel context setup (optional hostel filtering)
       if (!businessId) {
@@ -34,7 +37,7 @@ export class HostelContextMiddleware implements NestMiddleware {
         return next();
       }
 
-      this.logger.debug(`Setting up hostel context for businessId: ${businessId}`);
+      this.logger.log(`🏨 Setting up hostel context for businessId: ${businessId}`);
 
       // Validate and ensure hostel exists
       const hostel = await this.hostelService.ensureHostelExists(businessId);
@@ -46,12 +49,12 @@ export class HostelContextMiddleware implements NestMiddleware {
 
       // Set hostel context in request
       req.hostelContext = {
-        hostelId: businessId, // businessId = hostelId
+        hostelId: hostel.id, // Use the actual hostel ID, not businessId
         userId,
         kahaId
       };
 
-      this.logger.debug(`Hostel context established: hostelId=${businessId}, userId=${userId}`);
+      this.logger.log(`✅ Hostel context established: hostelId=${hostel.id}, userId=${userId}`);
       
       next();
     } catch (error) {

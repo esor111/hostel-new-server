@@ -14,20 +14,24 @@ import { RoomLayout } from './entities/room-layout.entity';
 import { Student } from '../students/entities/student.entity';
 import { Bed } from './entities/bed.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
+import { HostelModule } from '../hostel/hostel.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    Room,
-    Building,
-    RoomType,
-    Amenity,
-    RoomAmenity,
-    RoomOccupant,
-    RoomLayout,
-    Student,
-    Bed,
-    Hostel
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Room,
+      Building,
+      RoomType,
+      Amenity,
+      RoomAmenity,
+      RoomOccupant,
+      RoomLayout,
+      Student,
+      Bed,
+      Hostel
+    ]),
+    HostelModule
+  ],
   controllers: [RoomsController],
   providers: [RoomsService, BedSyncService, BedService],
   exports: [RoomsService, BedSyncService, BedService],

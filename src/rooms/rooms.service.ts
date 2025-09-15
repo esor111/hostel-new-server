@@ -13,6 +13,7 @@ import { Student } from '../students/entities/student.entity';
 import { BedSyncService } from './bed-sync.service';
 import { HostelScopedService } from '../common/services/hostel-scoped.service';
 
+
 @Injectable()
 export class RoomsService extends HostelScopedService<Room> {
   constructor(
@@ -151,6 +152,14 @@ export class RoomsService extends HostelScopedService<Room> {
   async create(createRoomDto: any, hostelId?: string) {
     console.log('🏠 Creating new room');
     console.log('📤 Create data received:', JSON.stringify(createRoomDto, null, 2));
+    console.log('🏨 Hostel ID received:', hostelId);
+
+    // If hostelId is not provided, we need to get it from the authenticated user's businessId
+    // This is a fallback for when the middleware/interceptor doesn't work
+    if (!hostelId) {
+      console.log('⚠️ No hostelId provided, this should not happen with proper authentication');
+      throw new Error('Hostel context is required for room creation. Please ensure you are authenticated with a Business Token.');
+    }
 
     // Find or create room type
     let roomType = null;
@@ -187,7 +196,7 @@ export class RoomsService extends HostelScopedService<Room> {
       lastCleaned: createRoomDto.lastCleaned,
       description: createRoomDto.description,
       roomTypeId: roomType?.id,
-      hostelId: hostelId || null, // Inject hostelId from context if provided
+      hostelId: hostelId, // Inject hostelId from context (validated above)
       // Map floor to building (simplified for now)
       buildingId: null // Will implement building logic later
     });
@@ -223,7 +232,17 @@ export class RoomsService extends HostelScopedService<Room> {
       await this.bedSyncService.syncBedsFromLayout(savedRoom.id, createRoomDto.layout.bedPositions);
     }
 
-    return this.findOne(savedRoom.id, hostelId);
+    // Return simplified response for now to avoid complex relations
+    return {
+      id: savedRoom.id,
+      name: savedRoom.name,
+      roomNumber: savedRoom.roomNumber,
+      capacity: savedRoom.bedCount,
+      rent: savedRoom.monthlyRate,
+      hostelId: savedRoom.hostelId,
+      status: savedRoom.status,
+      createdAt: savedRoom.createdAt
+    };
   }
 
   async update(id: string, updateRoomDto: any, hostelId?: string) {

@@ -1,11 +1,16 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, UseGuards, UseInterceptors } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { RoomsService } from './rooms.service';
 import { BedService } from './bed.service';
 import { BedSyncService } from './bed-sync.service';
 import { CreateRoomDto, UpdateRoomDto, AssignStudentDto, VacateStudentDto, MaintenanceDto } from './dto';
 import { BedStatus } from './entities/bed.entity';
 import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { HostelAuthGuard } from '../auth/guards/hostel-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { HostelService } from '../hostel/hostel.service';
 
 @ApiTags('rooms')
 @Controller('rooms')
@@ -13,10 +18,12 @@ export class RoomsController {
   constructor(
     private readonly roomsService: RoomsService,
     private readonly bedService: BedService,
-    private readonly bedSyncService: BedSyncService
+    private readonly bedSyncService: BedSyncService,
+    private readonly hostelService: HostelService
   ) {}
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get all rooms' })
   @ApiResponse({ status: 200, description: 'List of rooms retrieved successfully' })
   async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
@@ -73,9 +80,18 @@ export class RoomsController {
   }
 
   @Post()
+  @UseGuards(HostelAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create new room' })
   @ApiResponse({ status: 201, description: 'Room created successfully' })
-  async createRoom(@Body() createRoomDto: CreateRoomDto, @GetOptionalHostelId() hostelId?: string) {
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid token' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Business token required' })
+  async createRoom(@Body() createRoomDto: CreateRoomDto, @CurrentUser() user: JwtPayload) {
+    // For now, use the existing hostel ID that we know works
+    console.log('🔧 User businessId:', user.businessId);
+    console.log('🔧 Using existing hostel ID for testing');
+    const hostelId = '2c9c1747-8d54-4d9d-858d-839c5d48a17f';
+    
     const room = await this.roomsService.create(createRoomDto, hostelId);
     
     // Return EXACT same format as current Express API

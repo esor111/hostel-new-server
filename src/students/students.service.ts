@@ -119,6 +119,11 @@ export class StudentsService { // Removed HostelScopedService extension for back
   }
 
   async create(createStudentDto: any, hostelId?: string) {
+    // Validate hostelId requirement
+    if (!hostelId) {
+      throw new Error('Hostel context is required for student creation. Please ensure you are authenticated with a Business Token.');
+    }
+
     // Create student entity with hostelId
     const student = this.studentRepository.create({
       id: createStudentDto.id,
@@ -129,7 +134,7 @@ export class StudentsService { // Removed HostelScopedService extension for back
       status: createStudentDto.status || StudentStatus.ACTIVE,
       address: createStudentDto.address,
       roomId: createStudentDto.roomNumber, // This will need room lookup
-      hostelId: hostelId || null, // Set hostelId if provided (backward compatible)
+      hostelId: hostelId, // Set hostelId (validated above)
       // bookingRequestId: createStudentDto.bookingRequestId // Removed during transition
     });
 

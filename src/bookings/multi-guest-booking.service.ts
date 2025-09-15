@@ -115,6 +115,7 @@ export class MultiGuestBookingService {
 
         // Create booking
         const booking = manager.create(MultiGuestBooking, {
+          hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
           contactName: bookingData.contactPerson.name,
           contactPhone: bookingData.contactPerson.phone,
           contactEmail: bookingData.contactPerson.email,

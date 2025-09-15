@@ -513,3 +513,7 @@ in the service where you did
       also figureout and see another service might use this kind of stuff
       i want this is if(hosteId) if there is not hosteliD retun all the data if hostelId come into request then filter with that hostelId  understand ?? 
      then test the apis  everything works expecte
+
+
+
+
