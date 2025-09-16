@@ -50,6 +50,7 @@ export class HostelContextMiddleware implements NestMiddleware {
       // Set hostel context in request
       req.hostelContext = {
         hostelId: hostel.id, // Use the actual hostel ID, not businessId
+        businessId: businessId, // Include businessId for reference
         userId,
         kahaId
       };

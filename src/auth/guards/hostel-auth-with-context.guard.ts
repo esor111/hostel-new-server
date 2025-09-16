@@ -24,6 +24,7 @@ export class HostelAuthWithContextGuard extends JwtAuthGuard {
 
     // Extract user and request from context
     const request = context.switchToHttp().getRequest();
+    console.log("userrrrrrrr", request.user)
     const user: JwtPayload = request.user;
 
     // Verify that the token contains businessId (Business Token)
@@ -45,12 +46,13 @@ export class HostelAuthWithContextGuard extends JwtAuthGuard {
 
       // Set hostel context in request
       request.hostelContext = {
-        hostelId: hostel.id, // Use the actual hostel ID, not businessId
+        hostelId: hostel.id, // Use the actual database hostel ID
+        businessId: user.businessId, // Keep businessId for reference
         userId: user.id,
         kahaId: user.kahaId
       };
 
-      console.log(`✅ Hostel context established in guard: hostelId=${hostel.id}, businessId=${user.businessId}`);
+      console.log(`✅ Hostel context established in guard: hostelId=${hostel.id}, businessId=${user.businessId}, hostelName=${hostel.name}`);
       
       return true;
     } catch (error) {

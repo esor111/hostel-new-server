@@ -2,6 +2,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export interface HostelContext {
   hostelId: string;
+  businessId: string; // The businessId from JWT (real hostel identifier from microservice)
   userId: string;
   kahaId: string;
 }

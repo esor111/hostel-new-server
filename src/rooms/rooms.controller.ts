@@ -83,17 +83,20 @@ export class RoomsController {
   @Post()
   @UseGuards(HostelAuthWithContextGuard)
   @ApiBearerAuth()
-  // @ApiOperation({ summary: 'Create new room' })
-  // @ApiResponse({ status: 201, description: 'Room created successfully' })
-  // @ApiResponse({ status: 401, description: 'Unauthorized - Invalid token' })
-  // @ApiResponse({ status: 403, description: 'Forbidden - Business token required' })
+  @ApiOperation({ summary: 'Create new room' })
+  @ApiResponse({ status: 201, description: 'Room created successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid token' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Business token required' })
   async createRoom(@Body() createRoomDto: CreateRoomDto, @CurrentUser() user: JwtPayload) {
-    // For now, use the existing hostel ID that we know works
     console.log('🔧 User businessId:', user.businessId);
-    console.log('🔧 Using existing hostel ID for testing');
-    const hostelId = '2c9c1747-8d54-4d9d-858d-839c5d48a17f';
     
-    const room = await this.roomsService.create(createRoomDto, hostelId);
+    // Get hostel ID from the authenticated user's businessId
+    // The HostelAuthWithContextGuard ensures hostel exists and sets up context
+    const hostel = await this.hostelService.ensureHostelExists(user.businessId);
+    
+    console.log('🏨 Using hostel:', hostel.name, 'ID:', hostel.id);
+    
+    const room = await this.roomsService.create(createRoomDto, hostel.id);
     
     return {
       status: HttpStatus.CREATED,

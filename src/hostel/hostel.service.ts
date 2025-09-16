@@ -146,8 +146,8 @@ export class HostelService {
       if (!hostel) {
         this.logger.log(`Auto-creating hostel for unknown businessId: ${businessId}`);
         
-        // Auto-create hostel with default name
-        const hostelName = defaultName || `Hostel ${businessId.substring(0, 8)}`;
+        // Auto-create hostel with incremental test name pattern
+        const hostelName = defaultName || await this.generateTestHostelName();
         
         hostel = await this.createHostel({
           businessId,
@@ -165,6 +165,39 @@ export class HostelService {
         return await this.findByBusinessId(businessId);
       }
       throw error;
+    }
+  }
+
+  /**
+   * Generate incremental test hostel names: test-1, test-2, test-3, etc.
+   */
+  private async generateTestHostelName(): Promise<string> {
+    try {
+      // Find all hostels with names starting with "test-"
+      const testHostels = await this.hostelRepository
+        .createQueryBuilder('hostel')
+        .where('hostel.name LIKE :pattern', { pattern: 'test-%' })
+        .getMany();
+
+      // Extract numbers from existing test hostels
+      const existingNumbers = testHostels
+        .map(hostel => {
+          const match = hostel.name.match(/^test-(\d+)$/);
+          return match ? parseInt(match[1]) : 0;
+        })
+        .filter(num => num > 0);
+
+      // Find the next available number
+      let nextNumber = 1;
+      while (existingNumbers.includes(nextNumber)) {
+        nextNumber++;
+      }
+
+      return `test-${nextNumber}`;
+    } catch (error) {
+      this.logger.error('Error generating test hostel name:', error);
+      // Fallback to timestamp-based name
+      return `test-${Date.now()}`;
     }
   }
 
