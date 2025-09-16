@@ -1342,12 +1342,6 @@ export class MultiGuestBookingService {
     // Build query conditions
     const queryConditions: any = {};
 
-    // In development, if email is 'debug' or 'all', return all bookings
-    if (userEmail !== 'debug' && userEmail !== 'all') {
-      queryConditions.contactEmail = userEmail;
-    } else {
-      this.logger.warn(`DEBUG MODE: Returning all bookings for email: ${userEmail}`);
-    }
 
     if (status) {
       queryConditions.status = status;
