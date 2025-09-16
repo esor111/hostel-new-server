@@ -1,13 +1,13 @@
 import { Entity, Column, OneToMany, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 
-@Entity('hostels')
+@Entity('hostel_profiles')
 @Index(['businessId'], { unique: true })
 export class Hostel extends BaseEntity {
   @Column({ name: 'business_id', unique: true })
   businessId: string; // This maps to businessId from JWT tokens
 
-  @Column({ length: 255 })
+  @Column({ name: 'hostel_name', length: 255 })
   name: string;
 
   @Column({ default: true })

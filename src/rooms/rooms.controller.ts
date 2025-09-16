@@ -8,6 +8,7 @@ import { BedStatus } from './entities/bed.entity';
 import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { HostelAuthGuard } from '../auth/guards/hostel-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { HostelService } from '../hostel/hostel.service';
@@ -80,12 +81,12 @@ export class RoomsController {
   }
 
   @Post()
-  @UseGuards(HostelAuthGuard)
+  @UseGuards(HostelAuthWithContextGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create new room' })
-  @ApiResponse({ status: 201, description: 'Room created successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Business token required' })
+  // @ApiOperation({ summary: 'Create new room' })
+  // @ApiResponse({ status: 201, description: 'Room created successfully' })
+  // @ApiResponse({ status: 401, description: 'Unauthorized - Invalid token' })
+  // @ApiResponse({ status: 403, description: 'Forbidden - Business token required' })
   async createRoom(@Body() createRoomDto: CreateRoomDto, @CurrentUser() user: JwtPayload) {
     // For now, use the existing hostel ID that we know works
     console.log('🔧 User businessId:', user.businessId);
@@ -94,7 +95,6 @@ export class RoomsController {
     
     const room = await this.roomsService.create(createRoomDto, hostelId);
     
-    // Return EXACT same format as current Express API
     return {
       status: HttpStatus.CREATED,
       newRoom: room
@@ -102,6 +102,8 @@ export class RoomsController {
   }
 
   @Put(':id')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update room' })
   @ApiResponse({ status: 200, description: 'Room updated successfully' })
   async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetOptionalHostelId() hostelId?: string) {
@@ -115,6 +117,8 @@ export class RoomsController {
   }
 
   @Post(':id/assign')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Assign student to room' })
   @ApiResponse({ status: 200, description: 'Student assigned successfully' })
   async assignStudent(@Param('id') id: string, @Body() assignDto: AssignStudentDto) {
@@ -128,6 +132,8 @@ export class RoomsController {
   }
 
   @Post(':id/vacate')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Vacate student from room' })
   @ApiResponse({ status: 200, description: 'Student vacated successfully' })
   async vacateStudent(@Param('id') id: string, @Body() vacateDto: VacateStudentDto) {
@@ -141,6 +147,8 @@ export class RoomsController {
   }
 
   @Post(':id/maintenance')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Schedule room maintenance' })
   @ApiResponse({ status: 200, description: 'Maintenance scheduled successfully' })
   async scheduleMaintenance(@Param('id') id: string, @Body() maintenanceDto: MaintenanceDto) {
@@ -202,6 +210,8 @@ export class RoomsController {
   }
 
   @Post('beds/validate-availability')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Validate multiple bed availability' })
   @ApiResponse({ status: 200, description: 'Bed availability validated successfully' })
   async validateBedAvailability(
@@ -219,6 +229,8 @@ export class RoomsController {
   }
 
   @Post('beds/migrate-all')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Migrate all rooms to create bed entities from bedPositions' })
   @ApiResponse({ status: 200, description: 'Migration completed successfully' })
   async migrateAllRoomsBeds() {
@@ -259,6 +271,8 @@ export class RoomsController {
   }
 
   @Put('beds/:bedId/status')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update bed status' })
   @ApiResponse({ status: 200, description: 'Bed status updated successfully' })
   async updateBedStatus(
@@ -274,6 +288,8 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/assign')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Assign occupant to bed' })
   @ApiResponse({ status: 200, description: 'Occupant assigned successfully' })
   async assignOccupantToBed(
@@ -293,6 +309,8 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/release')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Release occupant from bed' })
   @ApiResponse({ status: 200, description: 'Occupant released successfully' })
   async releaseOccupantFromBed(@Param('bedId') bedId: string) {
@@ -305,6 +323,8 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/reserve')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Reserve bed' })
   @ApiResponse({ status: 200, description: 'Bed reserved successfully' })
   async reserveBed(
@@ -320,6 +340,8 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/cancel-reservation')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel bed reservation' })
   @ApiResponse({ status: 200, description: 'Bed reservation cancelled successfully' })
   async cancelBedReservation(@Param('bedId') bedId: string) {
@@ -344,6 +366,8 @@ export class RoomsController {
   }
 
   @Post(':roomId/beds/sync')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Sync bed entities from bedPositions' })
   @ApiResponse({ status: 200, description: 'Bed entities synced successfully' })
   async syncBedsFromPositions(@Param('roomId') roomId: string) {
