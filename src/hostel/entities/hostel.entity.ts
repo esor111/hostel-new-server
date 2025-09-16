@@ -10,7 +10,7 @@ export class Hostel extends BaseEntity {
   @Column({ name: 'hostel_name', length: 255 })
   name: string;
 
-  @Column({ default: true })
+  @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
   // Relations - using forward references to avoid circular imports

@@ -12,22 +12,28 @@ export class AddHostelIdToEntities1757600000000 implements MigrationInterface {
             await queryRunner.query(`
                 CREATE TABLE "hostel_profiles" (
                     "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+                    "business_id" character varying NOT NULL,
                     "hostel_name" character varying NOT NULL,
-                    "owner_name" character varying NOT NULL,
-                    "email" character varying NOT NULL,
-                    "phone" character varying NOT NULL,
-                    "address" character varying NOT NULL,
-                    "province" character varying NOT NULL,
-                    "district" character varying NOT NULL,
-                    "description" text NOT NULL,
-                    "amenities" json NOT NULL,
-                    "policies" json NOT NULL,
-                    "pricing" json NOT NULL,
-                    "created_at" TIMESTAMP NOT NULL DEFAULT now(),
-                    "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
+                    "is_active" boolean NOT NULL DEFAULT true,
+                    "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+                    "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
                     CONSTRAINT "PK_hostel_profiles" PRIMARY KEY ("id")
                 )
             `);
+        } else {
+            // Check if the table has the old schema and needs to be updated
+            console.log('Checking existing hostel_profiles table schema...');
+            const columns = await queryRunner.query(`
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'hostel_profiles' 
+                ORDER BY ordinal_position
+            `);
+            
+            console.log('Current columns:', columns);
+            
+            // If table exists with old schema, we need to handle it appropriately
+            // For now, we'll just proceed with the migration assuming the table exists
         }
 
         // Step 2: Create default hostel record if no hostels exist
@@ -36,18 +42,51 @@ export class AddHostelIdToEntities1757600000000 implements MigrationInterface {
         
         if (parseInt(existingHostels[0].count) === 0) {
             console.log('Creating default hostel record...');
-            const defaultHostelResult = await queryRunner.query(`
-                INSERT INTO "hostel_profiles" (
-                    "hostel_name", "owner_name", "email", "phone", "address", 
-                    "province", "district", "description", "amenities", "policies", "pricing"
-                ) VALUES (
-                    'Default Hostel', 'System Admin', 'admin@defaulthostel.com', '+1234567890', 
-                    'Default Address', 'Default Province', 'Default District', 
-                    'Default hostel created during multi-hostel migration',
-                    '[]', '{}', '{}'
-                ) RETURNING "id"
+            
+            // First, check what columns actually exist in the table
+            const columnInfo = await queryRunner.query(`
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'hostel_profiles' 
+                ORDER BY ordinal_position
             `);
-            defaultHostelId = defaultHostelResult[0].id;
+            
+            const columnNames = columnInfo.map(col => col.column_name);
+            console.log('Available columns:', columnNames);
+            
+            // Determine which column names to use based on what exists
+            if (columnNames.includes('business_id')) {
+                // New schema
+                console.log('Using new schema for hostel_profiles');
+                const defaultHostelResult = await queryRunner.query(`
+                    INSERT INTO "hostel_profiles" (
+                        "business_id", "hostel_name"
+                    ) VALUES (
+                        'default-hostel-id', 'Default Hostel'
+                    ) RETURNING "id"
+                `);
+                defaultHostelId = defaultHostelResult[0].id;
+            } else if (columnNames.includes('hostel_name')) {
+                // Old schema - use the old column names but with minimal data
+                console.log('Using old schema for hostel_profiles');
+                const defaultHostelResult = await queryRunner.query(`
+                    INSERT INTO "hostel_profiles" (
+                        "hostel_name", "owner_name", "email", "phone", "address", 
+                        "province", "district", "description", "amenities", "policies", "pricing"
+                    ) VALUES (
+                        'Default Hostel', 'System Admin', 'admin@defaulthostel.com', '+1234567890', 
+                        'Default Address', 'Default Province', 'Default District', 
+                        'Default hostel created during multi-hostel migration',
+                        '[]', '{}', '{}'
+                    ) RETURNING "id"
+                `);
+                defaultHostelId = defaultHostelResult[0].id;
+            } else {
+                // Fallback - try to insert with whatever columns might exist
+                console.log('Using fallback approach for hostel_profiles');
+                // This is a simplified approach - in a real scenario, you might want to alter the table structure
+                throw new Error('Unable to determine hostel_profiles table schema');
+            }
         } else {
             // Use the first existing hostel as default
             const firstHostel = await queryRunner.query(`SELECT "id" FROM "hostel_profiles" LIMIT 1`);
