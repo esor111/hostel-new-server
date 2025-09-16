@@ -74,7 +74,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'Create multi-guest booking request' })
   @ApiResponse({ status: 201, description: 'Multi-guest booking created successfully' })
   async createMultiGuestBooking(@Body() createDto: CreateMultiGuestBookingDto) {
-    const booking = await this.multiGuestBookingService.createMultiGuestBooking(createDto);
+    // Extract hostel ID from the booking data
+    const hostelId = createDto.data.hostelId;
+    
+    this.logger.log(`Creating multi-guest booking${hostelId ? ` for hostel: ${hostelId}` : ' with default hostel'}`);
+    
+    const booking = await this.multiGuestBookingService.createMultiGuestBooking(createDto, hostelId);
     
     return {
       status: HttpStatus.CREATED,
@@ -239,21 +244,7 @@ export class BookingsController {
     };
   }
 
-  @Post()
-  @ApiOperation({ summary: 'Create new booking request' })
-  @ApiResponse({ status: 201, description: 'Booking request created successfully' })
-  async createBookingRequest(@Body() createBookingDto: CreateBookingDto) {
-    this.logger.log(`Creating single guest booking for ${createBookingDto.name} via unified multi-guest system`);
-    
-    // Use MultiGuestBookingService for single guest bookings
-    const booking = await this.multiGuestBookingService.createSingleGuestBooking(createBookingDto);
-    
-    // Return direct response
-    return {
-      status: HttpStatus.CREATED,
-      data: booking
-    };
-  }
+
 
   @Put(':id')
   @ApiOperation({ summary: 'Update booking request' })

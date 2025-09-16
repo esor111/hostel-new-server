@@ -242,6 +242,17 @@ export class MultiGuestBookingDataDto {
   @Length(1, 50, { message: 'Source must be between 1 and 50 characters' })
   @Transform(({ value }) => value?.trim())
   source?: string;
+
+  @ApiProperty({ 
+    description: 'Hostel ID for the booking',
+    example: 'hostel-123',
+    required: false
+  })
+  @IsOptional()
+  @IsString({ message: 'Hostel ID must be a string' })
+  @Length(1, 100, { message: 'Hostel ID must be between 1 and 100 characters' })
+  @Transform(({ value }) => value?.trim())
+  hostelId?: string;
 }
 
 // Mobile app specific format with nested data structure

@@ -16,6 +16,8 @@ export interface BedPosition {
   occupantName?: string;
   status?: string;
   gender?: string;
+  bedType?: string; // single, bunk, etc.
+  bunkLevel?: string; // top, bottom (for bunk beds)
   color?: string; // Color for bed status visualization
   bedDetails?: {
     bedNumber?: string;
@@ -52,6 +54,8 @@ export class BedSyncService {
    */
   async syncBedsFromLayout(roomId: string, bedPositions: BedPosition[]): Promise<void> {
     this.logger.log(`🔄 Syncing beds from layout for room ${roomId}`);
+    this.logger.log(`🛏️ Received ${bedPositions.length} bed positions to sync`);
+    this.logger.log(`🛏️ Bed positions data:`, JSON.stringify(bedPositions, null, 2));
 
     try {
       // Validate bedPositions first
@@ -130,10 +134,12 @@ export class BedSyncService {
           } else {
             // Create new bed with original identifier
             try {
-              await this.createBedFromPosition(roomId, bedPosition, room);
-              this.logger.debug(`🆕 Created bed ${bedIdentifier}`);
+              const createdBed = await this.createBedFromPosition(roomId, bedPosition, room);
+              this.logger.debug(`🆕 Created bed ${bedIdentifier} with ID ${createdBed.id}`);
             } catch (error) {
               this.logger.error(`❌ Failed to create bed ${bedIdentifier}: ${error.message}`);
+              this.logger.error(`❌ Bed position data:`, JSON.stringify(bedPosition, null, 2));
+              this.logger.error(`❌ Room data: ID=${room.id}, hostelId=${room.hostelId}`);
               // Continue with other beds
             }
           }
@@ -450,6 +456,9 @@ export class BedSyncService {
    * Create new bed entity from bedPosition
    */
   private async createBedFromPosition(roomId: string, position: BedPosition, room: Room): Promise<Bed> {
+    this.logger.log(`🆕 Creating bed from position: ${position.id} for room ${roomId}`);
+    this.logger.log(`🏠 Room details: ID=${room.id}, hostelId=${room.hostelId}, name=${room.name}`);
+    
     // Generate bed number from identifier
     // For complex identifiers like "single-bed-1756712592717-0m18", generate a simple number
     let bedNumber: string;
@@ -468,20 +477,35 @@ export class BedSyncService {
       bedNumber = bedNumber.substring(0, 10);
     }
 
-    const bed = this.bedRepository.create({
+    // Create description based on bed type and bunk level
+    let description = `Bed ${bedNumber} in ${room.name}`;
+    if (position.bedType === 'bunk' && position.bunkLevel) {
+      description = `${position.bunkLevel.charAt(0).toUpperCase() + position.bunkLevel.slice(1)} bunk bed ${bedNumber} in ${room.name}`;
+    }
+
+    const bedData = {
       roomId,
+      hostelId: room.hostelId, // CRITICAL FIX: Add missing hostelId
       bedIdentifier: position.id,
       bedNumber,
       status: BedStatus.AVAILABLE, // Default to available
       gender: (position.gender as 'Male' | 'Female' | 'Any') || room.gender as 'Male' | 'Female' | 'Any' || 'Any',
       monthlyRate: room.monthlyRate,
-      description: `Bed ${bedNumber} in ${room.name}`,
+      description,
       currentOccupantId: null,
       currentOccupantName: null,
       occupiedSince: null
-    });
+    };
 
-    return this.bedRepository.save(bed);
+    this.logger.log(`💾 Creating bed entity with data:`, JSON.stringify(bedData, null, 2));
+
+    const bed = this.bedRepository.create(bedData);
+    
+    this.logger.log(`💾 Saving bed entity to database...`);
+    const savedBed = await this.bedRepository.save(bed);
+    this.logger.log(`✅ Bed saved successfully with ID: ${savedBed.id}`);
+    
+    return savedBed;
   }
 
   /**
@@ -498,6 +522,7 @@ export class BedSyncService {
     for (let i = 1; i <= bedCount; i++) {
       const bed = this.bedRepository.create({
         roomId,
+        hostelId: room.hostelId, // CRITICAL FIX: Add missing hostelId
         bedIdentifier: `bed${i}`,
         bedNumber: i.toString(),
         status: BedStatus.AVAILABLE,

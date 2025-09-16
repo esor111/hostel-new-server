@@ -48,6 +48,14 @@ export class CreateRoomLayoutDto {
   bedPositions?: any; // JSONB data
 
   @ApiProperty({ 
+    description: 'Layout elements from frontend (JSONB data)',
+    example: [{ id: 'bed1', type: 'single-bed', x: 0, y: 0, width: 80, height: 40 }],
+    required: false
+  })
+  @IsOptional()
+  elements?: any; // CRITICAL FIX: Add elements field for frontend compatibility
+
+  @ApiProperty({ 
     description: 'Furniture layout configuration (JSONB data)',
     example: { desk: { x: 50, y: 50 }, chair: { x: 60, y: 50 } },
     required: false
@@ -62,6 +70,14 @@ export class CreateRoomLayoutDto {
   })
   @IsOptional()
   dimensions?: any; // JSONB data
+
+  @ApiProperty({ 
+    description: 'Theme configuration (JSONB data)',
+    example: { name: 'Modern', wallColor: '#F8F9FA', floorColor: '#E9ECEF' },
+    required: false
+  })
+  @IsOptional()
+  theme?: any; // JSONB data for theme
 }
 
 export class CreateRoomDto {
