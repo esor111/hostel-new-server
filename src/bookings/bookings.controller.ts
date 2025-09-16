@@ -134,7 +134,7 @@ export class BookingsController {
   @ApiOperation({ summary: 'Cancel multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking cancelled successfully' })
   async cancelMultiGuestBooking(@Param('id') id: string, @Body() cancelDto: CancelBookingDto) {
-    const result = await this.multiGuestBookingService.cancelBooking(id, cancelDto.reason, cancelDto.processedBy);
+    const result = await this.multiGuestBookingService.cancelBooking(id, cancelDto.reason);
     
     return {
       status: HttpStatus.OK,

@@ -13,16 +13,6 @@ export class CancelBookingDto {
   reason: string;
 
   @ApiPropertyOptional({ 
-    description: 'ID of the person processing the cancellation',
-    example: 'admin-user-id'
-  })
-  @IsOptional()
-  @IsString({ message: 'Processed by must be a string' })
-  @Length(1, 100, { message: 'Processed by must be between 1 and 100 characters' })
-  @Transform(({ value }) => value?.trim())
-  processedBy?: string;
-
-  @ApiPropertyOptional({ 
     description: 'Additional notes for the cancellation',
     example: 'Refund processed to original payment method'
   })

@@ -415,7 +415,7 @@ export class MultiGuestBookingService {
     });
   }
 
-  async cancelBooking(id: string, reason: string, processedBy?: string, hostelId?: string): Promise<CancellationResult> {
+  async cancelBooking(id: string, reason: string, hostelId?: string): Promise<CancellationResult> {
     this.logger.log(`Cancelling multi-guest booking ${id}: ${reason}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -441,7 +441,6 @@ export class MultiGuestBookingService {
         await manager.update(MultiGuestBooking, id, {
           status: MultiGuestBookingStatus.CANCELLED,
           cancellationReason: reason,
-          processedBy: processedBy || 'admin',
           processedDate: new Date()
         });
 
