@@ -11,6 +11,7 @@ import {
   BOOKING_NOTIFICATION_MESSAGES, 
   formatNotificationMessage 
 } from './templates/booking-notification-messages';
+import { HostelService } from '../hostel/hostel.service';
 
 @Injectable()
 export class NotificationCommunicationService {
@@ -20,6 +21,7 @@ export class NotificationCommunicationService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly hostelService: HostelService,
   ) {
     // Get notification service URL from environment or use default
     this.notificationServiceUrl = this.configService.get<string>(
@@ -35,7 +37,7 @@ export class NotificationCommunicationService {
     const baseUrl = `${this.notificationServiceUrl}/push-notifications/structured`;
 
     try {
-      this.logger.log(`Sending notification: ${body.type} to users: ${body.receiverUserIds?.join(', ')}`);
+      this.logger.log(`Sending notification: ${body.type} to users: ${body.receiverUserIds?.join(', ')}, businesses: ${body.receiverBusinessIds?.join(', ')}`);
       
       await firstValueFrom(this.httpService.post(baseUrl, body));
       
@@ -43,6 +45,30 @@ export class NotificationCommunicationService {
     } catch (error) {
       this.logger.error(`Failed to send notification: ${body.type}`, error.message);
       // Don't throw error to prevent blocking main business logic
+    }
+  }
+
+  /**
+   * Convert hostelId to businessId for notifications
+   * @param hostelId - Internal hostel ID from database
+   * @returns businessId for notification system
+   */
+  private async getBusinessIdFromHostelId(hostelId: string): Promise<string> {
+    try {
+      const businessId = await this.hostelService.getBusinessIdFromHostelId(hostelId);
+      
+      if (businessId) {
+        this.logger.debug(`Converted hostelId ${hostelId} to businessId ${businessId}`);
+        return businessId;
+      } else {
+        this.logger.warn(`Could not find businessId for hostelId ${hostelId}, using fallback`);
+        // Fallback to config value
+        return this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id');
+      }
+    } catch (error) {
+      this.logger.error(`Error converting hostelId ${hostelId} to businessId:`, error.message);
+      // Fallback to config value
+      return this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id');
     }
   }
 
@@ -57,19 +83,22 @@ export class NotificationCommunicationService {
       guestCount: data.guestCount || 1
     });
 
+    // Convert hostelId to businessId for notification system
+    const businessId = await this.getBusinessIdFromHostelId(data.hostelId);
+
     const notification: SendPushNotificationDto = {
-      receiverBusinessIds: [data.hostelId], // Only use receiverBusinessIds for business notifications
+      receiverBusinessIds: [businessId], // Use businessId instead of hostelId
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_REQUEST,
-      meta: {
-        type: PushNotificationTypeEnum.BOOKING_REQUEST,
-        booking: {
-          id: data.bookingId,
-          checkInDate: data.checkInDate,
-          guestCount: data.guestCount
-        }
-      }
+      // meta: {
+      //   type: PushNotificationTypeEnum.BOOKING_REQUEST,
+      //   booking: {
+      //     id: data.bookingId,
+      //     checkInDate: data.checkInDate,
+      //     guestCount: data.guestCount
+      //   }
+      // }
     };
 
     await this.sendPushNotification(notification);

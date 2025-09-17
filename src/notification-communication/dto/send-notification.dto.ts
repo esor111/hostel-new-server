@@ -23,7 +23,7 @@ class NotificationMetaBooking {
 class NotificationMeta {
   @ApiProperty({ enum: PushNotificationTypeEnum, description: 'Notification type' })
   @IsEnum(PushNotificationTypeEnum)
-  type: PushNotificationTypeEnum;
+  type?: PushNotificationTypeEnum;
 
   @ApiProperty({ type: NotificationMetaBooking, required: false })
   @ValidateNested()
@@ -68,7 +68,7 @@ export class SendPushNotificationDto {
   @ApiProperty({ type: NotificationMeta, description: 'Additional notification metadata' })
   @ValidateNested()
   @Type(() => NotificationMeta)
-  meta: NotificationMeta;
+  meta?: NotificationMeta;
 }
 
 // Simplified DTOs for specific booking notifications
@@ -81,7 +81,7 @@ export class BookingNotificationDto {
   @IsString()
   contactPersonId: string;
 
-  @ApiProperty({ description: 'Hostel business ID' })
+  @ApiProperty({ description: 'Hostel ID (will be converted to businessId for notifications)' })
   @IsString()
   hostelId: string;
 

@@ -239,6 +239,45 @@ export class HostelService {
   }
 
   /**
+   * Find hostel by hostelId (internal ID) to get businessId
+   */
+  async findByHostelId(hostelId: string): Promise<Hostel | null> {
+    this.logger.debug(`Finding hostel by hostelId: ${hostelId}`);
+
+    try {
+      const hostel = await this.hostelRepository.findOne({
+        where: { id: hostelId, isActive: true }
+      });
+
+      if (hostel) {
+        this.logger.debug(`Hostel found for hostelId: ${hostelId}, businessId: ${hostel.businessId}`);
+      } else {
+        this.logger.debug(`No hostel found for hostelId: ${hostelId}`);
+      }
+
+      return hostel;
+    } catch (error) {
+      this.logger.error(`Error finding hostel by hostelId ${hostelId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get businessId from hostelId
+   */
+  async getBusinessIdFromHostelId(hostelId: string): Promise<string | null> {
+    this.logger.debug(`Getting businessId for hostelId: ${hostelId}`);
+
+    try {
+      const hostel = await this.findByHostelId(hostelId);
+      return hostel ? hostel.businessId : null;
+    } catch (error) {
+      this.logger.error(`Error getting businessId for hostelId ${hostelId}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Clear all hostel cache (for maintenance)
    */
   clearAllCache(): void {
