@@ -74,7 +74,7 @@ export class MultiGuestBookingService {
     private configService: ConfigService,
   ) { }
 
-  async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string): Promise<any> {
+  async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string, userId?: string): Promise<any> {
     // Extract data from the nested structure
     const bookingData = createDto.data;
     this.logger.log(`Creating multi-guest booking for ${bookingData.contactPerson.name} with ${bookingData.guests.length} guests`);
@@ -116,6 +116,7 @@ export class MultiGuestBookingService {
         // Create booking
         const booking = manager.create(MultiGuestBooking, {
           hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
+          userId: userId, // Store user ID from JWT token
           contactName: bookingData.contactPerson.name,
           contactPhone: bookingData.contactPerson.phone,
           contactEmail: bookingData.contactPerson.email,
@@ -705,6 +706,103 @@ export class MultiGuestBookingService {
     });
 
     return bookings.map(booking => this.transformToApiResponse(booking));
+  }
+
+  /**
+   * Get user's bookings with proper authentication
+   */
+  async getUserBookings(userId: string, filters: any = {}): Promise<any> {
+    const {
+      page = 1,
+      limit = 20,
+      status
+    } = filters;
+
+    this.logger.log(`Fetching bookings for user: ${userId}`);
+
+    const queryBuilder = this.multiGuestBookingRepository.createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.guests', 'guests')
+      .where('booking.userId = :userId', { userId });
+
+    // Apply status filter if provided
+    if (status) {
+      queryBuilder.andWhere('booking.status = :status', { status });
+    }
+
+    // Pagination
+    const offset = (page - 1) * limit;
+    queryBuilder.skip(offset).take(limit);
+    queryBuilder.orderBy('booking.createdAt', 'DESC');
+
+    const [bookings, total] = await queryBuilder.getManyAndCount();
+
+    return {
+      data: bookings.map(booking => this.transformToApiResponse(booking)),
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    };
+  }
+
+  /**
+   * Cancel user's own booking
+   */
+  async cancelUserBooking(bookingId: string, userId: string, reason: string): Promise<any> {
+    this.logger.log(`User ${userId} cancelling booking ${bookingId}`);
+
+    return await this.dataSource.transaction(async manager => {
+      try {
+        const booking = await manager.findOne(MultiGuestBooking, {
+          where: { id: bookingId, userId },
+          relations: ['guests']
+        });
+
+        if (!booking) {
+          throw new NotFoundException('Booking not found or you do not have permission to cancel it');
+        }
+
+        if (booking.status === MultiGuestBookingStatus.CANCELLED) {
+          throw new BadRequestException('Booking is already cancelled');
+        }
+
+        if (booking.status === MultiGuestBookingStatus.COMPLETED) {
+          throw new BadRequestException('Cannot cancel completed booking');
+        }
+
+        // Update booking status
+        await manager.update(MultiGuestBooking, bookingId, {
+          status: MultiGuestBookingStatus.CANCELLED,
+          cancellationReason: reason,
+          processedDate: new Date()
+        });
+
+        // Update guest statuses
+        await manager.update(BookingGuest, { bookingId }, {
+          status: GuestStatus.CANCELLED
+        });
+
+        // Release beds
+        const bedIds = booking.guests.map(guest => guest.bedId);
+        await this.bedSyncService.handleBookingCancellation(bedIds, reason);
+
+        this.logger.log(`✅ User ${userId} cancelled booking ${booking.bookingReference}`);
+
+        return {
+          success: true,
+          message: 'Booking cancelled successfully',
+          bookingId,
+          reason
+        };
+      } catch (error) {
+        this.logger.error(`❌ Error cancelling user booking ${bookingId}: ${error.message}`);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -1329,155 +1427,9 @@ export class MultiGuestBookingService {
     return `MGB${timestamp.slice(-6)}${random}`;
   }
 
-  /**
-   * Get user's bookings with detailed information
-   */
-  async getMyBookings(userEmail: string, filters: { page?: number; limit?: number; status?: MultiGuestBookingStatus } = {}) {
-    const { page = 1, limit = 20, status } = filters;
-    const skip = (page - 1) * limit;
-
-    this.logger.log(`Getting bookings for user: ${userEmail} with filters:`, filters);
-
-    // Build query conditions
-    const queryConditions: any = {};
 
 
-    if (status) {
-      queryConditions.status = status;
-    }
 
-    // DEBUG: Log the exact query conditions
-    this.logger.log(`Query conditions:`, queryConditions);
-
-    // Get total count for pagination
-    const totalCount = await this.multiGuestBookingRepository.count({
-      where: queryConditions
-    });
-
-    this.logger.log(`Total bookings found for email ${userEmail}: ${totalCount}`);
-
-    // If no bookings found, let's also check total bookings in system
-    if (totalCount === 0) {
-      const totalSystemBookings = await this.multiGuestBookingRepository.count();
-      this.logger.log(`Total bookings in system: ${totalSystemBookings}`);
-
-      // Get a sample of existing contact emails for debugging
-      const sampleBookings = await this.multiGuestBookingRepository.find({
-        select: ['contactEmail', 'contactName'],
-        take: 5
-      });
-      this.logger.log(`Sample contact emails in system:`, sampleBookings.map(b => b.contactEmail));
-    }
-
-    // Get bookings with guests, beds, and rooms
-    const bookings = await this.multiGuestBookingRepository.find({
-      where: queryConditions,
-      relations: {
-        guests: {
-          bed: {
-            room: true
-          }
-        }
-      },
-      order: {
-        createdAt: 'DESC'
-      },
-      skip,
-      take: limit
-    });
-
-    this.logger.log(`Found ${bookings.length} bookings for user ${userEmail}`);
-
-    // Transform bookings to the required format with user email included
-    const transformedBookings = bookings.map(booking => this.transformToMyBookingFormat(booking, userEmail));
-
-    return {
-      data: transformedBookings,
-      userEmail: userEmail, // Include user email in response for identification
-      pagination: {
-        page,
-        limit,
-        total: totalCount,
-        totalPages: Math.ceil(totalCount / limit)
-      }
-    };
-  }
-
-  /**
-   * Cancel a user's booking
-   */
-  async cancelMyBooking(bookingId: string, userEmail: string, reason: string, hostelId?: string) {
-    this.logger.log(`User ${userEmail} attempting to cancel booking ${bookingId} with reason: ${reason}`);
-
-    return await this.dataSource.transaction(async manager => {
-      // Find the booking and verify ownership
-      const booking = await manager.findOne(MultiGuestBooking, {
-        where: {
-          id: bookingId,
-          contactEmail: userEmail // Ensure user owns this booking
-        },
-        relations: ['guests']
-      });
-
-      if (!booking) {
-        throw new NotFoundException('Booking not found or you do not have permission to cancel it');
-      }
-
-      // Check if booking can be cancelled
-      if (booking.status === MultiGuestBookingStatus.CANCELLED) {
-        throw new BadRequestException('Booking is already cancelled');
-      }
-
-      if (booking.status === MultiGuestBookingStatus.COMPLETED) {
-        throw new BadRequestException('Cannot cancel a completed booking');
-      }
-
-      // Update booking status
-      booking.status = MultiGuestBookingStatus.CANCELLED;
-      booking.cancellationReason = reason;
-      booking.processedDate = new Date();
-      booking.processedBy = userEmail; // User cancelled it themselves
-
-      await manager.save(MultiGuestBooking, booking);
-
-      // Update guest statuses
-      await manager.update(
-        BookingGuest,
-        { bookingId: booking.id },
-        { status: GuestStatus.CANCELLED }
-      );
-
-      // Release reserved beds
-      const bedIds = booking.guests.map(guest => guest.bedId);
-      await this.bedSyncService.handleBookingCancellation(bedIds, reason);
-
-      this.logger.log(`✅ User cancelled booking ${bookingId}`);
-
-      // Send cancellation notification
-      try {
-        await this.notificationService.sendBookingCancelledNotification({
-          bookingId: booking.id,
-          contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-          hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
-          checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          contactName: booking.contactName,
-          hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
-          reason: reason
-        });
-        this.logger.log(`📱 Cancellation notification sent for booking: ${booking.bookingReference}`);
-      } catch (notificationError) {
-        this.logger.warn(`⚠️ Failed to send cancellation notification: ${notificationError.message}`);
-      }
-
-      return {
-        success: true,
-        message: 'Booking cancelled successfully',
-        bookingId: booking.id,
-        reason: reason,
-        releasedBeds: bedIds
-      };
-    });
-  }
 
   /**
    * Transform booking to my-booking format

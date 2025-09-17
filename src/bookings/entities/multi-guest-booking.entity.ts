@@ -23,6 +23,10 @@ export class MultiGuestBooking extends BaseEntity {
   @Column({ name: 'hostelId' })
   hostelId: string;
 
+  @Column({ name: 'user_id', nullable: true })
+  @Index()
+  userId: string;
+
   // Contact Person Information
   @Column({ name: 'contact_name', length: 255 })
   contactName: string;
