@@ -35,7 +35,7 @@ export class NotificationCommunicationService {
    */
   async sendPushNotification(body: SendPushNotificationDto): Promise<void> {
     const baseUrl = `${this.notificationServiceUrl}/push-notifications/structured`;
-
+console.log("notification body", body)
     try {
       this.logger.log(`Sending notification: ${body.type} to users: ${body.receiverUserIds?.join(', ')}, businesses: ${body.receiverBusinessIds?.join(', ')}`);
       
@@ -119,14 +119,14 @@ export class NotificationCommunicationService {
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_APPROVED,
-      meta: {
-        type: PushNotificationTypeEnum.BOOKING_APPROVED,
-        booking: {
-          id: data.bookingId,
-          checkInDate: data.checkInDate,
-          guestCount: data.guestCount
-        }
-      }
+      // meta: {
+      //   type: PushNotificationTypeEnum.BOOKING_APPROVED,
+      //   booking: {
+      //     id: data.bookingId,
+      //     checkInDate: data.checkInDate,
+      //     guestCount: data.guestCount
+      //   }
+      // }
     };
 
     await this.sendPushNotification(notification);
@@ -147,14 +147,14 @@ export class NotificationCommunicationService {
       title,
       message,
       type: PushNotificationTypeEnum.BOOKING_REJECTED,
-      meta: {
-        type: PushNotificationTypeEnum.BOOKING_REJECTED,
-        booking: {
-          id: data.bookingId,
-          checkInDate: data.checkInDate,
-          guestCount: data.guestCount
-        }
-      }
+      // meta: {
+      //   type: PushNotificationTypeEnum.BOOKING_REJECTED,
+      //   booking: {
+      //     id: data.bookingId,
+      //     checkInDate: data.checkInDate,
+      //     guestCount: data.guestCount
+      //   }
+      // }
     };
 
     await this.sendPushNotification(notification);

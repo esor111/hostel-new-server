@@ -284,7 +284,7 @@ export class RoomsService extends HostelScopedService<Room> {
                   height: element.height / 2, // Split height for bunk levels
                   rotation: element.rotation || 0,
                   bedType: 'bunk',
-                  status: level.status || 'available',
+                  status: level.status || 'Available',
                   gender: element.properties?.gender || 'Any',
                   bunkLevel: level.position || 'bottom' // top/bottom
                 });
@@ -299,7 +299,7 @@ export class RoomsService extends HostelScopedService<Room> {
                 height: element.height,
                 rotation: element.rotation || 0,
                 bedType: element.properties?.bedType || 'single',
-                status: element.properties?.status || 'available',
+                status: element.properties?.status || 'Available',
                 gender: element.properties?.gender || 'Any'
               });
             }
@@ -327,7 +327,7 @@ export class RoomsService extends HostelScopedService<Room> {
             height: element.height,
             rotation: element.rotation || 0,
             bedType: element.properties?.bedType || 'single',
-            status: element.properties?.status || 'available',
+            status: element.properties?.status || 'Available',
             gender: element.properties?.gender || 'Any'
           }));
           console.log(`🔄 Converted ${bedPositions.length} bedPositions from saved layout elements`);
@@ -691,7 +691,7 @@ export class RoomsService extends HostelScopedService<Room> {
             height: element.height,
             rotation: element.rotation || 0,
             bedType: element.properties?.bedType || 'single',
-            status: element.properties?.status || 'available',
+            status: element.properties?.status || 'Available',
             gender: element.properties?.gender || 'Any'
           }));
       }
@@ -892,7 +892,7 @@ export class RoomsService extends HostelScopedService<Room> {
                   height: element.height / 2, // Split height for bunk levels
                   rotation: element.rotation || 0,
                   bedType: 'bunk',
-                  status: level.status || 'available',
+                  status: level.status || 'Available',
                   gender: element.properties?.gender || 'Any',
                   bunkLevel: level.position || 'bottom' // top/bottom
                 });
@@ -907,7 +907,7 @@ export class RoomsService extends HostelScopedService<Room> {
                 height: element.height,
                 rotation: element.rotation || 0,
                 bedType: element.properties?.bedType || 'single',
-                status: element.properties?.status || 'available',
+                status: element.properties?.status || 'Available',
                 gender: element.properties?.gender || 'Any'
               });
             }
