@@ -597,6 +597,17 @@ export class RoomsService extends HostelScopedService<Room> {
     return colorMap[status] || '#6B7280'; // Default to gray
   }
 
+  // Convert bed status for API response - change Occupied beds from bookings to Reserved
+  private convertBedStatusForResponse(bed: any): string {
+    // If bed is Occupied but has notes indicating it's from a booking, return Reserved
+    if (bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')) {
+      return 'Reserved';
+    }
+    
+    // Otherwise return the actual status
+    return bed.status;
+  }
+
   // Transform normalized data back to exact API format
   private async transformToApiResponse(room: Room): Promise<any> {
     // Get active layout
@@ -626,11 +637,20 @@ export class RoomsService extends HostelScopedService<Room> {
 
     if (room.beds && room.beds.length > 0) {
       // Use bed entities for more accurate calculations - bed entity is source of truth
-      const occupiedBeds = room.beds.filter(bed => bed.status === 'Occupied').length;
+      // Only count truly occupied beds (not those occupied via booking which should be reserved)
+      const occupiedBeds = room.beds.filter(bed => 
+        bed.status === 'Occupied' && (!bed.notes || !bed.notes.includes('via booking'))
+      ).length;
       const availableBedsFromBeds = room.beds.filter(bed => bed.status === 'Available').length;
+      const reservedBedsFromBookings = room.beds.filter(bed => 
+        bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')
+      ).length;
 
       actualOccupancy = occupiedBeds;
       availableBeds = availableBedsFromBeds;
+      
+      // Log for debugging
+      console.log(`Room ${room.roomNumber}: ${occupiedBeds} truly occupied, ${reservedBedsFromBookings} reserved from bookings, ${availableBedsFromBeds} available`);
     }
 
     // Enhance layout with bed data if beds exist (hybrid integration)
@@ -691,15 +711,18 @@ export class RoomsService extends HostelScopedService<Room> {
           }
 
           if (matchingBed) {
+            // Convert bed status for response (Occupied from bookings -> Reserved)
+            const responseStatus = this.convertBedStatusForResponse(matchingBed);
+            
             // Update position ID to match bed identifier for frontend mapping
             return {
               ...position,
               id: matchingBed.bedIdentifier, // KEY FIX: Ensure IDs match
-              status: matchingBed.status,
+              status: responseStatus,
               occupantId: matchingBed.currentOccupantId,
               occupantName: matchingBed.currentOccupantName,
               gender: matchingBed.gender,
-              color: this.getBedStatusColor(matchingBed.status),
+              color: this.getBedStatusColor(responseStatus),
               bedDetails: {
                 bedNumber: matchingBed.bedNumber,
                 monthlyRate: matchingBed.monthlyRate,
@@ -746,8 +769,11 @@ export class RoomsService extends HostelScopedService<Room> {
       description: room.description,
       createdAt: room.createdAt,
       updatedAt: room.updatedAt,
-      // Include beds array for enhanced functionality (optional)
-      beds: room.beds || []
+      // Include beds array for enhanced functionality (optional) - convert status for response
+      beds: (room.beds || []).map(bed => ({
+        ...bed,
+        status: this.convertBedStatusForResponse(bed)
+      }))
     };
   }
 
