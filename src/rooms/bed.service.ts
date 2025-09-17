@@ -672,8 +672,58 @@ export class BedService {
   }
 
   /**
+   * Reserve multiple beds for confirmed bookings (with automatic sync)
+   * Used by booking service during booking confirmation - sets beds to RESERVED, not OCCUPIED
+   */
+  async reserveMultipleBedsForBooking(assignments: Array<{
+    bedIdentifier: string;
+    occupantId: string;
+    occupantName: string;
+    checkInDate?: Date;
+  }>): Promise<{
+    reserved: string[];
+    failed: { bedId: string; reason: string }[];
+  }> {
+    this.logger.log(`Reserving beds for booking confirmation: ${assignments.length} beds`);
+
+    const bedIdentifiers = assignments.map(a => a.bedIdentifier);
+    const beds = await this.findByBedIdentifiers(bedIdentifiers);
+    const reserved: string[] = [];
+    const failed: { bedId: string; reason: string }[] = [];
+
+    for (const assignment of assignments) {
+      try {
+        const bed = beds.find(b => b.bedIdentifier === assignment.bedIdentifier);
+        if (!bed) {
+          failed.push({ bedId: assignment.bedIdentifier, reason: 'Bed not found' });
+          continue;
+        }
+
+        // Reserve bed with occupant information but keep status as RESERVED
+        await this.bedRepository.update(bed.id, {
+          status: BedStatus.RESERVED,
+          currentOccupantId: assignment.occupantId,
+          currentOccupantName: assignment.occupantName,
+          occupiedSince: assignment.checkInDate || new Date(),
+          notes: `Reserved for ${assignment.occupantName} via booking confirmation`
+        });
+
+        reserved.push(assignment.bedIdentifier);
+      } catch (error) {
+        failed.push({ bedId: assignment.bedIdentifier, reason: error.message });
+      }
+    }
+
+    // Trigger sync with bedPositions for all affected rooms
+    await this.syncBedStatusToPositions(beds.map(b => b.roomId));
+
+    this.logger.log(`Reserved ${reserved.length}/${assignments.length} beds for booking confirmation`);
+    return { reserved, failed };
+  }
+
+  /**
    * Assign multiple occupants to beds (with automatic sync)
-   * Used by booking service during booking confirmation
+   * Used for actual check-in when guests physically arrive - sets beds to OCCUPIED
    */
   async assignMultipleOccupants(assignments: Array<{
     bedIdentifier: string;
@@ -684,7 +734,7 @@ export class BedService {
     assigned: string[];
     failed: { bedId: string; reason: string }[];
   }> {
-    this.logger.log(`Assigning occupants to ${assignments.length} beds`);
+    this.logger.log(`Assigning occupants to ${assignments.length} beds for actual check-in`);
 
     const bedIdentifiers = assignments.map(a => a.bedIdentifier);
     const beds = await this.findByBedIdentifiers(bedIdentifiers);

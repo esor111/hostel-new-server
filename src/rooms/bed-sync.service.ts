@@ -745,8 +745,8 @@ export class BedSyncService {
   }
 
   /**
-   * Handle booking confirmation - convert RESERVED beds to OCCUPIED
-   * Updates bed status and occupant information when bookings are confirmed
+   * Handle booking confirmation - keep beds as RESERVED with occupant information
+   * Updates bed occupant information when bookings are confirmed but maintains RESERVED status
    */
   async handleBookingConfirmation(bookingId: string, guestAssignments: Array<{
     bedId: string;
@@ -767,18 +767,18 @@ export class BedSyncService {
           continue;
         }
 
-        // Update bed to occupied with occupant information
+        // Update bed to reserved with occupant information
         await this.bedRepository.update(bed.id, {
-          status: BedStatus.OCCUPIED,
+          status: BedStatus.RESERVED,
           currentOccupantId: assignment.guestId,
           currentOccupantName: assignment.guestName,
           occupiedSince: new Date(),
-          notes: `Occupied by ${assignment.guestName} via booking ${bookingId}`
+          notes: `Reserved by ${assignment.guestName} via booking ${bookingId}`
         });
 
         // Log the confirmation with color change
-        const occupiedColor = this.getBedStatusColor(BedStatus.OCCUPIED);
-        this.logger.log(`✅ Bed ${assignment.bedId} confirmed: RESERVED → OCCUPIED (${occupiedColor}) for ${assignment.guestName}`);
+        const reservedColor = this.getBedStatusColor(BedStatus.RESERVED);
+        this.logger.log(`✅ Bed ${assignment.bedId} confirmed: RESERVED → RESERVED (${reservedColor}) for ${assignment.guestName}`);
 
         // Update room occupancy
         if (bed.room) {

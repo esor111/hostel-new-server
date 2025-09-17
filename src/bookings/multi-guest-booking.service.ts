@@ -1513,14 +1513,14 @@ export class MultiGuestBookingService {
     for (const assignment of guestAssignments) {
       // Update bed status within the transaction
       await manager.update(Bed, assignment.bedId, {
-        status: BedStatus.OCCUPIED,
+        status: BedStatus.RESERVED,
         currentOccupantId: assignment.guestId,
         currentOccupantName: assignment.guestName,
         occupiedSince: new Date(),
-        notes: `Occupied by ${assignment.guestName} via booking ${bookingId}`
+        notes: `Reserved by ${assignment.guestName} via booking ${bookingId}`
       });
 
-      this.logger.log(`✅ Bed ${assignment.bedId} confirmed within transaction: RESERVED → OCCUPIED for ${assignment.guestName}`);
+      this.logger.log(`✅ Bed ${assignment.bedId} confirmed within transaction: RESERVED → RESERVED for ${assignment.guestName}`);
     }
 
     // Schedule room occupancy updates to happen after transaction commits
