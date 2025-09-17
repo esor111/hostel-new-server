@@ -192,10 +192,19 @@ export class MultiGuestBookingService {
   }
 
   async findBookingById(id: string) {
-    const booking = await this.multiGuestBookingRepository.findOne({
+    // Try to find booking by UUID first, then by booking reference
+    let booking = await this.multiGuestBookingRepository.findOne({
       where: { id },
       relations: ['guests']
     });
+
+    // If not found by UUID, try by booking reference
+    if (!booking) {
+      booking = await this.multiGuestBookingRepository.findOne({
+        where: { bookingReference: id },
+        relations: ['guests']
+      });
+    }
 
     if (!booking) {
       throw new NotFoundException('Multi-guest booking not found');
@@ -208,10 +217,19 @@ export class MultiGuestBookingService {
    * Find booking entity by ID for internal use (returns raw entity)
    */
   async findBookingEntityById(id: string): Promise<MultiGuestBooking> {
-    const booking = await this.multiGuestBookingRepository.findOne({
+    // Try to find booking by UUID first, then by booking reference
+    let booking = await this.multiGuestBookingRepository.findOne({
       where: { id },
       relations: ['guests']
     });
+
+    // If not found by UUID, try by booking reference
+    if (!booking) {
+      booking = await this.multiGuestBookingRepository.findOne({
+        where: { bookingReference: id },
+        relations: ['guests']
+      });
+    }
 
     if (!booking) {
       throw new NotFoundException('Multi-guest booking not found');
@@ -225,10 +243,19 @@ export class MultiGuestBookingService {
 
     return await this.dataSource.transaction(async manager => {
       try {
-        const booking = await manager.findOne(MultiGuestBooking, {
+        // Try to find booking by UUID first, then by booking reference
+        let booking = await manager.findOne(MultiGuestBooking, {
           where: { id },
           relations: ['guests']
         });
+
+        // If not found by UUID, try by booking reference
+        if (!booking) {
+          booking = await manager.findOne(MultiGuestBooking, {
+            where: { bookingReference: id },
+            relations: ['guests']
+          });
+        }
 
         if (!booking) {
           throw new NotFoundException('Multi-guest booking not found');
@@ -253,16 +280,16 @@ export class MultiGuestBookingService {
         if (updateDto.idProofType) updateData.idProofType = updateDto.idProofType;
         if (updateDto.idProofNumber) updateData.idProofNumber = updateDto.idProofNumber;
 
-        // Update the booking
-        await manager.update(MultiGuestBooking, id, updateData);
+        // Update the booking using the actual booking ID
+        await manager.update(MultiGuestBooking, booking.id, updateData);
 
         // Return the updated booking
         const updatedBooking = await manager.findOne(MultiGuestBooking, {
-          where: { id },
+          where: { id: booking.id },
           relations: ['guests']
         });
 
-        this.logger.log(`✅ Updated multi-guest booking ${id}`);
+        this.logger.log(`✅ Updated multi-guest booking ${booking.id}`);
         return this.transformToApiResponse(updatedBooking);
       } catch (error) {
         this.logger.error(`❌ Error updating booking ${id}: ${error.message}`);
@@ -276,10 +303,19 @@ export class MultiGuestBookingService {
 
     return await this.dataSource.transaction(async manager => {
       try {
-        const booking = await manager.findOne(MultiGuestBooking, {
+        // Try to find booking by UUID first, then by booking reference
+        let booking = await manager.findOne(MultiGuestBooking, {
           where: { id },
           relations: ['guests']
         });
+
+        // If not found by UUID, try by booking reference
+        if (!booking) {
+          booking = await manager.findOne(MultiGuestBooking, {
+            where: { bookingReference: id },
+            relations: ['guests']
+          });
+        }
 
         if (!booking) {
           throw new NotFoundException('Multi-guest booking not found');
@@ -325,8 +361,8 @@ export class MultiGuestBookingService {
           }
         }
 
-        // Update booking status
-        await manager.update(MultiGuestBooking, id, {
+        // Update booking status using the actual booking ID
+        await manager.update(MultiGuestBooking, booking.id, {
           status: finalStatus,
           confirmedGuests: confirmedGuestCount,
           processedBy: processedBy || 'admin',
@@ -359,7 +395,7 @@ export class MultiGuestBookingService {
 
         // Handle booking confirmation with proper bed synchronization
         if (guestAssignments.length > 0) {
-          await this.bedSyncService.handleBookingConfirmation(id, guestAssignments);
+          await this.bedSyncService.handleBookingConfirmation(booking.id, guestAssignments);
         }
 
         // Create student profiles for confirmed guests
@@ -385,7 +421,7 @@ export class MultiGuestBookingService {
         // Trigger notification for booking confirmation (to contact person)
         try {
           await this.notificationService.sendBookingConfirmedNotification({
-            bookingId: id,
+            bookingId: booking.id,
             contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
             hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
             checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -403,7 +439,7 @@ export class MultiGuestBookingService {
           message: failedAssignments.length > 0
             ? `Booking partially confirmed: ${confirmedGuestCount}/${booking.totalGuests} guests assigned, ${createdStudents.length} students created`
             : `Multi-guest booking confirmed successfully, ${createdStudents.length} students created`,
-          bookingId: id,
+          bookingId: booking.id,
           confirmedGuests: confirmedGuestCount,
           createdStudents: createdStudents.length,
           students: createdStudents,
@@ -421,10 +457,19 @@ export class MultiGuestBookingService {
 
     return await this.dataSource.transaction(async manager => {
       try {
-        const booking = await manager.findOne(MultiGuestBooking, {
+        // Try to find booking by UUID first, then by booking reference
+        let booking = await manager.findOne(MultiGuestBooking, {
           where: { id },
           relations: ['guests']
         });
+
+        // If not found by UUID, try by booking reference
+        if (!booking) {
+          booking = await manager.findOne(MultiGuestBooking, {
+            where: { bookingReference: id },
+            relations: ['guests']
+          });
+        }
 
         if (!booking) {
           throw new NotFoundException('Multi-guest booking not found');
@@ -438,15 +483,15 @@ export class MultiGuestBookingService {
           throw new BadRequestException('Cannot cancel completed booking');
         }
 
-        // Update booking status
-        await manager.update(MultiGuestBooking, id, {
+        // Update booking status using the actual booking ID
+        await manager.update(MultiGuestBooking, booking.id, {
           status: MultiGuestBookingStatus.CANCELLED,
           cancellationReason: reason,
           processedDate: new Date()
         });
 
-        // Update guest statuses
-        await manager.update(BookingGuest, { bookingId: id }, {
+        // Update guest statuses using the actual booking ID
+        await manager.update(BookingGuest, { bookingId: booking.id }, {
           status: GuestStatus.CANCELLED
         });
 
@@ -462,7 +507,7 @@ export class MultiGuestBookingService {
         return {
           success: true,
           message: 'Multi-guest booking cancelled successfully',
-          bookingId: id,
+          bookingId: booking.id,
           reason,
           releasedBeds
         };
@@ -639,6 +684,82 @@ export class MultiGuestBookingService {
   }
 
   /**
+   * Transform booking data to the new My Bookings response format
+   */
+  private transformToMyBookingsResponse(booking: MultiGuestBooking) {
+    // Debug logging to see what we're getting
+    this.logger.log(`🔍 DEBUG - Booking ID: ${booking.id}, Reference: ${booking.bookingReference}`);
+
+    const actualBookingId = booking.id; // Store the actual UUID
+    const result = {
+      id: actualBookingId, // Use actual booking UUID
+      status: booking.status.toLowerCase(),
+      hostelInfo: {
+        hostelId: booking.hostelId,
+        hostelName: booking.hostel?.name || 'Kaha Hostel',
+        location: 'Kathmandu, Nepal'
+      },
+      details: booking.guests?.map(guest => ({
+        roomInfo: {
+          roomId: guest.bed?.room?.id || guest.bedId.split('-')[0],
+          roomType: this.getRoomTypeFromBedCount(guest.bed?.room?.bedCount),
+          roomFloor: this.extractFloorFromRoomNumber(guest.bed?.room?.roomNumber),
+          capacity: guest.bed?.room?.bedCount || 2
+        },
+        bedInfo: {
+          bedId: guest.bed?.bedIdentifier || guest.bedId,
+          status: guest.status.toLowerCase()
+        },
+        guestInfo: {
+          studentId: guest.id,
+          studentName: guest.guestName,
+          appliedDate: booking.createdAt.toISOString().split('T')[0]
+        }
+      })) || [],
+      createdAt: booking.createdAt.toISOString()
+    };
+
+    this.logger.log(`🔍 DEBUG - Returning result with ID: ${result.id}`);
+    return result;
+  }
+
+  /**
+   * Helper method to determine room type based on bed count
+   */
+  private getRoomTypeFromBedCount(bedCount?: number): string {
+    if (!bedCount) return 'Single Room';
+
+    switch (bedCount) {
+      case 1:
+        return 'Single Room';
+      case 2:
+        return 'Double Sharing';
+      case 3:
+        return 'Triple Sharing';
+      case 4:
+        return 'Quad Sharing';
+      default:
+        return `${bedCount}-Bed Room`;
+    }
+  }
+
+  /**
+   * Helper method to extract floor number from room number
+   */
+  private extractFloorFromRoomNumber(roomNumber?: string): number {
+    if (!roomNumber) return 1;
+
+    // Try to extract floor from room number (e.g., R101 -> floor 1, R201 -> floor 2)
+    const match = roomNumber.match(/\d+/);
+    if (match) {
+      const number = parseInt(match[0]);
+      return Math.floor(number / 100) || 1;
+    }
+
+    return 1; // Default to floor 1
+  }
+
+  /**
    * Get bookings by status
    */
   async getBookingsByStatus(status: MultiGuestBookingStatus, hostelId?: string): Promise<MultiGuestBooking[]> {
@@ -722,6 +843,9 @@ export class MultiGuestBookingService {
 
     const queryBuilder = this.multiGuestBookingRepository.createQueryBuilder('booking')
       .leftJoinAndSelect('booking.guests', 'guests')
+      .leftJoinAndSelect('guests.bed', 'bed')
+      .leftJoinAndSelect('bed.room', 'room')
+      .leftJoinAndSelect('booking.hostel', 'hostel')
       .where('booking.userId = :userId', { userId });
 
     // Apply status filter if provided
@@ -737,7 +861,7 @@ export class MultiGuestBookingService {
     const [bookings, total] = await queryBuilder.getManyAndCount();
 
     return {
-      data: bookings.map(booking => this.transformToApiResponse(booking)),
+      data: bookings.map(booking => this.transformToMyBookingsResponse(booking)),
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -757,10 +881,19 @@ export class MultiGuestBookingService {
 
     return await this.dataSource.transaction(async manager => {
       try {
-        const booking = await manager.findOne(MultiGuestBooking, {
+        // Try to find booking by UUID first, then by booking reference
+        let booking = await manager.findOne(MultiGuestBooking, {
           where: { id: bookingId, userId },
           relations: ['guests']
         });
+
+        // If not found by UUID, try by booking reference
+        if (!booking) {
+          booking = await manager.findOne(MultiGuestBooking, {
+            where: { bookingReference: bookingId, userId },
+            relations: ['guests']
+          });
+        }
 
         if (!booking) {
           throw new NotFoundException('Booking not found or you do not have permission to cancel it');
@@ -774,15 +907,15 @@ export class MultiGuestBookingService {
           throw new BadRequestException('Cannot cancel completed booking');
         }
 
-        // Update booking status
-        await manager.update(MultiGuestBooking, bookingId, {
+        // Update booking status using the actual booking ID
+        await manager.update(MultiGuestBooking, booking.id, {
           status: MultiGuestBookingStatus.CANCELLED,
           cancellationReason: reason,
           processedDate: new Date()
         });
 
-        // Update guest statuses
-        await manager.update(BookingGuest, { bookingId }, {
+        // Update guest statuses using the actual booking ID
+        await manager.update(BookingGuest, { bookingId: booking.id }, {
           status: GuestStatus.CANCELLED
         });
 
@@ -795,7 +928,7 @@ export class MultiGuestBookingService {
         return {
           success: true,
           message: 'Booking cancelled successfully',
-          bookingId,
+          bookingId: booking.id,
           reason
         };
       } catch (error) {
@@ -1073,11 +1206,19 @@ export class MultiGuestBookingService {
     this.logger.log(`Admin ${processedBy} rejecting booking ${bookingId} with reason: ${reason}`);
 
     return await this.dataSource.transaction(async manager => {
-      // Find the booking
-      const booking = await manager.findOne(MultiGuestBooking, {
+      // Try to find booking by UUID first, then by booking reference
+      let booking = await manager.findOne(MultiGuestBooking, {
         where: { id: bookingId },
         relations: ['guests']
       });
+
+      // If not found by UUID, try by booking reference
+      if (!booking) {
+        booking = await manager.findOne(MultiGuestBooking, {
+          where: { bookingReference: bookingId },
+          relations: ['guests']
+        });
+      }
 
       if (!booking) {
         throw new NotFoundException('Booking not found');

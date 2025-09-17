@@ -602,8 +602,12 @@ export class RoomsService extends HostelScopedService<Room> {
     // Get active layout
     const activeLayout = room.layout;
 
-    // Get amenities list
-    const amenities = room.amenities?.map(ra => ra.amenity.name) || [];
+    // Get amenities list in proper format with string id, name, and description
+    const amenities = room.amenities?.map((ra, index) => ({
+      id: (index + 1).toString(), // Convert to string ID starting from "1"
+      name: ra.amenity.name,
+      description: ra.amenity.description || ra.amenity.name // Use name as fallback for description
+    })) || [];
 
     // Get occupants (from active RoomOccupant records)
     const occupants = room.occupants?.filter(occupant => occupant.status === 'Active')

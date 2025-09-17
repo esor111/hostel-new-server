@@ -1,6 +1,10 @@
 import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, Headers, BadRequestException, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiHeader, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { HostelService } from '../hostel/hostel.service';
 // Removed: import { BookingsService } from './bookings.service';
 import { MultiGuestBookingService } from './multi-guest-booking.service';
 // Removed: import { BookingTransformationService } from './booking-transformation.service';

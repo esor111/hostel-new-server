@@ -41,71 +41,47 @@ export class GetMyBookingsDto {
 }
 
 export class HostelInfoDto {
+  @ApiProperty({ description: 'Hostel ID' })
+  hostelId: string;
+
   @ApiProperty({ description: 'Hostel name' })
-  name: string;
+  hostelName: string;
 
-  @ApiProperty({ description: 'Hostel address' })
-  address: string;
-
-  @ApiProperty({ description: 'Hostel contact phone' })
-  contactPhone: string;
-
-  @ApiProperty({ description: 'Hostel contact email' })
-  contactEmail: string;
+  @ApiProperty({ description: 'Hostel location' })
+  location: string;
 }
 
 export class RoomInfoDto {
   @ApiProperty({ description: 'Room ID' })
-  id: string;
+  roomId: string;
 
-  @ApiProperty({ description: 'Room name' })
-  name: string;
+  @ApiProperty({ description: 'Room type (e.g., Double Sharing, Triple Sharing)' })
+  roomType: string;
 
-  @ApiProperty({ description: 'Room number' })
-  roomNumber: string;
+  @ApiProperty({ description: 'Room floor number' })
+  roomFloor: number;
 
-  @ApiProperty({ description: 'Room gender' })
-  gender: string;
-
-  @ApiProperty({ description: 'Monthly rate for the room' })
-  monthlyRate: number;
+  @ApiProperty({ description: 'Room capacity (number of beds)' })
+  capacity: number;
 }
 
 export class BedInfoDto {
   @ApiProperty({ description: 'Bed ID' })
-  id: string;
+  bedId: string;
 
-  @ApiProperty({ description: 'Bed number' })
-  bedNumber: string;
-
-  @ApiProperty({ description: 'Bed type' })
-  bedType: string;
-
-  @ApiProperty({ description: 'Whether bed is occupied' })
-  isOccupied: boolean;
+  @ApiProperty({ description: 'Bed status (approved, pending, rejected)' })
+  status: string;
 }
 
 export class GuestInfoDto {
-  @ApiProperty({ description: 'Guest ID' })
-  id: string;
+  @ApiProperty({ description: 'Student ID' })
+  studentId: string;
 
-  @ApiProperty({ description: 'Guest name' })
-  guestName: string;
+  @ApiProperty({ description: 'Student name' })
+  studentName: string;
 
-  @ApiProperty({ description: 'Guest phone number' })
-  phone: string;
-
-  @ApiProperty({ description: 'Guest email' })
-  email: string;
-
-  @ApiProperty({ description: 'Guest age' })
-  age: number;
-
-  @ApiProperty({ description: 'Guest gender' })
-  gender: string;
-
-  @ApiProperty({ description: 'Guest status' })
-  status: string;
+  @ApiProperty({ description: 'Applied date (YYYY-MM-DD format)' })
+  appliedDate: string;
 }
 
 export class BookingDetailDto {
@@ -120,23 +96,20 @@ export class BookingDetailDto {
 }
 
 export class MyBookingDto {
-  @ApiProperty({ description: 'Booking ID (UUID)' })
+  @ApiProperty({ description: 'Booking ID (actual UUID)' })
   id: string;
-
-  @ApiProperty({ description: 'Booking reference (MGB format for display)' })
-  bookingReference: string;
 
   @ApiProperty({ description: 'Booking status' })
   status: string;
-
-  @ApiProperty({ description: 'User email for identification' })
-  userEmail: string;
 
   @ApiProperty({ description: 'Hostel information' })
   hostelInfo: HostelInfoDto;
 
   @ApiProperty({ description: 'Booking details', type: [BookingDetailDto] })
   details: BookingDetailDto[];
+
+  @ApiProperty({ description: 'Created at timestamp' })
+  createdAt: string;
 }
 
 export class PaginationDto {
@@ -156,9 +129,6 @@ export class PaginationDto {
 export class MyBookingsResponseDto {
   @ApiProperty({ description: 'List of user bookings', type: [MyBookingDto] })
   data: MyBookingDto[];
-
-  @ApiProperty({ description: 'User email for identification' })
-  userEmail: string;
 
   @ApiProperty({ description: 'Pagination information' })
   pagination: PaginationDto;
