@@ -167,6 +167,37 @@ export class StudentsService { // Removed HostelScopedService extension for back
     return this.findOne(id, hostelId);
   }
 
+  async getPendingConfigurationStudents(hostelId?: string) {
+    const whereCondition: any = { 
+      status: StudentStatus.PENDING_CONFIGURATION,
+      isConfigured: false 
+    };
+    
+    // Apply hostel filter only if hostelId is provided (backward compatible)
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+    
+    const students = await this.studentRepository.find({
+      where: whereCondition,
+      relations: ['room', 'contacts', 'academicInfo', 'financialInfo'],
+      order: { createdAt: 'DESC' }
+    });
+    
+    // Transform to API response format
+    const transformedItems = await Promise.all(
+      students.map(student => this.transformToApiResponse(student))
+    );
+    
+    return {
+      items: transformedItems,
+      count: transformedItems.length,
+      message: transformedItems.length > 0 
+        ? `Found ${transformedItems.length} students pending configuration`
+        : 'No students pending configuration'
+    };
+  }
+
   async getStats(hostelId?: string) {
     const whereCondition: any = {};
     // Apply hostel filter only if hostelId is provided (backward compatible)
@@ -183,6 +214,9 @@ export class StudentsService { // Removed HostelScopedService extension for back
     const inactiveStudents = await this.studentRepository.count({ 
       where: { ...whereCondition, status: StudentStatus.INACTIVE } 
     });
+    const pendingConfigurationStudents = await this.studentRepository.count({ 
+      where: { ...whereCondition, status: StudentStatus.PENDING_CONFIGURATION } 
+    });
     
     // Calculate financial totals from ledger entries (will implement when ledger is ready)
     const balanceResult = await this.studentRepository
@@ -196,6 +230,7 @@ export class StudentsService { // Removed HostelScopedService extension for back
       totalStudents,
       activeStudents,
       inactiveStudents,
+      pendingConfigurationStudents,
       totalBalance: parseFloat(balanceResult?.totalBalance) || 0,
       totalAdvance: 0 // Will calculate from advance payments
     };

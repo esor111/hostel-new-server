@@ -393,16 +393,25 @@ export class MultiGuestBookingService {
           }
         }
 
-        // Handle booking confirmation with proper bed synchronization
+        // Handle booking confirmation with proper bed synchronization within transaction
         if (guestAssignments.length > 0) {
-          await this.bedSyncService.handleBookingConfirmation(booking.id, guestAssignments);
+          try {
+            await this.handleBedConfirmationWithinTransaction(manager, booking.id, guestAssignments);
+            this.logger.log(`✅ Bed confirmation completed successfully within transaction`);
+          } catch (bedError) {
+            this.logger.error(`❌ Error during bed confirmation within transaction: ${bedError.message}`);
+            throw bedError;
+          }
         }
 
         // Create student profiles for confirmed guests
         const createdStudents = [];
+        this.logger.log(`🎓 Creating student profiles for confirmed guests`);
+        
         for (const guest of booking.guests) {
           if (successfulAssignments.includes(guest.bedId)) {
             try {
+              this.logger.log(`🎓 Attempting to create student for guest: ${guest.guestName}`);
               const student = await this.createStudentFromGuest(manager, guest, booking, {
                 processedBy: processedBy || 'admin',
                 assignedRoom: null, // Will be handled by bed assignment
@@ -412,6 +421,9 @@ export class MultiGuestBookingService {
               this.logger.log(`✅ Created student profile for guest: ${guest.guestName}`);
             } catch (studentError) {
               this.logger.error(`❌ Failed to create student for guest ${guest.guestName}: ${studentError.message}`);
+              this.logger.error(`❌ Student creation error stack: ${studentError.stack}`);
+              // Don't let student creation failure cause transaction rollback
+              // Just log the error and continue - this ensures booking confirmation still succeeds
             }
           }
         }
@@ -420,6 +432,7 @@ export class MultiGuestBookingService {
 
         // Trigger notification for booking confirmation (to contact person)
         try {
+          this.logger.log(`📱 Attempting to send booking confirmation notification for: ${booking.bookingReference}`);
           await this.notificationService.sendBookingConfirmedNotification({
             bookingId: booking.id,
             contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
@@ -429,12 +442,15 @@ export class MultiGuestBookingService {
             hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
             guestCount: confirmedGuestCount
           });
-          this.logger.log(`📱 Booking confirmation notification sent: ${booking.bookingReference}`);
+          this.logger.log(`📱 Booking confirmation notification sent successfully: ${booking.bookingReference}`);
         } catch (notificationError) {
           this.logger.warn(`⚠️ Failed to send booking confirmation notification: ${notificationError.message}`);
+          // Don't let notification failure cause transaction rollback
         }
 
-        return {
+        this.logger.log(`🎯 About to return confirmation result for booking ${booking.bookingReference}`);
+        
+        const result = {
           success: true,
           message: failedAssignments.length > 0
             ? `Booking partially confirmed: ${confirmedGuestCount}/${booking.totalGuests} guests assigned, ${createdStudents.length} students created`
@@ -445,8 +461,13 @@ export class MultiGuestBookingService {
           students: createdStudents,
           failedAssignments: failedAssignments.length > 0 ? failedAssignments : undefined
         };
+        
+        this.logger.log(`🎯 Returning confirmation result: ${JSON.stringify(result)}`);
+        return result;
+        
       } catch (error) {
         this.logger.error(`❌ Error confirming booking ${id}: ${error.message}`);
+        this.logger.error(`❌ Error stack: ${error.stack}`);
         throw error;
       }
     });
@@ -1476,6 +1497,53 @@ export class MultiGuestBookingService {
   }
 
   /**
+   * Handle bed confirmation within transaction to ensure consistency
+   */
+  private async handleBedConfirmationWithinTransaction(
+    manager: any,
+    bookingId: string,
+    guestAssignments: Array<{
+      bedId: string;
+      guestName: string;
+      guestId: string;
+    }>
+  ): Promise<void> {
+    this.logger.log(`✅ Handling bed confirmation within transaction for booking ${bookingId}`);
+
+    for (const assignment of guestAssignments) {
+      // Update bed status within the transaction
+      await manager.update(Bed, assignment.bedId, {
+        status: BedStatus.OCCUPIED,
+        currentOccupantId: assignment.guestId,
+        currentOccupantName: assignment.guestName,
+        occupiedSince: new Date(),
+        notes: `Occupied by ${assignment.guestName} via booking ${bookingId}`
+      });
+
+      this.logger.log(`✅ Bed ${assignment.bedId} confirmed within transaction: RESERVED → OCCUPIED for ${assignment.guestName}`);
+    }
+
+    // Schedule room occupancy updates to happen after transaction commits
+    setImmediate(async () => {
+      try {
+        for (const assignment of guestAssignments) {
+          const bed = await this.dataSource.getRepository('beds').findOne({
+            where: { id: assignment.bedId },
+            relations: ['room']
+          });
+          if (bed?.room) {
+            // Use the bed sync service for room occupancy calculation only
+            await this.bedSyncService.updateRoomOccupancyFromBeds(bed.room.id);
+            this.logger.log(`✅ Updated room occupancy for room ${bed.room.id} after bed confirmation`);
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`⚠️ Failed to update room occupancy after confirmation: ${error.message}`);
+      }
+    });
+  }
+
+  /**
    * Create student from guest (for approval workflow)
    */
   private async createStudentFromGuest(
@@ -1484,9 +1552,25 @@ export class MultiGuestBookingService {
     booking: MultiGuestBooking,
     approvalData: ApproveBookingDto
   ): Promise<Student> {
-    // Fixed: Convert room number to UUID using validation service
+    // Get room information from the bed assignment
     let roomUuid = null;
-    if (approvalData.assignedRoom) {
+    if (guest.bedId) {
+      // Find the bed and get its room
+      const bed = await manager.findOne(Bed, {
+        where: { id: guest.bedId },
+        relations: ['room']
+      });
+      
+      if (bed && bed.room) {
+        roomUuid = bed.room.id;
+        this.logger.log(`✅ Found room UUID ${roomUuid} from bed ${guest.bedId}`);
+      } else {
+        this.logger.warn(`⚠️ Could not find room for bed ${guest.bedId}`);
+      }
+    }
+    
+    // Fallback: try to use assignedRoom if provided
+    if (!roomUuid && approvalData.assignedRoom) {
       const roomValidation = await this.validationService.validateAndConvertRoomNumber(approvalData.assignedRoom);
 
       if (roomValidation.isValid) {
@@ -1494,7 +1578,8 @@ export class MultiGuestBookingService {
         this.logger.log(`✅ Found room UUID ${roomUuid} for room number ${approvalData.assignedRoom}`);
       } else {
         this.logger.error(`❌ Room validation failed: ${roomValidation.error}`);
-        throw new BadRequestException(`Room assignment failed: ${roomValidation.error}`);
+        // Don't throw error, just log warning and continue without room assignment
+        this.logger.warn(`⚠️ Continuing student creation without room assignment`);
       }
     }
 
@@ -1548,6 +1633,7 @@ export class MultiGuestBookingService {
       address: booking.address, // Use booking address instead of guest address
       bedNumber: guest.assignedBedNumber,
       roomId: roomUuid, // Fixed: Use UUID instead of room number
+      hostelId: booking.hostelId, // Ensure student belongs to the same hostel as the booking
       isConfigured: false, // Ensure this is false for pending configuration
       // bookingRequestId: null // Removed: Don't reference deleted booking_requests
     });

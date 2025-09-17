@@ -28,6 +28,19 @@ export class StudentsController {
     };
   }
 
+  @Get('pending-configuration')
+  @ApiOperation({ summary: 'Get students pending configuration' })
+  @ApiResponse({ status: 200, description: 'Pending configuration students retrieved successfully' })
+  async getPendingConfigurationStudents(@GetOptionalHostelId() hostelId?: string) {
+    const result = await this.studentsService.getPendingConfigurationStudents(hostelId);
+    
+    // Return EXACT same format as current Express API
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
   @Get('stats')
   @ApiOperation({ summary: 'Get student statistics' })
   @ApiResponse({ status: 200, description: 'Student statistics retrieved successfully' })
