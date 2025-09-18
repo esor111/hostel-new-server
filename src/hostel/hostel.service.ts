@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, Logger, ConflictException } from '@nestj
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Hostel } from './entities/hostel.entity';
+import { BusinessIntegrationService, BusinessData } from './services/business-integration.service';
 
 export interface CreateHostelDto {
   businessId: string;
@@ -24,6 +25,7 @@ export class HostelService {
   constructor(
     @InjectRepository(Hostel)
     private hostelRepository: Repository<Hostel>,
+    private businessIntegrationService: BusinessIntegrationService,
   ) {}
 
   /**
@@ -282,6 +284,143 @@ export class HostelService {
    */
   clearAllCache(): void {
     this.hostelCache.clear();
+    this.businessIntegrationService.clearAllCache();
     this.logger.log('Cleared all hostel cache');
+  }
+
+  /**
+   * Enhance single hostel with business data from kaha-main-v3
+   */
+  async enhanceHostelWithBusinessData(hostel: Hostel): Promise<any> {
+    try {
+      const businessData = await this.businessIntegrationService.getBusinessData(hostel.businessId);
+      
+      if (businessData) {
+        return {
+          id: hostel.id,
+          businessId: hostel.businessId,
+          name: businessData.name, // Use business name instead of hostel name
+          avatar: businessData.avatar,
+          address: businessData.address,
+          kahaId: businessData.kahaId,
+          isActive: hostel.isActive,
+          createdAt: hostel.createdAt,
+          updatedAt: hostel.updatedAt,
+          // Keep original hostel name as fallback
+          _originalHostelName: hostel.name
+        };
+      }
+
+      // Fallback to original hostel data if business data not available
+      return {
+        id: hostel.id,
+        businessId: hostel.businessId,
+        name: hostel.name,
+        isActive: hostel.isActive,
+        createdAt: hostel.createdAt,
+        updatedAt: hostel.updatedAt
+      };
+    } catch (error) {
+      this.logger.error(`Error enhancing hostel ${hostel.id} with business data:`, error);
+      
+      // Return original hostel data on error
+      return {
+        id: hostel.id,
+        businessId: hostel.businessId,
+        name: hostel.name,
+        isActive: hostel.isActive,
+        createdAt: hostel.createdAt,
+        updatedAt: hostel.updatedAt
+      };
+    }
+  }
+
+  /**
+   * Enhance multiple hostels with business data from kaha-main-v3
+   */
+  async enhanceHostelsWithBusinessData(hostels: Hostel[]): Promise<any[]> {
+    if (!hostels || hostels.length === 0) {
+      return [];
+    }
+
+    try {
+      // Get all business IDs
+      const businessIds = hostels.map(hostel => hostel.businessId);
+      
+      // Fetch business data in bulk
+      const businessDataMap = await this.businessIntegrationService.getBulkBusinessData(businessIds);
+      
+      // Enhance each hostel with business data
+      return hostels.map(hostel => {
+        const businessData = businessDataMap.get(hostel.businessId);
+        
+        if (businessData) {
+          return {
+            id: hostel.id,
+            businessId: hostel.businessId,
+            name: businessData.name, // Use business name instead of hostel name
+            avatar: businessData.avatar,
+            address: businessData.address,
+            kahaId: businessData.kahaId,
+            isActive: hostel.isActive,
+            createdAt: hostel.createdAt,
+            updatedAt: hostel.updatedAt,
+            // Keep original hostel name as fallback
+            _originalHostelName: hostel.name
+          };
+        }
+
+        // Fallback to original hostel data if business data not available
+        return {
+          id: hostel.id,
+          businessId: hostel.businessId,
+          name: hostel.name,
+          isActive: hostel.isActive,
+          createdAt: hostel.createdAt,
+          updatedAt: hostel.updatedAt
+        };
+      });
+    } catch (error) {
+      this.logger.error('Error enhancing hostels with business data:', error);
+      
+      // Return original hostel data on error
+      return hostels.map(hostel => ({
+        id: hostel.id,
+        businessId: hostel.businessId,
+        name: hostel.name,
+        isActive: hostel.isActive,
+        createdAt: hostel.createdAt,
+        updatedAt: hostel.updatedAt
+      }));
+    }
+  }
+
+  /**
+   * Get all hostels with enhanced business data
+   */
+  async findAllWithBusinessData(): Promise<any[]> {
+    try {
+      const hostels = await this.findAll();
+      return await this.enhanceHostelsWithBusinessData(hostels);
+    } catch (error) {
+      this.logger.error('Error finding all hostels with business data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find hostel by businessId with enhanced business data
+   */
+  async findByBusinessIdWithBusinessData(businessId: string): Promise<any | null> {
+    try {
+      const hostel = await this.findByBusinessId(businessId);
+      if (!hostel) {
+        return null;
+      }
+      return await this.enhanceHostelWithBusinessData(hostel);
+    } catch (error) {
+      this.logger.error(`Error finding hostel by businessId ${businessId} with business data:`, error);
+      throw error;
+    }
   }
 }

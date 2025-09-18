@@ -49,6 +49,12 @@ export class HostelInfoDto {
 
   @ApiProperty({ description: 'Hostel location' })
   location: string;
+
+  @ApiProperty({ description: 'Hostel avatar image URL', required: false })
+  avatar?: string;
+
+  @ApiProperty({ description: 'Kaha business ID', required: false })
+  kahaId?: string;
 }
 
 export class RoomInfoDto {

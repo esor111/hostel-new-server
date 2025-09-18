@@ -90,7 +90,7 @@ console.log("notification body", body)
       receiverBusinessIds: [businessId], // Use businessId instead of hostelId
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_REQUEST,
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
       // meta: {
       //   type: PushNotificationTypeEnum.BOOKING_REQUEST,
       //   booking: {
@@ -118,7 +118,7 @@ console.log("notification body", body)
       receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_APPROVED,
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
       // meta: {
       //   type: PushNotificationTypeEnum.BOOKING_APPROVED,
       //   booking: {
@@ -146,7 +146,7 @@ console.log("notification body", body)
       receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_REJECTED,
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
       // meta: {
       //   type: PushNotificationTypeEnum.BOOKING_REJECTED,
       //   booking: {
@@ -175,9 +175,9 @@ console.log("notification body", body)
       receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_CONFIRMED,
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
       meta: {
-        type: PushNotificationTypeEnum.BOOKING_CONFIRMED,
+        type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,
@@ -203,9 +203,9 @@ console.log("notification body", body)
       receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_CANCELLED,
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
       meta: {
-        type: PushNotificationTypeEnum.BOOKING_CANCELLED,
+        type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,

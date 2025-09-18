@@ -14,7 +14,7 @@ export class HostelController {
   @ApiResponse({ status: 200, description: 'Hostels retrieved successfully' })
   async getAllHostels() {
     try {
-      const hostels = await this.hostelService.findAll();
+      const hostels = await this.hostelService.findAllWithBusinessData();
       return {
         success: true,
         data: hostels,
@@ -36,7 +36,7 @@ export class HostelController {
   @ApiResponse({ status: 404, description: 'Hostel not found' })
   async getHostelByBusinessId(@Param('businessId') businessId: string) {
     try {
-      const hostel = await this.hostelService.findByBusinessId(businessId);
+      const hostel = await this.hostelService.findByBusinessIdWithBusinessData(businessId);
       if (!hostel) {
         return {
           success: false,
@@ -150,14 +150,14 @@ export class HostelController {
   }
 
   @Post('cache/clear')
-  @ApiOperation({ summary: 'Clear hostel cache (admin only)' })
+  @ApiOperation({ summary: 'Clear hostel and business cache (admin only)' })
   @ApiResponse({ status: 200, description: 'Cache cleared successfully' })
   async clearCache() {
     try {
       this.hostelService.clearAllCache();
       return {
         success: true,
-        message: 'Hostel cache cleared successfully'
+        message: 'Hostel and business cache cleared successfully'
       };
     } catch (error) {
       this.logger.error('Error clearing hostel cache:', error);

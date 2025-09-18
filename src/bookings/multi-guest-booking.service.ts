@@ -12,6 +12,7 @@ import { BedSyncService } from '../rooms/bed-sync.service';
 import { BookingValidationService } from './validation/booking-validation.service';
 import { NotificationCommunicationService } from '../notification-communication/notification-communication.service';
 import { ConfigService } from '@nestjs/config';
+import { BusinessIntegrationService } from '../hostel/services/business-integration.service';
 
 
 export interface BookingFilters {
@@ -72,6 +73,7 @@ export class MultiGuestBookingService {
     private validationService: BookingValidationService,
     private notificationService: NotificationCommunicationService,
     private configService: ConfigService,
+    private businessIntegrationService: BusinessIntegrationService,
   ) { }
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string, userId?: string): Promise<any> {
@@ -407,7 +409,7 @@ export class MultiGuestBookingService {
         // Create student profiles for confirmed guests
         const createdStudents = [];
         this.logger.log(`🎓 Creating student profiles for confirmed guests`);
-        
+
         for (const guest of booking.guests) {
           if (successfulAssignments.includes(guest.bedId)) {
             try {
@@ -449,7 +451,7 @@ export class MultiGuestBookingService {
         }
 
         this.logger.log(`🎯 About to return confirmation result for booking ${booking.bookingReference}`);
-        
+
         const result = {
           success: true,
           message: failedAssignments.length > 0
@@ -461,10 +463,10 @@ export class MultiGuestBookingService {
           students: createdStudents,
           failedAssignments: failedAssignments.length > 0 ? failedAssignments : undefined
         };
-        
+
         this.logger.log(`🎯 Returning confirmation result: ${JSON.stringify(result)}`);
         return result;
-        
+
       } catch (error) {
         this.logger.error(`❌ Error confirming booking ${id}: ${error.message}`);
         this.logger.error(`❌ Error stack: ${error.stack}`);
@@ -707,19 +709,40 @@ export class MultiGuestBookingService {
   /**
    * Transform booking data to the new My Bookings response format
    */
-  private transformToMyBookingsResponse(booking: MultiGuestBooking) {
+  private async transformToMyBookingsResponse(booking: MultiGuestBooking) {
     // Debug logging to see what we're getting
     this.logger.log(`🔍 DEBUG - Booking ID: ${booking.id}, Reference: ${booking.bookingReference}`);
+
+    // Get enhanced business data for hostel
+    let hostelInfo: any = {
+      hostelId: booking.hostelId,
+      hostelName: booking.hostel?.name || 'Kaha Hostel',
+      location: 'Kathmandu, Nepal'
+    };
+
+    try {
+      if (booking.hostel?.businessId) {
+        const businessData = await this.businessIntegrationService.getBusinessData(booking.hostel.businessId);
+        if (businessData) {
+          hostelInfo = {
+            hostelId: booking.hostelId,
+            hostelName: businessData.name,
+            location: businessData.address || 'Kathmandu, Nepal',
+            avatar: businessData.avatar,
+            kahaId: businessData.kahaId
+          };
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error enhancing hostel info for booking ${booking.id}:`, error);
+      // Keep original hostelInfo on error
+    }
 
     const actualBookingId = booking.id; // Store the actual UUID
     const result = {
       id: actualBookingId, // Use actual booking UUID
       status: booking.status.toLowerCase(),
-      hostelInfo: {
-        hostelId: booking.hostelId,
-        hostelName: booking.hostel?.name || 'Kaha Hostel',
-        location: 'Kathmandu, Nepal'
-      },
+      hostelInfo,
       details: booking.guests?.map(guest => ({
         roomInfo: {
           roomId: guest.bed?.room?.id || guest.bedId.split('-')[0],
@@ -881,8 +904,13 @@ export class MultiGuestBookingService {
 
     const [bookings, total] = await queryBuilder.getManyAndCount();
 
+    // Transform bookings with enhanced business data
+    const transformedBookings = await Promise.all(
+      bookings.map(booking => this.transformToMyBookingsResponse(booking))
+    );
+
     return {
-      data: bookings.map(booking => this.transformToMyBookingsResponse(booking)),
+      data: transformedBookings,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -1560,7 +1588,7 @@ export class MultiGuestBookingService {
         where: { id: guest.bedId },
         relations: ['room']
       });
-      
+
       if (bed && bed.room) {
         roomUuid = bed.room.id;
         this.logger.log(`✅ Found room UUID ${roomUuid} from bed ${guest.bedId}`);
@@ -1568,7 +1596,7 @@ export class MultiGuestBookingService {
         this.logger.warn(`⚠️ Could not find room for bed ${guest.bedId}`);
       }
     }
-    
+
     // Fallback: try to use assignedRoom if provided
     if (!roomUuid && approvalData.assignedRoom) {
       const roomValidation = await this.validationService.validateAndConvertRoomNumber(approvalData.assignedRoom);
@@ -1661,13 +1689,33 @@ export class MultiGuestBookingService {
   /**
    * Transform booking to my-booking format
    */
-  private transformToMyBookingFormat(booking: MultiGuestBooking, userEmail?: string) {
-    const hostelInfo = {
+  private async transformToMyBookingFormat(booking: MultiGuestBooking, userEmail?: string) {
+    // Get enhanced business data for hostel
+    let hostelInfo: any = {
       name: this.configService.get('HOSTEL_NAME', 'Kaha Hostel Control Center'),
       address: this.configService.get('HOSTEL_ADDRESS', 'Kathmandu, Nepal'),
       contactPhone: this.configService.get('HOSTEL_PHONE', '+977-1234567'),
       contactEmail: this.configService.get('HOSTEL_EMAIL', 'info@kahahostel.com')
     };
+
+    try {
+      if (booking.hostel?.businessId) {
+        const businessData = await this.businessIntegrationService.getBusinessData(booking.hostel.businessId);
+        if (businessData) {
+          hostelInfo = {
+            name: businessData.name,
+            address: businessData.address || hostelInfo.address,
+            contactPhone: hostelInfo.contactPhone, // Keep config phone
+            contactEmail: hostelInfo.contactEmail, // Keep config email
+            avatar: businessData.avatar,
+            kahaId: businessData.kahaId
+          };
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error enhancing hostel info for booking ${booking.id}:`, error);
+      // Keep original hostelInfo on error
+    }
 
     const details = booking.guests.map(guest => ({
       roomInfo: {

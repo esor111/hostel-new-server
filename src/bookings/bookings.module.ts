@@ -13,6 +13,7 @@ import { Room } from '../rooms/entities/room.entity';
 import { Bed } from '../rooms/entities/bed.entity';
 import { RoomsModule } from '../rooms/rooms.module';
 import { NotificationCommunicationModule } from '../notification-communication/notification-communication.module';
+import { HostelModule } from '../hostel/hostel.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
 
 
@@ -29,6 +30,7 @@ import { Hostel } from '../hostel/entities/hostel.entity';
     ]),
     RoomsModule, // Import RoomsModule to access BedSyncService
     NotificationCommunicationModule, // Import notification module
+    HostelModule, // Import HostelModule to access BusinessIntegrationService
   ],
   controllers: [BookingsController],
   providers: [/* Removed: BookingsService, */ MultiGuestBookingService, /* Removed: BookingTransformationService, */ BookingValidationService],
