@@ -61,4 +61,9 @@ export class UpdateRoomDto extends PartialType(CreateRoomDto) {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 }

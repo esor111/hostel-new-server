@@ -201,6 +201,7 @@ export class RoomsService extends HostelScopedService<Room> {
       maintenanceStatus: createRoomDto.maintenanceStatus || 'Good',
       lastCleaned: createRoomDto.lastCleaned,
       description: createRoomDto.description,
+      images: createRoomDto.images || [],
       roomTypeId: roomType?.id,
       hostelId: hostelId, // Inject hostelId from context (validated above)
       // Map floor to building (simplified for now)
@@ -397,6 +398,7 @@ export class RoomsService extends HostelScopedService<Room> {
     if (updateRoomDto.maintenanceStatus !== undefined) updateData.maintenanceStatus = updateRoomDto.maintenanceStatus;
     if (updateRoomDto.lastCleaned !== undefined) updateData.lastCleaned = updateRoomDto.lastCleaned;
     if (updateRoomDto.description !== undefined) updateData.description = updateRoomDto.description;
+    if (updateRoomDto.images !== undefined) updateData.images = updateRoomDto.images;
 
     // Handle room type update
     if (updateRoomDto.type !== undefined) {
@@ -767,6 +769,7 @@ export class RoomsService extends HostelScopedService<Room> {
       maintenanceStatus: room.maintenanceStatus,
       pricingModel: room.roomType?.pricingModel || 'monthly',
       description: room.description,
+      images: room.images || [], // Always include images array
       createdAt: room.createdAt,
       updatedAt: room.updatedAt,
       // Include beds array for enhanced functionality (optional) - convert status for response

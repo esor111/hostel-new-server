@@ -207,4 +207,15 @@ export class CreateRoomDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiProperty({ 
+    description: 'Array of image URLs for the room',
+    example: ['https://example.com/room1.jpg', 'https://example.com/room2.jpg'],
+    type: [String],
+    required: false
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 }

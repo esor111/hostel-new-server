@@ -82,6 +82,9 @@ export class Room extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ type: 'json', nullable: true })
+  images: string[];
+
   // Foreign Keys
   @Column({ name: 'hostelId' })
   hostelId: string;
