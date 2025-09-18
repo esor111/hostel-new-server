@@ -9,7 +9,7 @@ import { RoomAmenity } from './entities/room-amenity.entity';
 import { RoomLayout } from './entities/room-layout.entity';
 import { RoomOccupant } from './entities/room-occupant.entity';
 import { Student } from '../students/entities/student.entity';
-import { Bed } from './entities/bed.entity';
+import { Bed, BedStatus } from './entities/bed.entity';
 
 import { BedSyncService } from './bed-sync.service';
 import { HostelScopedService } from '../common/services/hostel-scoped.service';
@@ -815,6 +815,129 @@ export class RoomsService extends HostelScopedService<Room> {
     }
   }
 
+  /**
+   * Create bed entities directly from layout data
+   * This ensures all beds are created immediately when layout is saved
+   */
+  private async createBedsFromLayoutData(roomId: string, layoutData: any) {
+    console.log('🛏️ Creating beds directly from layout data for room:', roomId);
+    
+    try {
+      // Get room details for bed creation
+      const room = await this.roomRepository.findOne({
+        where: { id: roomId }
+      });
+
+      if (!room) {
+        throw new Error(`Room ${roomId} not found`);
+      }
+
+      // Clear existing beds for this room to avoid conflicts
+      console.log('🗑️ Clearing existing beds for room:', roomId);
+      await this.bedRepository.delete({ roomId });
+
+      const bedsToCreate = [];
+      const roomPrefix = room.roomNumber || 'R'; // Use room number as prefix
+
+      // Process layout elements to extract bed data
+      if (layoutData.elements) {
+        console.log(`📐 Processing ${layoutData.elements.length} layout elements`);
+        
+        for (const element of layoutData.elements) {
+          if (element.type && element.type.includes('bed')) {
+            console.log(`🛏️ Processing bed element: ${element.id} (${element.type})`);
+            
+            if (element.type === 'bunk-bed' && element.properties?.levels) {
+              // Handle bunk bed - create separate entities for each level
+              console.log(`🏗️ Bunk bed ${element.id} has ${element.properties.levels.length} levels`);
+              
+              for (const level of element.properties.levels) {
+                const bedIdentifier = `${roomPrefix}-${level.id}`;
+                const bedNumber = element.id.replace('bed', '');
+                
+                bedsToCreate.push({
+                  bedIdentifier,
+                  bedNumber,
+                  description: `${level.position.charAt(0).toUpperCase() + level.position.slice(1)} bunk ${element.properties?.bedLabel || element.id} in ${room.name}`,
+                  bunkLevel: level.position
+                });
+                
+                console.log(`   ✅ Added bunk level: ${bedIdentifier} (${level.position})`);
+              }
+            } else {
+              // Handle single bed
+              const bedIdentifier = `${roomPrefix}-${element.id}`;
+              const bedNumber = element.id.replace('bed', '');
+              
+              bedsToCreate.push({
+                bedIdentifier,
+                bedNumber,
+                description: `${element.properties?.bedLabel || element.id} in ${room.name}`,
+                bunkLevel: null
+              });
+              
+              console.log(`   ✅ Added single bed: ${bedIdentifier}`);
+            }
+          }
+        }
+      }
+
+      // Also process bedPositions if elements are not available
+      if (!layoutData.elements && layoutData.bedPositions) {
+        console.log(`📍 Processing ${layoutData.bedPositions.length} bed positions`);
+        
+        for (const position of layoutData.bedPositions) {
+          const bedIdentifier = `${roomPrefix}-${position.id}`;
+          const bedNumber = position.id.replace('bed', '').replace(/[^0-9]/g, '') || '1';
+          
+          bedsToCreate.push({
+            bedIdentifier,
+            bedNumber,
+            description: `Bed ${bedNumber} in ${room.name}`,
+            bunkLevel: position.bunkLevel || null
+          });
+          
+          console.log(`   ✅ Added bed from position: ${bedIdentifier}`);
+        }
+      }
+
+      // Create all bed entities
+      console.log(`🆕 Creating ${bedsToCreate.length} bed entities`);
+      
+      for (const bedData of bedsToCreate) {
+        try {
+          const bed = this.bedRepository.create({
+            roomId,
+            hostelId: room.hostelId,
+            bedIdentifier: bedData.bedIdentifier,
+            bedNumber: bedData.bedNumber,
+            status: BedStatus.AVAILABLE,
+            gender: (room.gender as 'Male' | 'Female' | 'Any') || 'Any',
+            monthlyRate: room.monthlyRate,
+            description: bedData.description,
+            currentOccupantId: null,
+            currentOccupantName: null,
+            occupiedSince: null
+          });
+
+          await this.bedRepository.save(bed);
+          console.log(`   ✅ Created bed: ${bedData.bedIdentifier}`);
+          
+        } catch (error) {
+          console.error(`   ❌ Failed to create bed ${bedData.bedIdentifier}:`, error.message);
+          // Continue with other beds
+        }
+      }
+
+      console.log(`✅ Successfully created ${bedsToCreate.length} bed entities for room ${roomId}`);
+      return bedsToCreate.length;
+      
+    } catch (error) {
+      console.error('❌ Error creating beds from layout data:', error.message);
+      throw error;
+    }
+  }
+
   private async updateRoomLayout(roomId: string, layoutData: any) {
     if (!layoutData) {
       return;
@@ -829,107 +952,111 @@ export class RoomsService extends HostelScopedService<Room> {
         where: { roomId }
       });
 
-      if (existingLayout) {
-        console.log('📝 Updating existing layout');
-        console.log('📐 Storing layout data:', JSON.stringify(layoutData, null, 2));
+      // Get room details for generating room-specific bed identifiers
+      const room = await this.roomRepository.findOne({
+        where: { id: roomId }
+      });
+      const roomPrefix = room?.roomNumber || 'R';
 
-        // Update existing layout - store complete layout data
-        await this.roomLayoutRepository.update(
-          { roomId },
-          {
-            layoutData, // Store complete layout object
-            dimensions: layoutData.dimensions,
-            bedPositions: layoutData.bedPositions || (layoutData.elements ?
-              layoutData.elements.filter(e => e.type && e.type.includes('bed')) : null),
-            furnitureLayout: layoutData.elements ?
-              layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
-            layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
-            isActive: true,
-            updatedBy: 'system' // You might want to pass the actual user
-          }
-        );
-      } else {
-        console.log('🆕 Creating new layout');
-        console.log('📐 Storing layout data:', JSON.stringify(layoutData, null, 2));
-
-        // Create new layout - store complete layout object
-        await this.roomLayoutRepository.save({
-          roomId,
-          layoutData, // Store complete layout object
-          dimensions: layoutData.dimensions,
-          bedPositions: layoutData.bedPositions || (layoutData.elements ?
-            layoutData.elements.filter(e => e.type && e.type.includes('bed')) : null),
-          furnitureLayout: layoutData.elements ?
-            layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
-          layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
-          isActive: true,
-          createdBy: 'system' // You might want to pass the actual user
-        });
-      }
-
-      // Sync beds with updated layout using BedSyncService (hybrid integration)
-      // Handle both bedPositions (legacy) and elements (new frontend format)
-      let bedPositions = layoutData.bedPositions;
-
-      if (!bedPositions && layoutData.elements) {
-        // Convert elements to bedPositions format
-        console.log('🔄 Converting elements to bedPositions format');
-        bedPositions = [];
-
+      // Create corrected bedPositions with room-specific identifiers
+      let correctedBedPositions = [];
+      
+      if (layoutData.elements) {
         for (const element of layoutData.elements) {
           if (element.type && element.type.includes('bed')) {
-            // Handle bunk beds with levels
             if (element.type === 'bunk-bed' && element.properties?.levels) {
-              console.log(`🔄 Processing bunk bed ${element.id} with ${element.properties.levels.length} levels`);
-
-              // Create separate bed positions for each bunk level
+              // Handle bunk bed levels
               for (const level of element.properties.levels) {
-                bedPositions.push({
-                  id: level.id || level.bedId, // Use level.id or level.bedId
+                correctedBedPositions.push({
+                  id: `${roomPrefix}-${level.id}`, // Room-specific identifier
                   x: element.x,
                   y: element.y,
                   width: element.width,
-                  height: element.height / 2, // Split height for bunk levels
+                  height: element.height,
                   rotation: element.rotation || 0,
+                  type: 'bunk-bed-level',
+                  properties: {
+                    ...element.properties,
+                    bedId: `${roomPrefix}-${level.id}`,
+                    bunkLevel: level.position,
+                    parentBunkId: element.id
+                  },
+                  status: 'Available',
+                  gender: room?.gender || 'Any',
+                  color: '#10B981',
                   bedType: 'bunk',
-                  status: level.status || 'Available',
-                  gender: element.properties?.gender || 'Any',
-                  bunkLevel: level.position || 'bottom' // top/bottom
+                  bunkLevel: level.position
                 });
               }
             } else {
-              // Handle regular single beds
-              bedPositions.push({
-                id: element.id,
+              // Handle single bed
+              correctedBedPositions.push({
+                id: `${roomPrefix}-${element.id}`, // Room-specific identifier
                 x: element.x,
                 y: element.y,
                 width: element.width,
                 height: element.height,
                 rotation: element.rotation || 0,
-                bedType: element.properties?.bedType || 'single',
-                status: element.properties?.status || 'Available',
-                gender: element.properties?.gender || 'Any'
+                type: element.type,
+                properties: {
+                  ...element.properties,
+                  bedId: `${roomPrefix}-${element.id}`
+                },
+                status: 'Available',
+                gender: room?.gender || 'Any',
+                color: '#10B981'
               });
             }
           }
         }
-
-        console.log(`🔄 Converted ${bedPositions.length} bed positions from ${layoutData.elements.filter(e => e.type && e.type.includes('bed')).length} elements`);
+      } else if (layoutData.bedPositions) {
+        // Use existing bedPositions but update identifiers
+        correctedBedPositions = layoutData.bedPositions.map(pos => ({
+          ...pos,
+          id: `${roomPrefix}-${pos.id}`,
+          properties: {
+            ...pos.properties,
+            bedId: `${roomPrefix}-${pos.id}`
+          }
+        }));
       }
 
-      if (bedPositions && Array.isArray(bedPositions) && bedPositions.length > 0) {
-        console.log('🔄 Syncing beds with updated layout - hybrid integration');
-        console.log('🛏️ Bed positions to sync:', JSON.stringify(bedPositions, null, 2));
-        try {
-          await this.bedSyncService.syncBedsFromLayout(roomId, bedPositions);
-          console.log('✅ Bed sync completed successfully');
-        } catch (error) {
-          console.error('❌ Bed sync failed:', error.message);
-          throw error;
-        }
+      // Store layout with corrected bedPositions
+      const layoutToSave = {
+        layoutData: {
+          ...layoutData,
+          bedPositions: correctedBedPositions // Use corrected identifiers
+        },
+        dimensions: layoutData.dimensions,
+        bedPositions: correctedBedPositions, // Use corrected identifiers
+        furnitureLayout: layoutData.elements ?
+          layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
+        layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
+        isActive: true,
+        updatedBy: 'system'
+      };
+
+      if (existingLayout) {
+        console.log('📝 Updating existing layout with corrected bed identifiers');
+        await this.roomLayoutRepository.update({ roomId }, layoutToSave);
       } else {
-        console.log('⚠️ No bed positions found in layout data');
-        console.log('📐 Layout data received:', JSON.stringify(layoutData, null, 2));
+        console.log('🆕 Creating new layout with corrected bed identifiers');
+        await this.roomLayoutRepository.save({
+          roomId,
+          ...layoutToSave,
+          createdBy: 'system'
+        });
+      }
+
+      // Create bed entities directly from layout data (NEW APPROACH)
+      // This ensures all beds are created immediately when layout is saved
+      console.log('🛏️ Creating bed entities directly from layout data');
+      try {
+        const bedsCreated = await this.createBedsFromLayoutData(roomId, layoutData);
+        console.log(`✅ Successfully created ${bedsCreated} bed entities`);
+      } catch (error) {
+        console.error('❌ Direct bed creation failed:', error.message);
+        throw error;
       }
 
       console.log('✅ Layout updated successfully');
