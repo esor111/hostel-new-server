@@ -23,7 +23,7 @@ export class BusinessIntegrationService {
   private readonly kahaMainUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.kahaMainUrl = this.configService.get('KAHA_MAIN_URL', 'http://localhost:3006');
+    this.kahaMainUrl = this.configService.get('KAHA_MAIN_URL', 'https://dev.kaha.com.np');
   }
 
   /**
