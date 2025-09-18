@@ -35,15 +35,30 @@ export class NotificationCommunicationService {
    */
   async sendPushNotification(body: SendPushNotificationDto): Promise<void> {
     const baseUrl = `${this.notificationServiceUrl}/push-notifications/structured`;
-console.log("notification body", body)
+    
+    // Log full request payload
+    this.logger.log(`Full Request Payload: ${JSON.stringify(body, null, 2)}`);
+    this.logger.log(`Request URL: ${baseUrl}`);
+    this.logger.log(`Request Method: POST`);
+    
     try {
       this.logger.log(`Sending notification: ${body.type} to users: ${body.receiverUserIds?.join(', ')}, businesses: ${body.receiverBusinessIds?.join(', ')}`);
       
-      await firstValueFrom(this.httpService.post(baseUrl, body));
+      const response = await firstValueFrom(this.httpService.post(baseUrl, body));
+      
+      // Log the notification response
+      this.logger.log(`Notification Response Status: ${response.status}`);
+      this.logger.log(`Notification Response Data: ${JSON.stringify(response.data, null, 2)}`);
+      this.logger.log(`Notification Response Headers: ${JSON.stringify(response.headers, null, 2)}`);
       
       this.logger.log(`Notification sent successfully: ${body.type}`);
     } catch (error) {
       this.logger.error(`Failed to send notification: ${body.type}`, error.message);
+      if (error.response) {
+        this.logger.error(`Error Response Status: ${error.response.status}`);
+        this.logger.error(`Error Response Data: ${JSON.stringify(error.response.data, null, 2)}`);
+        this.logger.error(`Error Response Headers: ${JSON.stringify(error.response.headers, null, 2)}`);
+      }
       // Don't throw error to prevent blocking main business logic
     }
   }
