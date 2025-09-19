@@ -47,8 +47,13 @@ export class AddUserIdToBookings1758073055865 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "hostel_profiles" DROP COLUMN "amenities"`);
         await queryRunner.query(`ALTER TABLE "hostel_profiles" DROP COLUMN "policies"`);
         await queryRunner.query(`ALTER TABLE "hostel_profiles" DROP COLUMN "pricing"`);
+        // Store existing hostel_name values temporarily
+        await queryRunner.query(`ALTER TABLE "hostel_profiles" ADD "temp_hostel_name" character varying(255)`);
+        await queryRunner.query(`UPDATE "hostel_profiles" SET "temp_hostel_name" = "hostel_name"`);
         await queryRunner.query(`ALTER TABLE "hostel_profiles" DROP COLUMN "hostel_name"`);
-        await queryRunner.query(`ALTER TABLE "hostel_profiles" ADD "hostel_name" character varying(255) NOT NULL`);
+        await queryRunner.query(`ALTER TABLE "hostel_profiles" ADD "hostel_name" character varying(255) NOT NULL DEFAULT 'Default Hostel'`);
+        await queryRunner.query(`UPDATE "hostel_profiles" SET "hostel_name" = COALESCE("temp_hostel_name", 'Default Hostel')`);
+        await queryRunner.query(`ALTER TABLE "hostel_profiles" DROP COLUMN "temp_hostel_name"`);
         await queryRunner.query(`ALTER TABLE "multi_guest_bookings" DROP COLUMN "user_id"`);
         await queryRunner.query(`ALTER TABLE "multi_guest_bookings" ADD "user_id" character varying`);
         await queryRunner.query(`ALTER TYPE "public"."multi_guest_bookings_status_enum" RENAME TO "multi_guest_bookings_status_enum_old"`);

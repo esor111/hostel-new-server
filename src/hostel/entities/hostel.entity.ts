@@ -40,4 +40,7 @@ export class Hostel extends BaseEntity {
 
   @OneToMany('Report', 'hostel')
   reports: any[];
+
+  @OneToMany('MealPlan', 'hostel')
+  mealPlans: any[];
 }

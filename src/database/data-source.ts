@@ -38,6 +38,7 @@ import { MaintenanceRequest } from '../maintenance/entities/maintenance-request.
 
 import { AdminCharge } from '../admin-charges/entities/admin-charge.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
+import { MealPlan } from '../meal-plans/entities/meal-plan.entity';
 
 // Load environment variables
 config();
@@ -92,8 +93,11 @@ export const dataSourceOptions: DataSourceOptions = {
     
     // Hostel entities
     Hostel,
+    
+    // Meal Plan entities
+    MealPlan,
   ],
-  migrations: [path.join(__dirname, 'migrations', '*{.ts,.js}')],
+  migrations: [path.join(__dirname, '..', 'migrations', '*{.ts,.js}')],
   synchronize: false, // Always false in production
   logging: process.env.NODE_ENV === 'development',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,

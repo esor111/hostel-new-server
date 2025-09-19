@@ -22,6 +22,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { BillingModule } from './billing/billing.module';
 import { NotificationCommunicationModule } from './notification-communication/notification-communication.module';
 import { AuthModule } from './auth/auth.module';
+import { MealPlansModule } from './meal-plans/meal-plans.module';
 import { HostelContextMiddleware } from './hostel/middleware/hostel-context.middleware';
 
 @Module({
@@ -53,6 +54,7 @@ import { HostelContextMiddleware } from './hostel/middleware/hostel-context.midd
     BillingModule,
     NotificationCommunicationModule,
     AuthModule,
+    MealPlansModule,
   ],
   controllers: [AppController],
   providers: [AppService],
@@ -72,7 +74,8 @@ export class AppModule implements NestModule {
         'reports',
         'maintenance',
         'admin-charges',
-        'billing'
+        'billing',
+        'meal-plans'
       );
   }
 }

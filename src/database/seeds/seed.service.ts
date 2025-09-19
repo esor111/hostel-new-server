@@ -231,7 +231,7 @@ export class SeedService {
         adminCharges: await this.seedAdminCharges(false),
 
         // 9. Ledger entries depend on all financial entities
-        ledgerEntries: await this.seedLedgerEntries(false),
+        ledgerEntries: await this.seedLedgerEntriesWithHostelId(hostelId, false),
 
         // 10. Bookings are temporarily disabled during transition
         // bookings: await this.seedBookings(false),
@@ -1664,6 +1664,145 @@ export class SeedService {
     this.logger.log(`Seeded ${savedEntries.length} ledger entries`);
 
     return { count: savedEntries.length, data: savedEntries };
+  }
+  async seedLedgerEntriesWithHostelId(hostelId: string, force = false) {
+    if (!force && (await this.ledgerRepository.count()) > 0) {
+      return {
+        message: "Ledger entries already exist, use ?force=true to reseed",
+        count: 0,
+      };
+    }
+
+    // Ensure all financial entities exist
+    await this.seedInvoices(false);
+    await this.seedPayments(false);
+    await this.seedDiscounts(false);
+
+    // Get actual entity IDs
+    const students = await this.studentRepository.find({ take: 3 });
+    const invoices = await this.invoiceRepository.find({ take: 3 });
+    const payments = await this.paymentRepository.find({ take: 3 });
+    const discounts = await this.discountRepository.find({ take: 2 });
+
+    if (students.length < 3 || invoices.length < 3 || payments.length < 3) {
+      throw new Error("Not enough entities found for ledger seeding");
+    }
+
+    const ledgerEntries = [
+      // Student 1 - Invoice entry
+      {
+        studentId: students[0].id,
+        hostelId: hostelId,
+        type: LedgerEntryType.INVOICE,
+        date: new Date("2024-07-01"),
+        description: "Monthly rent and utilities - July 2024",
+        referenceId: invoices[0].id,
+        debit: 8500,
+        credit: 0,
+        balance: 8500,
+        balanceType: BalanceType.DR,
+        notes: "Invoice generated for July 2024",
+      },
+      // Student 1 - Payment entry
+      {
+        studentId: students[0].id,
+        hostelId: hostelId,
+        type: LedgerEntryType.PAYMENT,
+        date: new Date("2024-07-05"),
+        description: "Payment received - July 2024",
+        referenceId: payments[0].id,
+        debit: 0,
+        credit: 8500,
+        balance: 0,
+        balanceType: BalanceType.NIL,
+        notes: "Full payment received",
+      },
+      // Student 2 - Invoice entry
+      {
+        studentId: students[1].id,
+        hostelId: hostelId,
+        type: LedgerEntryType.INVOICE,
+        date: new Date("2024-07-01"),
+        description: "Monthly rent and utilities - July 2024",
+        referenceId: invoices[1].id,
+        debit: 6200,
+        credit: 0,
+        balance: 6200,
+        balanceType: BalanceType.DR,
+        notes: "Invoice generated for July 2024",
+      },
+      // Student 2 - Payment entry
+      {
+        studentId: students[1].id,
+        hostelId: hostelId,
+        type: LedgerEntryType.PAYMENT,
+        date: new Date("2024-07-03"),
+        description: "Payment received - July 2024",
+        referenceId: payments[1].id,
+        debit: 0,
+        credit: 6200,
+        balance: 0,
+        balanceType: BalanceType.NIL,
+        notes: "Full payment received",
+      },
+      // Student 3 - Invoice entry
+      {
+        studentId: students[2].id,
+        hostelId: hostelId,
+        type: LedgerEntryType.INVOICE,
+        date: new Date("2024-07-01"),
+        description: "Monthly rent and utilities - July 2024",
+        referenceId: invoices[2].id,
+        debit: 6200,
+        credit: 0,
+        balance: 6200,
+        balanceType: BalanceType.DR,
+        notes: "Invoice generated for July 2024",
+      },
+      // Student 3 - Payment entry
+      {
+        studentId: students[2].id,
+        hostelId: hostelId,
+        type: LedgerEntryType.PAYMENT,
+        date: new Date("2024-07-10"),
+        description: "Partial payment received - July 2024",
+        referenceId: payments[2].id,
+        debit: 0,
+        credit: 3000,
+        balance: 3200,
+        balanceType: BalanceType.DR,
+        notes: "Partial payment - balance remaining",
+      },
+    ];
+
+    // Add discount entries if available
+    if (discounts.length > 0) {
+      ledgerEntries.push(
+        {
+          studentId: students[0].id,
+          hostelId: hostelId,
+          type: LedgerEntryType.DISCOUNT,
+          date: new Date("2024-07-02"),
+          description: "Early payment discount",
+          referenceId: discounts[0].id,
+          debit: 0,
+          credit: 500,
+          balance: 8000,
+          balanceType: BalanceType.DR,
+          notes: "5% early payment discount applied",
+        }
+      );
+    }
+
+    const savedEntries = await this.ledgerRepository.save(ledgerEntries);
+
+    this.logger.log(`Seeded ${savedEntries.length} ledger entries with hostel ID ${hostelId}`);
+
+    return {
+      message: "Ledger entries seeded successfully with hostel ID",
+      count: savedEntries.length,
+      hostelId: hostelId,
+    };
   }
 
   // Temporarily disabled during BookingRequest entity removal
