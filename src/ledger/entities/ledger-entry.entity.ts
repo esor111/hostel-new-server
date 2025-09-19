@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Student } from '../../students/entities/student.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum LedgerEntryType {
   INVOICE = 'Invoice',
@@ -26,9 +27,13 @@ export enum BalanceType {
 @Index(['type'])
 @Index(['referenceId'])
 @Index(['balanceType'])
+@Index(['hostelId'])
 export class LedgerEntry extends BaseEntity {
   @Column({ name: 'student_id' })
   studentId: string;
+
+  @Column({ name: 'hostelId' })
+  hostelId: string;
 
   @Column({ type: 'date' })
   date: Date;
@@ -83,6 +88,10 @@ export class LedgerEntry extends BaseEntity {
   }
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.ledgerEntries, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostelId' })
+  hostel: Hostel;
+
   @ManyToOne(() => Student, student => student.ledgerEntries, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'student_id' })
   student: Student;

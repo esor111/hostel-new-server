@@ -28,7 +28,7 @@ export class ReportsService {
     private discountRepository: Repository<Discount>,
   ) {}
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
     const { 
       page = 1, 
       limit = 50, 
@@ -40,6 +40,11 @@ export class ReportsService {
     } = filters;
     
     const queryBuilder = this.reportRepository.createQueryBuilder('report');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('report.hostelId = :hostelId', { hostelId });
+    }
     
     // Apply filters
     if (type) {

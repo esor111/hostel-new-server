@@ -10,9 +10,10 @@ import { ConfigureStudentDto } from './dto/configure-student.dto';
 import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { BedSyncService } from '../rooms/bed-sync.service';
+// import { HostelScopedService } from '../common/services/hostel-scoped.service'; // Commented out for backward compatibility
 
 @Injectable()
-export class StudentsService {
+export class StudentsService { // Removed HostelScopedService extension for backward compatibility
   constructor(
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
@@ -25,9 +26,11 @@ export class StudentsService {
     @InjectRepository(LedgerEntry)
     private ledgerRepository: Repository<LedgerEntry>,
     private bedSyncService: BedSyncService,
-  ) {}
+  ) {
+    // super(studentRepository, 'Student'); // Commented out for backward compatibility
+  }
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
     const { status = 'all', search = '', page = 1, limit = 50 } = filters;
     
     const queryBuilder = this.studentRepository.createQueryBuilder('student')
@@ -36,17 +39,39 @@ export class StudentsService {
       .leftJoinAndSelect('student.academicInfo', 'academic')
       .leftJoinAndSelect('student.financialInfo', 'financial');
     
+    // Start with a base condition to avoid andWhere issues
+    let hasWhere = false;
+
+    // Apply hostel filter only if hostelId is provided (backward compatible)
+    if (hostelId) {
+      queryBuilder.where('student.hostelId = :hostelId', { hostelId });
+      hasWhere = true;
+    }
+    
     // Apply status filter
     if (status !== 'all') {
-      queryBuilder.andWhere('student.status = :status', { status });
+      if (hasWhere) {
+        queryBuilder.andWhere('student.status = :status', { status });
+      } else {
+        queryBuilder.where('student.status = :status', { status });
+        hasWhere = true;
+      }
     }
     
     // Apply search filter
     if (search) {
-      queryBuilder.andWhere(
-        '(student.name ILIKE :search OR student.phone ILIKE :search OR student.email ILIKE :search)',
-        { search: `%${search}%` }
-      );
+      if (hasWhere) {
+        queryBuilder.andWhere(
+          '(student.name ILIKE :search OR student.phone ILIKE :search OR student.email ILIKE :search)',
+          { search: `%${search}%` }
+        );
+      } else {
+        queryBuilder.where(
+          '(student.name ILIKE :search OR student.phone ILIKE :search OR student.email ILIKE :search)',
+          { search: `%${search}%` }
+        );
+        hasWhere = true;
+      }
     }
     
     // Apply pagination
@@ -74,9 +99,15 @@ export class StudentsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, hostelId?: string) {
+    const whereCondition: any = { id };
+    // Apply hostel filter only if hostelId is provided (backward compatible)
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+    
     const student = await this.studentRepository.findOne({
-      where: { id },
+      where: whereCondition,
       relations: ['room', 'contacts', 'academicInfo', 'financialInfo']
     });
     
@@ -87,10 +118,16 @@ export class StudentsService {
     return this.transformToApiResponse(student);
   }
 
-  async create(createStudentDto: any) {
-    // Create student entity
+  async create(createStudentDto: any, hostelId?: string) {
+    // Validate hostelId requirement
+    if (!hostelId) {
+      throw new Error('Hostel context is required for student creation. Please ensure you are authenticated with a Business Token.');
+    }
+
+    // Create student entity with hostelId
     const student = this.studentRepository.create({
       id: createStudentDto.id,
+      userId: createStudentDto.userId, // Link to user from JWT
       name: createStudentDto.name,
       phone: createStudentDto.phone,
       email: createStudentDto.email,
@@ -98,6 +135,7 @@ export class StudentsService {
       status: createStudentDto.status || StudentStatus.ACTIVE,
       address: createStudentDto.address,
       roomId: createStudentDto.roomNumber, // This will need room lookup
+      hostelId: hostelId, // Set hostelId (validated above)
       // bookingRequestId: createStudentDto.bookingRequestId // Removed during transition
     });
 
@@ -107,11 +145,11 @@ export class StudentsService {
     await this.createRelatedEntities(savedStudent.id, createStudentDto);
 
     // Return in API format
-    return this.findOne(savedStudent.id);
+    return this.findOne(savedStudent.id, hostelId);
   }
 
-  async update(id: string, updateStudentDto: any) {
-    const student = await this.findOne(id);
+  async update(id: string, updateStudentDto: any, hostelId?: string) {
+    const student = await this.findOne(id, hostelId);
     
     // Update main student entity
     await this.studentRepository.update(id, {
@@ -127,16 +165,58 @@ export class StudentsService {
     // Update related entities
     await this.updateRelatedEntities(id, updateStudentDto);
 
-    return this.findOne(id);
+    return this.findOne(id, hostelId);
   }
 
-  async getStats() {
-    const totalStudents = await this.studentRepository.count();
+  async getPendingConfigurationStudents(hostelId?: string) {
+    const whereCondition: any = { 
+      status: StudentStatus.PENDING_CONFIGURATION,
+      isConfigured: false 
+    };
+    
+    // Apply hostel filter only if hostelId is provided (backward compatible)
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+    
+    const students = await this.studentRepository.find({
+      where: whereCondition,
+      relations: ['room', 'contacts', 'academicInfo', 'financialInfo'],
+      order: { createdAt: 'DESC' }
+    });
+    
+    // Transform to API response format
+    const transformedItems = await Promise.all(
+      students.map(student => this.transformToApiResponse(student))
+    );
+    
+    return {
+      items: transformedItems,
+      count: transformedItems.length,
+      message: transformedItems.length > 0 
+        ? `Found ${transformedItems.length} students pending configuration`
+        : 'No students pending configuration'
+    };
+  }
+
+  async getStats(hostelId?: string) {
+    const whereCondition: any = {};
+    // Apply hostel filter only if hostelId is provided (backward compatible)
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+    
+    const totalStudents = await this.studentRepository.count({
+      where: whereCondition
+    });
     const activeStudents = await this.studentRepository.count({ 
-      where: { status: StudentStatus.ACTIVE } 
+      where: { ...whereCondition, status: StudentStatus.ACTIVE } 
     });
     const inactiveStudents = await this.studentRepository.count({ 
-      where: { status: StudentStatus.INACTIVE } 
+      where: { ...whereCondition, status: StudentStatus.INACTIVE } 
+    });
+    const pendingConfigurationStudents = await this.studentRepository.count({ 
+      where: { ...whereCondition, status: StudentStatus.PENDING_CONFIGURATION } 
     });
     
     // Calculate financial totals from ledger entries (will implement when ledger is ready)
@@ -151,6 +231,7 @@ export class StudentsService {
       totalStudents,
       activeStudents,
       inactiveStudents,
+      pendingConfigurationStudents,
       totalBalance: parseFloat(balanceResult?.totalBalance) || 0,
       totalAdvance: 0 // Will calculate from advance payments
     };
@@ -539,6 +620,132 @@ export class StudentsService {
       success: true,
       message: 'Student deleted successfully',
       studentId: id
+    };
+  }
+
+  /**
+   * Format student response for API
+   * Alias for transformToApiResponse method
+   */
+  private async formatStudentResponse(student: Student): Promise<any> {
+    return this.transformToApiResponse(student);
+  }
+
+  /**
+   * Find student by userId from JWT token
+   * This solves the core problem: userId (from JWT) → studentId (for ledger/discounts/charges)
+   */
+  async findByUserId(userId: string, hostelId?: string): Promise<any> {
+    const queryBuilder = this.studentRepository.createQueryBuilder('student')
+      .leftJoinAndSelect('student.room', 'room')
+      .leftJoinAndSelect('student.contacts', 'contacts')
+      .leftJoinAndSelect('student.academicInfo', 'academicInfo')
+      .leftJoinAndSelect('student.financialInfo', 'financialInfo')
+      .where('student.userId = :userId', { userId });
+
+    // Apply hostel filter if provided
+    if (hostelId) {
+      queryBuilder.andWhere('student.hostelId = :hostelId', { hostelId });
+    }
+
+    const student = await queryBuilder.getOne();
+    
+    if (!student) {
+      return null; // Student not found for this user
+    }
+
+    return this.formatStudentResponse(student);
+  }
+
+  /**
+   * Create or link student to userId
+   * This handles the automatic student creation when user first accesses the system
+   */
+  async createOrLinkStudentForUser(userId: string, userData: any, hostelId: string): Promise<any> {
+    // Check if student already exists for this user
+    let student = await this.studentRepository.findOne({
+      where: { userId, hostelId }
+    });
+
+    if (student) {
+      return this.findOne(student.id, hostelId);
+    }
+
+    // Create new student linked to user
+    const createStudentDto = {
+      userId, // Link to user from JWT
+      name: userData.name || `User ${userId}`,
+      email: userData.email || `${userId}@temp.com`,
+      phone: userData.phone || `+977${Math.random().toString().substr(2, 10)}`,
+      status: StudentStatus.PENDING_CONFIGURATION,
+      ...userData
+    };
+
+    return this.create(createStudentDto, hostelId);
+  }
+
+  /**
+   * Get user's financial data (ledger, discounts, charges)
+   * This is the main method that solves the problem
+   */
+  async getUserFinancialData(userId: string, hostelId?: string) {
+    // First, find the student record for this user
+    const student = await this.findByUserId(userId, hostelId);
+    
+    if (!student) {
+      throw new NotFoundException(`No student record found for user ${userId}`);
+    }
+
+    const studentId = student.id;
+
+    // Now we can get all financial data using studentId
+    const [ledgerData, discounts, adminCharges] = await Promise.all([
+      this.getStudentLedger(studentId),
+      this.getStudentDiscounts(studentId),
+      this.getStudentAdminCharges(studentId)
+    ]);
+
+    return {
+      student,
+      ledger: ledgerData,
+      discounts,
+      adminCharges,
+      // Include the mapping for reference
+      mapping: {
+        userId,
+        studentId,
+        hostelId
+      }
+    };
+  }
+
+  /**
+   * Get student's discounts
+   */
+  private async getStudentDiscounts(studentId: string) {
+    // This will integrate with DiscountsService
+    return {
+      studentId,
+      discounts: [],
+      summary: {
+        totalActive: 0,
+        totalAmount: 0
+      }
+    };
+  }
+
+  /**
+   * Get student's admin charges
+   */
+  private async getStudentAdminCharges(studentId: string) {
+    // This will integrate with AdminChargesService
+    return {
+      studentId,
+      charges: [],
+      summary: {
+        totalPending: 0,
+        totalAmount: 0
+      }
     };
   }
 

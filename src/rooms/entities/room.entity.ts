@@ -7,6 +7,7 @@ import { RoomLayout } from './room-layout.entity';
 import { Building } from './building.entity';
 import { RoomType } from './room-type.entity';
 import { Bed } from './bed.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum RoomStatus {
   ACTIVE = 'Active',
@@ -36,6 +37,7 @@ export enum MaintenanceStatus {
 @Index(['buildingId'])
 @Index(['roomTypeId'])
 @Index(['gender'])
+@Index(['hostelId'])
 export class Room extends BaseEntity {
   @Column({ length: 255 })
   name: string;
@@ -80,7 +82,13 @@ export class Room extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ type: 'json', nullable: true })
+  images: string[];
+
   // Foreign Keys
+  @Column({ name: 'hostelId' })
+  hostelId: string;
+
   @Column({ nullable: true })
   buildingId: string;
 
@@ -98,6 +106,10 @@ export class Room extends BaseEntity {
   }
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.rooms, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostelId' })
+  hostel: Hostel;
+
   @ManyToOne(() => Building, building => building.rooms, { nullable: true })
   @JoinColumn({ name: 'buildingId' })
   building: Building;

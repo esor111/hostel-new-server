@@ -3,6 +3,7 @@ import { BaseEntity } from '../../common/entities/base.entity';
 import { Student } from '../../students/entities/student.entity';
 import { InvoiceItem } from './invoice-item.entity';
 import { PaymentInvoiceAllocation } from '../../payments/entities/payment-invoice-allocation.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum InvoiceStatus {
   PAID = 'Paid',
@@ -18,9 +19,13 @@ export enum InvoiceStatus {
 @Index(['month'])
 @Index(['status'])
 @Index(['dueDate'])
+@Index(['hostelId'])
 export class Invoice extends BaseEntity {
   @Column({ name: 'student_id' })
   studentId: string;
+
+  @Column({ name: 'hostelId' })
+  hostelId: string;
 
   @Column({ length: 20 }) // YYYY-MM format with extra space for safety
   month: string;
@@ -70,6 +75,10 @@ export class Invoice extends BaseEntity {
   }
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.invoices, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostelId' })
+  hostel: Hostel;
+
   @ManyToOne(() => Student, student => student.invoices, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'student_id' })
   student: Student;

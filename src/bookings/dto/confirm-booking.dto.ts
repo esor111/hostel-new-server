@@ -1,12 +1,11 @@
 import { IsOptional, IsString, Length } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ConfirmBookingDto {
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'ID of the person processing the booking confirmation',
-    example: 'admin-user-id',
-    required: false
+    example: 'admin-user-id'
   })
   @IsOptional()
   @IsString({ message: 'Processed by must be a string' })
@@ -14,10 +13,9 @@ export class ConfirmBookingDto {
   @Transform(({ value }) => value?.trim())
   processedBy?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({ 
     description: 'Additional notes for the confirmation',
-    example: 'All documents verified',
-    required: false
+    example: 'All documents verified'
   })
   @IsOptional()
   @IsString({ message: 'Notes must be a string' })

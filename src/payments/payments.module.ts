@@ -5,12 +5,14 @@ import { PaymentsService } from './payments.service';
 import { Payment } from './entities/payment.entity';
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
 import { LedgerModule } from '../ledger/ledger.module';
+import { Hostel } from '../hostel/entities/hostel.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Payment,
-      PaymentInvoiceAllocation
+      PaymentInvoiceAllocation,
+      Hostel
     ]),
     LedgerModule // Import LedgerModule for integration
   ],

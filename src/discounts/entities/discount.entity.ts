@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Student } from '../../students/entities/student.entity';
 import { DiscountType } from './discount-type.entity';
 import { BaseEntityWithCustomId } from '../../common/entities/base.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum DiscountStatus {
   ACTIVE = 'active',
@@ -21,9 +22,13 @@ export enum DiscountApplication {
 @Index(['status'])
 @Index(['date'])
 @Index(['discountTypeId'])
+@Index(['hostelId'])
 export class Discount extends BaseEntityWithCustomId {
   @Column({ name: 'student_id' })
   studentId: string;
+
+  @Column({ name: 'hostelId' })
+  hostelId: string;
 
   @Column({ name: 'discount_type_id', nullable: true })
   discountTypeId: string;
@@ -86,6 +91,10 @@ export class Discount extends BaseEntityWithCustomId {
   }
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.discounts, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostelId' })
+  hostel: Hostel;
+
   @ManyToOne(() => Student, student => student.discounts, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'student_id' })
   student: Student;

@@ -53,13 +53,18 @@ export class AdminChargesService {
     category?: string;
     page?: number;
     limit?: number;
-  }): Promise<{ items: AdminCharge[]; pagination: any }> {
+  }, hostelId?: string): Promise<{ items: AdminCharge[]; pagination: any }> {
     const { page = 1, limit = 50 } = filters || {};
 
     const queryBuilder = this.adminChargeRepository
       .createQueryBuilder("charge")
       .leftJoinAndSelect("charge.student", "student")
       .orderBy("charge.createdAt", "DESC");
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere("charge.hostelId = :hostelId", { hostelId });
+    }
 
     if (filters?.studentId) {
       queryBuilder.andWhere("charge.studentId = :studentId", {
@@ -196,7 +201,7 @@ export class AdminChargesService {
     return result.items;
   }
 
-  async getChargeStats(): Promise<{
+  async getChargeStats(hostelId?: string): Promise<{
     totalCharges: number;
     pendingCharges: number;
     appliedCharges: number;
@@ -204,31 +209,47 @@ export class AdminChargesService {
     totalPendingAmount: number;
     totalAppliedAmount: number;
   }> {
+    // Build where conditions conditionally
+    const baseWhere: any = {};
+    if (hostelId) {
+      baseWhere.hostelId = hostelId;
+    }
+
     const [totalCharges, pendingCharges, appliedCharges, cancelledCharges] =
       await Promise.all([
-        this.adminChargeRepository.count(),
+        this.adminChargeRepository.count({ where: baseWhere }),
         this.adminChargeRepository.count({
-          where: { status: AdminChargeStatus.PENDING },
+          where: { ...baseWhere, status: AdminChargeStatus.PENDING },
         }),
         this.adminChargeRepository.count({
-          where: { status: AdminChargeStatus.APPLIED },
+          where: { ...baseWhere, status: AdminChargeStatus.APPLIED },
         }),
         this.adminChargeRepository.count({
-          where: { status: AdminChargeStatus.CANCELLED },
+          where: { ...baseWhere, status: AdminChargeStatus.CANCELLED },
         }),
       ]);
 
-    const pendingAmount = await this.adminChargeRepository
+    const pendingAmountQueryBuilder = this.adminChargeRepository
       .createQueryBuilder("charge")
       .select("SUM(CAST(charge.amount AS DECIMAL))", "total")
-      .where("charge.status = :status", { status: AdminChargeStatus.PENDING })
-      .getRawOne();
+      .where("charge.status = :status", { status: AdminChargeStatus.PENDING });
+    
+    if (hostelId) {
+      pendingAmountQueryBuilder.andWhere("charge.hostelId = :hostelId", { hostelId });
+    }
+    
+    const pendingAmount = await pendingAmountQueryBuilder.getRawOne();
 
-    const appliedAmount = await this.adminChargeRepository
+    const appliedAmountQueryBuilder = this.adminChargeRepository
       .createQueryBuilder("charge")
       .select("SUM(CAST(charge.amount AS DECIMAL))", "total")
-      .where("charge.status = :status", { status: AdminChargeStatus.APPLIED })
-      .getRawOne();
+      .where("charge.status = :status", { status: AdminChargeStatus.APPLIED });
+    
+    if (hostelId) {
+      appliedAmountQueryBuilder.andWhere("charge.hostelId = :hostelId", { hostelId });
+    }
+    
+    const appliedAmount = await appliedAmountQueryBuilder.getRawOne();
 
     return {
       totalCharges,

@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, Headers, BadRequestException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, Headers, BadRequestException, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 // Removed: import { BookingsService } from './bookings.service';
 import { MultiGuestBookingService } from './multi-guest-booking.service';
 // Removed: import { BookingTransformationService } from './booking-transformation.service';
@@ -22,7 +23,7 @@ export class BookingsController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all booking requests' })
+  @ApiOperation({ summary: 'Get all booking requests' })  
   @ApiResponse({ status: 200, description: 'List of booking requests retrieved successfully' })
   async getAllBookingRequests(@Query() query: any) {
     this.logger.log('Getting all booking requests via unified multi-guest system');
@@ -71,10 +72,18 @@ export class BookingsController {
 
   // Multi-Guest Booking Endpoints (must come before parameterized routes)
   @Post('multi-guest')
-  @ApiOperation({ summary: 'Create multi-guest booking request' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create multi-guest booking request (Authenticated)' })
   @ApiResponse({ status: 201, description: 'Multi-guest booking created successfully' })
-  async createMultiGuestBooking(@Body() createDto: CreateMultiGuestBookingDto) {
-    const booking = await this.multiGuestBookingService.createMultiGuestBooking(createDto);
+  async createMultiGuestBooking(@Body() createDto: CreateMultiGuestBookingDto, @Request() req) {
+    // Extract hostel ID from the booking data
+    const hostelId = createDto.data.hostelId;
+    const userId = req.user.id; // Extract user ID from JWT token
+    
+    this.logger.log(`User ${userId} creating multi-guest booking${hostelId ? ` for hostel: ${hostelId}` : ' with default hostel'}`);
+    
+    const booking = await this.multiGuestBookingService.createMultiGuestBooking(createDto, hostelId, userId);
     
     return {
       status: HttpStatus.CREATED,
@@ -134,7 +143,7 @@ export class BookingsController {
   @ApiOperation({ summary: 'Cancel multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking cancelled successfully' })
   async cancelMultiGuestBooking(@Param('id') id: string, @Body() cancelDto: CancelBookingDto) {
-    const result = await this.multiGuestBookingService.cancelBooking(id, cancelDto.reason, cancelDto.processedBy);
+    const result = await this.multiGuestBookingService.cancelBooking(id, cancelDto.reason);
     
     return {
       status: HttpStatus.OK,
@@ -174,50 +183,53 @@ export class BookingsController {
   }
 
   @Get('my-bookings')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ 
-    summary: 'Get user\'s bookings (TEST MODE - Returns all bookings)',
-    description: 'Retrieves bookings for testing purposes. Currently returns ALL bookings with user email included for identification. In production, this will be filtered by JWT token-based user authentication.'
+    summary: 'Get user\'s bookings (Authenticated)',
+    description: 'Retrieves bookings for the authenticated user based on JWT token.'
   })
-  @ApiResponse({ status: 200, description: 'User bookings retrieved successfully (all bookings for testing)', type: MyBookingsResponseDto })
-  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 200, description: 'User bookings retrieved successfully', type: MyBookingsResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing JWT token' })
   async getMyBookings(
-    @Query() query: GetMyBookingsDto
+    @Query() query: GetMyBookingsDto,
+    @Request() req
   ) {
-    this.logger.log('Getting all bookings for testing - no JWT auth filtering applied');
+    const userId = req.user.id; // Extract user ID from JWT token
+    this.logger.log(`Getting bookings for authenticated user: ${userId}`);
     
-    // For testing: Return all bookings with email identification
-    // TODO: In production, implement JWT auth and filter by actual user ID
-    const result = await this.multiGuestBookingService.getMyBookings('all', query);
+    const result = await this.multiGuestBookingService.getUserBookings(userId, query);
     
     return {
       status: HttpStatus.OK,
-      message: 'All bookings returned for testing - each booking includes user email for identification',
+      message: 'User bookings retrieved successfully',
       ...result
     };
   }
 
   @Post('my-bookings/:id/cancel')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ 
-    summary: 'Cancel user\'s booking (TEST MODE)',
-    description: 'Allows cancellation of bookings for testing purposes. Currently accepts user email in request body. In production, authentication will be handled via JWT tokens.'
+    summary: 'Cancel user\'s booking (Authenticated)',
+    description: 'Allows authenticated users to cancel their own bookings.'
   })
   @ApiResponse({ status: 200, description: 'Booking cancelled successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - missing user identification or invalid booking' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiResponse({ status: 404, description: 'Booking not found or user does not have permission' })
   async cancelMyBooking(
     @Param('id') bookingId: string,
-    @Body() cancelDto: CancelMyBookingDto & { userEmail?: string }
+    @Body() cancelDto: CancelMyBookingDto,
+    @Request() req
   ) {
-    // For testing: Allow user email to be passed in request body
-    // TODO: In production, get user email from JWT token
-    const userEmail = cancelDto.userEmail || 'test@example.com';
-    this.logger.log(`User ${userEmail} cancelling booking ${bookingId} (TEST MODE)`);
+    const userId = req.user.id; // Extract user ID from JWT token
+    this.logger.log(`User ${userId} cancelling booking ${bookingId}`);
     
-    const result = await this.multiGuestBookingService.cancelMyBooking(bookingId, userEmail, cancelDto.reason);
+    const result = await this.multiGuestBookingService.cancelUserBooking(bookingId, userId, cancelDto.reason);
     
     return {
       status: HttpStatus.OK,
-      message: 'Booking cancelled successfully (TEST MODE)',
+      message: 'Booking cancelled successfully',
       data: result
     };
   }
@@ -239,21 +251,7 @@ export class BookingsController {
     };
   }
 
-  @Post()
-  @ApiOperation({ summary: 'Create new booking request' })
-  @ApiResponse({ status: 201, description: 'Booking request created successfully' })
-  async createBookingRequest(@Body() createBookingDto: CreateBookingDto) {
-    this.logger.log(`Creating single guest booking for ${createBookingDto.name} via unified multi-guest system`);
-    
-    // Use MultiGuestBookingService for single guest bookings
-    const booking = await this.multiGuestBookingService.createSingleGuestBooking(createBookingDto);
-    
-    // Return direct response
-    return {
-      status: HttpStatus.CREATED,
-      data: booking
-    };
-  }
+
 
   @Put(':id')
   @ApiOperation({ summary: 'Update booking request' })

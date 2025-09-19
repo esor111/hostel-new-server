@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -21,6 +21,8 @@ import { AdminChargesModule } from './admin-charges/admin-charges.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BillingModule } from './billing/billing.module';
 import { NotificationCommunicationModule } from './notification-communication/notification-communication.module';
+import { AuthModule } from './auth/auth.module';
+import { HostelContextMiddleware } from './hostel/middleware/hostel-context.middleware';
 
 @Module({
   imports: [
@@ -50,8 +52,27 @@ import { NotificationCommunicationModule } from './notification-communication/no
     DashboardModule,
     BillingModule,
     NotificationCommunicationModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(HostelContextMiddleware)
+      .forRoutes(
+        'students',
+        'rooms', 
+        'invoices',
+        'payments',
+        'ledger',
+        'bookings',
+        'discounts',
+        'reports',
+        'maintenance',
+        'admin-charges',
+        'billing'
+      );
+  }
+}

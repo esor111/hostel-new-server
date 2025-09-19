@@ -17,7 +17,7 @@ async function bootstrap() {
 
     // Run complete seeding
     console.log('🚀 Running complete database seeding...');
-    const result = await seedService.seedAll(false); // Don't force by default
+    const result = await seedService.seedAll(true); // Force seeding to create more data
     
     console.log('✅ Seeding completed successfully!');
     console.log('Seeding results:', result);

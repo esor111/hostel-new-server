@@ -1,6 +1,7 @@
-import { Entity, Column, OneToMany, Index } from 'typeorm';
+import { Entity, Column, OneToMany, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { BookingGuest } from './booking-guest.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum MultiGuestBookingStatus {
   PENDING = 'Pending',
@@ -16,7 +17,16 @@ export enum MultiGuestBookingStatus {
 @Index(['contactEmail'])
 @Index(['contactPhone'])
 @Index(['checkInDate'])
+@Index(['hostelId'])
 export class MultiGuestBooking extends BaseEntity {
+  // Foreign Keys
+  @Column({ name: 'hostelId' })
+  hostelId: string;
+
+  @Column({ name: 'user_id', nullable: true })
+  @Index()
+  userId: string;
+
   // Contact Person Information
   @Column({ name: 'contact_name', length: 255 })
   contactName: string;
@@ -110,6 +120,10 @@ export class MultiGuestBooking extends BaseEntity {
   priorityScore: number;
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.multiGuestBookings, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostelId' })
+  hostel: Hostel;
+
   @OneToMany(() => BookingGuest, (guest) => guest.booking, { cascade: true })
   guests: BookingGuest[];
 }

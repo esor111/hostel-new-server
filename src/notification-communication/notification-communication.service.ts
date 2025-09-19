@@ -11,6 +11,7 @@ import {
   BOOKING_NOTIFICATION_MESSAGES, 
   formatNotificationMessage 
 } from './templates/booking-notification-messages';
+import { HostelService } from '../hostel/hostel.service';
 
 @Injectable()
 export class NotificationCommunicationService {
@@ -20,6 +21,7 @@ export class NotificationCommunicationService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly hostelService: HostelService,
   ) {
     // Get notification service URL from environment or use default
     this.notificationServiceUrl = this.configService.get<string>(
@@ -33,21 +35,60 @@ export class NotificationCommunicationService {
    */
   async sendPushNotification(body: SendPushNotificationDto): Promise<void> {
     const baseUrl = `${this.notificationServiceUrl}/push-notifications/structured`;
-
+    
+    // Log full request payload
+    this.logger.log(`Full Request Payload: ${JSON.stringify(body, null, 2)}`);
+    this.logger.log(`Request URL: ${baseUrl}`);
+    this.logger.log(`Request Method: POST`);
+    
     try {
-      this.logger.log(`Sending notification: ${body.type} to users: ${body.receiverUserIds?.join(', ')}`);
+      this.logger.log(`Sending notification: ${body.type} to users: ${body.receiverUserIds?.join(', ')}, businesses: ${body.receiverBusinessIds?.join(', ')}`);
       
-      await firstValueFrom(this.httpService.post(baseUrl, body));
+      const response = await firstValueFrom(this.httpService.post(baseUrl, body));
+      
+      // Log the notification response
+      this.logger.log(`Notification Response Status: ${response.status}`);
+      this.logger.log(`Notification Response Data: ${JSON.stringify(response.data, null, 2)}`);
+      this.logger.log(`Notification Response Headers: ${JSON.stringify(response.headers, null, 2)}`);
       
       this.logger.log(`Notification sent successfully: ${body.type}`);
     } catch (error) {
       this.logger.error(`Failed to send notification: ${body.type}`, error.message);
+      if (error.response) {
+        this.logger.error(`Error Response Status: ${error.response.status}`);
+        this.logger.error(`Error Response Data: ${JSON.stringify(error.response.data, null, 2)}`);
+        this.logger.error(`Error Response Headers: ${JSON.stringify(error.response.headers, null, 2)}`);
+      }
       // Don't throw error to prevent blocking main business logic
     }
   }
 
   /**
-   * Send booking request notification to admins
+   * Convert hostelId to businessId for notifications
+   * @param hostelId - Internal hostel ID from database
+   * @returns businessId for notification system
+   */
+  private async getBusinessIdFromHostelId(hostelId: string): Promise<string> {
+    try {
+      const businessId = await this.hostelService.getBusinessIdFromHostelId(hostelId);
+      
+      if (businessId) {
+        this.logger.debug(`Converted hostelId ${hostelId} to businessId ${businessId}`);
+        return businessId;
+      } else {
+        this.logger.warn(`Could not find businessId for hostelId ${hostelId}, using fallback`);
+        // Fallback to config value
+        return this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id');
+      }
+    } catch (error) {
+      this.logger.error(`Error converting hostelId ${hostelId} to businessId:`, error.message);
+      // Fallback to config value
+      return this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id');
+    }
+  }
+
+  /**
+   * Send booking request notification to admins (business notification)
    */
   async sendBookingRequestNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_REQUEST];
@@ -57,30 +98,29 @@ export class NotificationCommunicationService {
       guestCount: data.guestCount || 1
     });
 
+    // Convert hostelId to businessId for notification system
+    const businessId = await this.getBusinessIdFromHostelId(data.hostelId);
+
     const notification: SendPushNotificationDto = {
-      receiverBusinessIds: [data.hostelId],
+      receiverBusinessIds: [businessId], // Use businessId instead of hostelId
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_REQUEST,
-      meta: {
-        type: PushNotificationTypeEnum.BOOKING_REQUEST,
-        business: {
-          id: data.hostelId,
-          linkId: ''
-        },
-        booking: {
-          id: data.bookingId,
-          checkInDate: data.checkInDate,
-          guestCount: data.guestCount
-        }
-      }
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
+      // meta: {
+      //   type: PushNotificationTypeEnum.BOOKING_REQUEST,
+      //   booking: {
+      //     id: data.bookingId,
+      //     checkInDate: data.checkInDate,
+      //     guestCount: data.guestCount
+      //   }
+      // }
     };
 
     await this.sendPushNotification(notification);
   }
 
   /**
-   * Send booking approval notification to contact person
+   * Send booking approval notification to contact person (user notification)
    */
   async sendBookingApprovedNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_APPROVED];
@@ -90,29 +130,25 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_APPROVED,
-      meta: {
-        type: PushNotificationTypeEnum.BOOKING_APPROVED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
-        booking: {
-          id: data.bookingId,
-          checkInDate: data.checkInDate,
-          guestCount: data.guestCount
-        }
-      }
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
+      // meta: {
+      //   type: PushNotificationTypeEnum.BOOKING_APPROVED,
+      //   booking: {
+      //     id: data.bookingId,
+      //     checkInDate: data.checkInDate,
+      //     guestCount: data.guestCount
+      //   }
+      // }
     };
 
     await this.sendPushNotification(notification);
   }
 
   /**
-   * Send booking rejection notification to contact person
+   * Send booking rejection notification to contact person (user notification)
    */
   async sendBookingRejectedNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_REJECTED];
@@ -122,29 +158,25 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_REJECTED,
-      meta: {
-        type: PushNotificationTypeEnum.BOOKING_REJECTED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
-        booking: {
-          id: data.bookingId,
-          checkInDate: data.checkInDate,
-          guestCount: data.guestCount
-        }
-      }
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
+      // meta: {
+      //   type: PushNotificationTypeEnum.BOOKING_REJECTED,
+      //   booking: {
+      //     id: data.bookingId,
+      //     checkInDate: data.checkInDate,
+      //     guestCount: data.guestCount
+      //   }
+      // }
     };
 
     await this.sendPushNotification(notification);
   }
 
   /**
-   * Send multi-guest booking confirmation notification to contact person
+   * Send multi-guest booking confirmation notification to contact person (user notification)
    */
   async sendBookingConfirmedNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_CONFIRMED];
@@ -155,16 +187,12 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_CONFIRMED,
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
       meta: {
-        type: PushNotificationTypeEnum.BOOKING_CONFIRMED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
+        type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,
@@ -177,7 +205,7 @@ export class NotificationCommunicationService {
   }
 
   /**
-   * Send booking cancellation notification to contact person
+   * Send booking cancellation notification to contact person (user notification)
    */
   async sendBookingCancelledNotification(data: BookingNotificationDto): Promise<void> {
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_CANCELLED];
@@ -187,16 +215,12 @@ export class NotificationCommunicationService {
     });
 
     const notification: SendPushNotificationDto = {
-      receiverUserIds: [data.contactPersonId],
+      receiverUserIds: [data.contactPersonId], // Only use receiverUserIds for user notifications
       title,
       message,
-      type: PushNotificationTypeEnum.BOOKING_CANCELLED,
+      type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
       meta: {
-        type: PushNotificationTypeEnum.BOOKING_CANCELLED,
-        user: {
-          id: data.contactPersonId,
-          linkId: ''
-        },
+        type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
         booking: {
           id: data.bookingId,
           checkInDate: data.checkInDate,

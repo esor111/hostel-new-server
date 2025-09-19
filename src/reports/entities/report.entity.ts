@@ -1,5 +1,6 @@
-import { Entity, Column, Index } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum ReportType {
   FINANCIAL = 'financial',
@@ -32,7 +33,11 @@ export enum ReportStatus {
 @Index(['generatedAt'])
 @Index(['status'])
 @Index(['isScheduled'])
+@Index(['hostelId'])
 export class Report extends BaseEntity {
+  @Column({ name: 'hostelId' })
+  hostelId: string;
+
   @Column({ length: 255 })
   name: string;
 
@@ -94,4 +99,9 @@ export class Report extends BaseEntity {
 
   @Column({ name: 'expires_at', type: 'timestamp', nullable: true })
   expiresAt: Date;
+
+  // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.reports, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostelId' })
+  hostel: Hostel;
 }

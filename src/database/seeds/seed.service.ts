@@ -63,6 +63,7 @@ import {
 
 import { Report } from "../../reports/entities/report.entity";
 import { AdminCharge, AdminChargeType, AdminChargeStatus } from "../../admin-charges/entities/admin-charge.entity";
+import { Hostel } from "../../hostel/entities/hostel.entity";
 
 @Injectable()
 export class SeedService {
@@ -123,7 +124,11 @@ export class SeedService {
 
     // Admin charges repository
     @InjectRepository(AdminCharge)
-    private adminChargeRepository: Repository<AdminCharge>
+    private adminChargeRepository: Repository<AdminCharge>,
+
+    // Hostel repository
+    @InjectRepository(Hostel)
+    private hostelRepository: Repository<Hostel>
   ) { }
 
   async checkSeedStatus() {
@@ -163,18 +168,50 @@ export class SeedService {
         await this.clearAllData();
       }
 
-      // Seed in proper dependency order (without force to avoid individual deletions)
+      // Get or create a default hostel for seeding
+      let defaultHostel = await this.hostelRepository.findOne({
+        where: { businessId: 'default-hostel' }
+      });
+
+      if (!defaultHostel) {
+        defaultHostel = await this.hostelRepository.save({
+          businessId: 'default-hostel',
+          name: 'Default Hostel for Seeding',
+          isActive: true
+        });
+        this.logger.log(`Created default hostel: ${defaultHostel.id}`);
+      }
+
+      // Use the existing seedAllWithHostelId method which handles all hostel-aware seeding
+      return await this.seedAllWithHostelId(defaultHostel.id, false);
+
+    } catch (error) {
+      this.logger.error("Error during complete seeding:", error);
+      throw error;
+    }
+  }
+
+  async seedAllWithHostelId(hostelId: string, force = false) {
+    this.logger.log(`Starting complete database seeding with hostel ID: ${hostelId}...`);
+
+    try {
+      // If force is true, clear all data first in proper order
+      if (force) {
+        await this.clearAllData();
+      }
+
+      // Seed in proper dependency order with hostel ID
       const results = {
-        // 1. Independent entities first
+        // 1. Independent entities first (these don't need hostel ID)
         buildings: await this.seedBuildings(false),
         roomTypes: await this.seedRoomTypes(false),
         amenities: await this.seedAmenities(false),
 
-        // 2. Rooms depend on buildings, room types, and amenities
-        rooms: await this.seedRooms(false),
+        // 2. Rooms depend on buildings, room types, and amenities (with hostel ID)
+        rooms: await this.seedRoomsWithHostelId(hostelId, false),
 
-        // 3. Students depend on rooms
-        students: await this.seedStudents(false),
+        // 3. Students depend on rooms (with hostel ID)
+        students: await this.seedStudentsWithHostelId(hostelId, false),
 
         // 4. Room occupants depend on students and rooms
         roomOccupants: await this.seedRoomOccupants(false),
@@ -200,10 +237,10 @@ export class SeedService {
         // bookings: await this.seedBookings(false),
       };
 
-      this.logger.log("Complete database seeding finished", results);
+      this.logger.log(`Complete database seeding with hostel ID ${hostelId} finished`, results);
       return results;
     } catch (error) {
-      this.logger.error("Error during complete seeding:", error);
+      this.logger.error(`Error during complete seeding with hostel ID ${hostelId}:`, error);
       throw error;
     }
   }
@@ -407,6 +444,78 @@ export class SeedService {
 
     const savedRooms = await this.roomRepository.save(rooms);
     this.logger.log(`Seeded ${savedRooms.length} rooms`);
+
+    return { count: savedRooms.length, data: savedRooms };
+  }
+
+  async seedRoomsWithHostelId(hostelId: string, force = false) {
+    if (!force && (await this.roomRepository.count({ where: { hostelId } })) > 0) {
+      return {
+        message: `Rooms for hostel ${hostelId} already exist, use ?force=true to reseed`,
+        count: 0,
+      };
+    }
+
+    // Ensure dependencies exist
+    await this.seedBuildings(false);
+    await this.seedRoomTypes(false);
+    await this.seedAmenities(false);
+
+    // Get first building and room type for simplicity
+    const building = await this.buildingRepository.findOne({ where: {} });
+    const roomType = await this.roomTypeRepository.findOne({ where: {} });
+
+    const rooms = [
+      {
+        name: "Room 101",
+        roomNumber: "101",
+        bedCount: 2,
+        occupancy: 0,
+        gender: "Male",
+        status: "ACTIVE",
+        maintenanceStatus: "Good",
+        description: "Double occupancy room on first floor",
+        buildingId: building?.id,
+        roomTypeId: roomType?.id,
+        hostelId: hostelId,
+      },
+      {
+        name: "Room 102",
+        roomNumber: "102",
+        bedCount: 2,
+        occupancy: 1,
+        gender: "Male",
+        status: "ACTIVE",
+        maintenanceStatus: "Good",
+        description: "Double occupancy room on first floor",
+        buildingId: building?.id,
+        roomTypeId: roomType?.id,
+        hostelId: hostelId,
+      },
+      {
+        name: "Room 201",
+        roomNumber: "201",
+        bedCount: 1,
+        occupancy: 0,
+        gender: "Female",
+        status: "ACTIVE",
+        maintenanceStatus: "Excellent",
+        description: "Single occupancy room on second floor",
+        buildingId: building?.id,
+        roomTypeId: roomType?.id,
+        hostelId: hostelId,
+      },
+    ];
+
+    if (force) {
+      await this.roomRepository.createQueryBuilder()
+        .delete()
+        .where("hostelId = :hostelId", { hostelId })
+        .execute();
+    }
+
+    const savedRooms = await this.roomRepository.save(rooms);
+    this.logger.log(`Seeded ${savedRooms.length} rooms for hostel ${hostelId}`);
 
     return { count: savedRooms.length, data: savedRooms };
   }
@@ -698,6 +807,242 @@ export class SeedService {
     };
   }
 
+  async seedStudentsWithHostelId(hostelId: string, force = false) {
+    if (!force && (await this.studentRepository.count({ where: { hostelId } })) > 0) {
+      return {
+        message: `Students for hostel ${hostelId} already exist, use ?force=true to reseed`,
+        count: 0,
+      };
+    }
+
+    // Ensure rooms exist with hostel ID
+    await this.seedRoomsWithHostelId(hostelId, false);
+
+    const students = [
+      {
+        name: "Ishwor",
+        phone: "+9779841234567",
+        email: "ishwor@example.com",
+        enrollmentDate: new Date("2024-01-15"),
+        status: StudentStatus.ACTIVE,
+        address: "Kathmandu, Nepal",
+        hostelId: hostelId,
+      },
+      {
+        name: "Ayush",
+        phone: "+9779841234568",
+        email: "ayush@example.com",
+        enrollmentDate: new Date("2024-01-20"),
+        status: StudentStatus.ACTIVE,
+        address: "Pokhara, Nepal",
+        hostelId: hostelId,
+      },
+      {
+        name: "Ajay",
+        phone: "+9779841234569",
+        email: "ajay@example.com",
+        enrollmentDate: new Date("2024-02-01"),
+        status: StudentStatus.ACTIVE,
+        address: "Lalitpur, Nepal",
+        hostelId: hostelId,
+      },
+      {
+        name: "Prashun Thapa",
+        phone: "+9779841234570",
+        email: "prashun.thapa@example.com",
+        enrollmentDate: new Date("2024-02-10"),
+        status: StudentStatus.ACTIVE,
+        address: "Bhaktapur, Nepal",
+        hostelId: hostelId,
+      },
+      {
+        name: "Bhuwan Adhikari",
+        phone: "+9779841234571",
+        email: "bhuwan.adhikari@example.com",
+        enrollmentDate: new Date("2024-02-15"),
+        status: StudentStatus.ACTIVE,
+        address: "Chitwan, Nepal",
+        hostelId: hostelId,
+      },
+      {
+        name: "Sabina Shrestha",
+        phone: "+9779841234572",
+        email: "sabina.shrestha@example.com",
+        enrollmentDate: new Date("2024-02-20"),
+        status: StudentStatus.ACTIVE,
+        address: "Biratnagar, Nepal",
+        hostelId: hostelId,
+      },
+    ];
+
+    if (force) {
+      await this.studentFinancialRepository
+        .createQueryBuilder()
+        .delete()
+        .where("studentId IN (SELECT id FROM students WHERE hostelId = :hostelId)", { hostelId })
+        .execute();
+      await this.studentAcademicRepository
+        .createQueryBuilder()
+        .delete()
+        .where("studentId IN (SELECT id FROM students WHERE hostelId = :hostelId)", { hostelId })
+        .execute();
+      await this.studentContactRepository
+        .createQueryBuilder()
+        .delete()
+        .where("studentId IN (SELECT id FROM students WHERE hostelId = :hostelId)", { hostelId })
+        .execute();
+      await this.studentRepository.createQueryBuilder()
+        .delete()
+        .where("hostelId = :hostelId", { hostelId })
+        .execute();
+    }
+
+    const savedStudents = await this.studentRepository.save(students);
+
+    // Add contacts
+    const contacts = [];
+    const guardianData = [
+      { name: "Ram Bahadur", phone: "+9779841234500" },
+      { name: "Sita Devi", phone: "+9779841234501" },
+      { name: "Krishna Prasad", phone: "+9779841234502" },
+      { name: "Gita Thapa", phone: "+9779841234503" },
+      { name: "Hari Adhikari", phone: "+9779841234504" },
+      { name: "Maya Shrestha", phone: "+9779841234505" },
+    ];
+
+    savedStudents.forEach((student, index) => {
+      const guardian = guardianData[index] || guardianData[0];
+      contacts.push(
+        {
+          studentId: student.id,
+          type: ContactType.EMERGENCY,
+          name: guardian.name,
+          phone: guardian.phone,
+          relationship: "Guardian",
+          isActive: true,
+        },
+        {
+          studentId: student.id,
+          type: ContactType.GUARDIAN,
+          name: student.name,
+          phone: student.phone,
+          email: student.email,
+          relationship: "Self",
+          isActive: true,
+        }
+      );
+    });
+    await this.studentContactRepository.save(contacts);
+
+    // Add academic info
+    const academicData = [
+      {
+        course: "Computer Science",
+        institution: "Tribhuvan University",
+        academicYear: "2023-2024",
+        semester: "4th",
+        studentIdNumber: "CS2022001",
+      },
+      {
+        course: "Information Technology",
+        institution: "Kathmandu University",
+        academicYear: "2022-2025",
+        semester: "5th",
+        studentIdNumber: "IT2022002",
+      },
+      {
+        course: "Business Administration",
+        institution: "Pokhara University",
+        academicYear: "2021-2024",
+        semester: "6th",
+        studentIdNumber: "BBA2021003",
+      },
+      {
+        course: "Civil Engineering",
+        institution: "Pulchowk Campus",
+        academicYear: "2023-2027",
+        semester: "3rd",
+        studentIdNumber: "CE2023004",
+      },
+      {
+        course: "Electrical Engineering",
+        institution: "IOE Thapathali",
+        academicYear: "2022-2026",
+        semester: "4th",
+        studentIdNumber: "EE2022005",
+      },
+      {
+        course: "Pharmacy",
+        institution: "KU School of Pharmacy",
+        academicYear: "2023-2027",
+        semester: "2nd",
+        studentIdNumber: "PHARM2023006",
+      },
+    ];
+
+    const academicInfo = savedStudents.map((student, index) => ({
+      studentId: student.id,
+      ...academicData[index],
+      isActive: true,
+    }));
+    await this.studentAcademicRepository.save(academicInfo);
+
+    // Add financial info
+    const financialData = [
+      {
+        feeType: FeeType.BASE_MONTHLY,
+        amount: 8000,
+        effectiveFrom: new Date("2024-07-01"),
+      },
+      {
+        feeType: FeeType.BASE_MONTHLY,
+        amount: 7500,
+        effectiveFrom: new Date("2024-07-01"),
+      },
+      {
+        feeType: FeeType.BASE_MONTHLY,
+        amount: 6000,
+        effectiveFrom: new Date("2024-07-01"),
+      },
+      {
+        feeType: FeeType.BASE_MONTHLY,
+        amount: 6500,
+        effectiveFrom: new Date("2024-07-01"),
+      },
+      {
+        feeType: FeeType.BASE_MONTHLY,
+        amount: 7000,
+        effectiveFrom: new Date("2024-07-01"),
+      },
+      {
+        feeType: FeeType.BASE_MONTHLY,
+        amount: 5500,
+        effectiveFrom: new Date("2024-07-01"),
+      },
+    ];
+
+    const financialInfo = savedStudents.map((student, index) => ({
+      studentId: student.id,
+      ...financialData[index],
+      isActive: true,
+    }));
+    await this.studentFinancialRepository.save(financialInfo);
+
+    this.logger.log(
+      `Seeded ${savedStudents.length} students with contacts, academic, and financial info for hostel ${hostelId}`
+    );
+
+    return {
+      count: savedStudents.length,
+      data: {
+        students: savedStudents.length,
+        contacts: contacts.length,
+        academic: academicInfo.length,
+        financial: financialInfo.length,
+      },
+    };
+  }
+
   async seedInvoices(force = false) {
     if (!force && (await this.invoiceRepository.count()) > 0) {
       return {
@@ -745,6 +1090,7 @@ export class SeedService {
     const invoices = invoiceData.map((invoice, index) => ({
       ...invoice,
       studentId: students[index].id,
+      hostelId: students[index].hostelId, // Get hostelId from the student
     }));
 
     if (force) {
@@ -888,6 +1234,7 @@ export class SeedService {
     const payments = paymentData.map((payment, index) => ({
       ...payment,
       studentId: students[index].id,
+      hostelId: students[index].hostelId, // Get hostelId from the student
     }));
 
     if (force) {
@@ -931,6 +1278,7 @@ export class SeedService {
       {
         id: `DSC${Date.now()}001`,
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         discountTypeId: discountTypes[0].id,
         amount: 200,
         reason: "Early payment for July 2024",
@@ -949,6 +1297,7 @@ export class SeedService {
       {
         id: `DSC${Date.now()}002`,
         studentId: students[2].id,
+        hostelId: students[2].hostelId, // Get hostelId from the student
         discountTypeId: discountTypes[1].id,
         amount: 600,
         reason: "Financial hardship assistance",
@@ -1352,6 +1701,7 @@ export class SeedService {
     if (students.length > 0) {
       adminCharges.push({
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         title: "Late Payment Penalty",
         description: "Penalty for late payment of monthly fees",
         amount: 500.00,
@@ -1367,6 +1717,7 @@ export class SeedService {
     if (students.length > 1) {
       adminCharges.push({
         studentId: students[1].id,
+        hostelId: students[1].hostelId, // Get hostelId from the student
         title: "Room Damage Charge",
         description: "Charge for damaged window in room",
         amount: 2500.00,
@@ -1382,6 +1733,7 @@ export class SeedService {
     if (students.length > 2) {
       adminCharges.push({
         studentId: students[2].id,
+        hostelId: students[2].hostelId, // Get hostelId from the student
         title: "Extra Laundry Service",
         description: "Additional laundry service charges",
         amount: 300.00,
@@ -1399,6 +1751,7 @@ export class SeedService {
     if (students.length > 0) {
       adminCharges.push({
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         title: "Guest Stay Charge",
         description: "Charge for guest staying overnight",
         amount: 200.00,
@@ -1412,6 +1765,7 @@ export class SeedService {
 
       adminCharges.push({
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         title: "Key Replacement",
         description: "Replacement of lost room key",
         amount: 150.00,

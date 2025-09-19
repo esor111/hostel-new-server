@@ -55,7 +55,7 @@ export class BedService {
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
     private bedSyncService: BedSyncService,
-  ) {}
+  ) { }
 
   /**
    * Create a new bed entity
@@ -293,7 +293,7 @@ export class BedService {
    */
   async validateGenderCompatibility(bedId: string, guestGender: string): Promise<boolean> {
     const bed = await this.findOne(bedId);
-    
+
     // Any gender bed accepts all guests
     if (bed.gender === 'Any') {
       return true;
@@ -304,10 +304,10 @@ export class BedService {
   }
 
   /**
-   * Assign occupant to bed
+   * Assign occupant to bed for booking confirmation (sets status to RESERVED)
    */
   async assignOccupant(bedId: string, assignDto: AssignOccupantDto): Promise<Bed> {
-    this.logger.log(`Assigning occupant ${assignDto.occupantName} to bed ${bedId}`);
+    this.logger.log(`Assigning occupant ${assignDto.occupantName} to bed ${bedId} for booking confirmation`);
 
     try {
       const bed = await this.findOne(bedId);
@@ -317,22 +317,56 @@ export class BedService {
         throw new BadRequestException(`Bed ${bed.bedIdentifier} is not available for assignment (status: ${bed.status})`);
       }
 
-      // Update bed with occupant information
+      // Update bed with occupant information - set to RESERVED for booking confirmation
+      bed.status = BedStatus.RESERVED;
+      bed.currentOccupantId = assignDto.occupantId;
+      bed.currentOccupantName = assignDto.occupantName;
+      bed.occupiedSince = assignDto.checkInDate || new Date();
+
+      const updatedBed = await this.bedRepository.save(bed);
+
+      // Trigger sync with bedPositions
+      await this.syncBedStatusToPositions([updatedBed.roomId]);
+
+      this.logger.log(`✅ Assigned occupant to bed ${updatedBed.bedIdentifier} with RESERVED status`);
+
+      return updatedBed;
+    } catch (error) {
+      this.logger.error(`❌ Error assigning occupant to bed ${bedId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check-in occupant to bed (sets status to OCCUPIED for actual physical occupancy)
+   */
+  async checkInOccupant(bedId: string, assignDto: AssignOccupantDto): Promise<Bed> {
+    this.logger.log(`Checking in occupant ${assignDto.occupantName} to bed ${bedId}`);
+
+    try {
+      const bed = await this.findOne(bedId);
+
+      // Validate bed is available or reserved
+      if (bed.status !== BedStatus.AVAILABLE && bed.status !== BedStatus.RESERVED) {
+        throw new BadRequestException(`Bed ${bed.bedIdentifier} is not available for check-in (status: ${bed.status})`);
+      }
+
+      // Update bed with occupant information - set to OCCUPIED for actual check-in
       bed.status = BedStatus.OCCUPIED;
       bed.currentOccupantId = assignDto.occupantId;
       bed.currentOccupantName = assignDto.occupantName;
       bed.occupiedSince = assignDto.checkInDate || new Date();
 
       const updatedBed = await this.bedRepository.save(bed);
-      
+
       // Trigger sync with bedPositions
       await this.syncBedStatusToPositions([updatedBed.roomId]);
-      
-      this.logger.log(`✅ Assigned occupant to bed ${updatedBed.bedIdentifier}`);
+
+      this.logger.log(`✅ Checked in occupant to bed ${updatedBed.bedIdentifier} with OCCUPIED status`);
 
       return updatedBed;
     } catch (error) {
-      this.logger.error(`❌ Error assigning occupant to bed ${bedId}:`, error);
+      this.logger.error(`❌ Error checking in occupant to bed ${bedId}:`, error);
       throw error;
     }
   }
@@ -358,10 +392,10 @@ export class BedService {
       bed.occupiedSince = null;
 
       const updatedBed = await this.bedRepository.save(bed);
-      
+
       // Trigger sync with bedPositions
       await this.syncBedStatusToPositions([updatedBed.roomId]);
-      
+
       this.logger.log(`✅ Released occupant from bed ${updatedBed.bedIdentifier}`);
 
       return updatedBed;
@@ -392,10 +426,10 @@ export class BedService {
       }
 
       const updatedBed = await this.bedRepository.save(bed);
-      
+
       // Trigger sync with bedPositions
       await this.syncBedStatusToPositions([updatedBed.roomId]);
-      
+
       this.logger.log(`✅ Reserved bed ${updatedBed.bedIdentifier}`);
 
       return updatedBed;
@@ -423,10 +457,10 @@ export class BedService {
       bed.status = BedStatus.AVAILABLE;
 
       const updatedBed = await this.bedRepository.save(bed);
-      
+
       // Trigger sync with bedPositions
       await this.syncBedStatusToPositions([updatedBed.roomId]);
-      
+
       this.logger.log(`✅ Cancelled reservation for bed ${updatedBed.bedIdentifier}`);
 
       return updatedBed;
@@ -444,7 +478,7 @@ export class BedService {
 
     try {
       const bed = await this.findOne(bedId);
-      
+
       // Validate status change
       await this.validateStatusChange(bed, newStatus);
 
@@ -570,7 +604,7 @@ export class BedService {
       }
 
       const validation = await this.validateBedAvailability(bed.id, guestGender);
-      
+
       if (validation.isValid) {
         valid.push(bedId);
       } else {
@@ -672,8 +706,58 @@ export class BedService {
   }
 
   /**
+   * Reserve multiple beds for confirmed bookings (with automatic sync)
+   * Used by booking service during booking confirmation - sets beds to RESERVED, not OCCUPIED
+   */
+  async reserveMultipleBedsForBooking(assignments: Array<{
+    bedIdentifier: string;
+    occupantId: string;
+    occupantName: string;
+    checkInDate?: Date;
+  }>): Promise<{
+    reserved: string[];
+    failed: { bedId: string; reason: string }[];
+  }> {
+    this.logger.log(`Reserving beds for booking confirmation: ${assignments.length} beds`);
+
+    const bedIdentifiers = assignments.map(a => a.bedIdentifier);
+    const beds = await this.findByBedIdentifiers(bedIdentifiers);
+    const reserved: string[] = [];
+    const failed: { bedId: string; reason: string }[] = [];
+
+    for (const assignment of assignments) {
+      try {
+        const bed = beds.find(b => b.bedIdentifier === assignment.bedIdentifier);
+        if (!bed) {
+          failed.push({ bedId: assignment.bedIdentifier, reason: 'Bed not found' });
+          continue;
+        }
+
+        // Reserve bed with occupant information but keep status as RESERVED
+        await this.bedRepository.update(bed.id, {
+          status: BedStatus.RESERVED,
+          currentOccupantId: assignment.occupantId,
+          currentOccupantName: assignment.occupantName,
+          occupiedSince: assignment.checkInDate || new Date(),
+          notes: `Reserved for ${assignment.occupantName} via booking confirmation`
+        });
+
+        reserved.push(assignment.bedIdentifier);
+      } catch (error) {
+        failed.push({ bedId: assignment.bedIdentifier, reason: error.message });
+      }
+    }
+
+    // Trigger sync with bedPositions for all affected rooms
+    await this.syncBedStatusToPositions(beds.map(b => b.roomId));
+
+    this.logger.log(`Reserved ${reserved.length}/${assignments.length} beds for booking confirmation`);
+    return { reserved, failed };
+  }
+
+  /**
    * Assign multiple occupants to beds (with automatic sync)
-   * Used by booking service during booking confirmation
+   * Used for actual check-in when guests physically arrive - sets beds to OCCUPIED
    */
   async assignMultipleOccupants(assignments: Array<{
     bedIdentifier: string;
@@ -684,7 +768,7 @@ export class BedService {
     assigned: string[];
     failed: { bedId: string; reason: string }[];
   }> {
-    this.logger.log(`Assigning occupants to ${assignments.length} beds`);
+    this.logger.log(`Assigning occupants to ${assignments.length} beds for actual check-in`);
 
     const bedIdentifiers = assignments.map(a => a.bedIdentifier);
     const beds = await this.findByBedIdentifiers(bedIdentifiers);
@@ -699,7 +783,7 @@ export class BedService {
           continue;
         }
 
-        await this.assignOccupant(bed.id, {
+        await this.checkInOccupant(bed.id, {
           occupantId: assignment.occupantId,
           occupantName: assignment.occupantName,
           checkInDate: assignment.checkInDate
@@ -723,10 +807,10 @@ export class BedService {
    */
   async updateBedStatusWithSync(bedId: string, newStatus: BedStatus, notes?: string): Promise<Bed> {
     const updatedBed = await this.updateBedStatus(bedId, newStatus, notes);
-    
+
     // Trigger sync with bedPositions for this bed's room
     await this.syncBedStatusToPositions([updatedBed.roomId]);
-    
+
     return updatedBed;
   }
 
@@ -744,7 +828,7 @@ export class BedService {
     occupiedBedIds: string[];
   }> {
     const beds = await this.findByRoomId(roomId);
-    
+
     const availableBeds = beds.filter(b => b.status === BedStatus.AVAILABLE);
     const occupiedBeds = beds.filter(b => b.status === BedStatus.OCCUPIED);
     const reservedBeds = beds.filter(b => b.status === BedStatus.RESERVED);
@@ -775,9 +859,9 @@ export class BedService {
     }
 
     if (gender) {
-      queryBuilder.andWhere('(bed.gender = :gender OR bed.gender = :any)', { 
-        gender, 
-        any: 'Any' 
+      queryBuilder.andWhere('(bed.gender = :gender OR bed.gender = :any)', {
+        gender,
+        any: 'Any'
       });
     }
 

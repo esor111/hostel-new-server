@@ -9,11 +9,14 @@ import { RoomAmenity } from './entities/room-amenity.entity';
 import { RoomLayout } from './entities/room-layout.entity';
 import { RoomOccupant } from './entities/room-occupant.entity';
 import { Student } from '../students/entities/student.entity';
+import { Bed, BedStatus } from './entities/bed.entity';
 
 import { BedSyncService } from './bed-sync.service';
+import { HostelScopedService } from '../common/services/hostel-scoped.service';
+
 
 @Injectable()
-export class RoomsService {
+export class RoomsService extends HostelScopedService<Room> {
   constructor(
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
@@ -30,11 +33,15 @@ export class RoomsService {
     private roomOccupantRepository: Repository<RoomOccupant>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
+    @InjectRepository(Bed)
+    private bedRepository: Repository<Bed>,
 
     private bedSyncService: BedSyncService,
-  ) { }
+  ) {
+    super(roomRepository, 'Room');
+  }
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
     const { status = 'all', type = 'all', search = '', page = 1, limit = 20 } = filters;
 
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
@@ -46,6 +53,11 @@ export class RoomsService {
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
       .leftJoinAndSelect('room.layout', 'layout')
       .leftJoinAndSelect('room.beds', 'beds');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    }
 
     // Apply status filter
     if (status !== 'all') {
@@ -101,9 +113,15 @@ export class RoomsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, hostelId?: string) {
+    // Build where condition conditionally
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const room = await this.roomRepository.findOne({
-      where: { id },
+      where: whereCondition,
       relations: [
         'building',
         'roomType',
@@ -134,9 +152,20 @@ export class RoomsService {
     return await this.transformToApiResponse(room);
   }
 
-  async create(createRoomDto: any) {
+  async create(createRoomDto: any, hostelId?: string) {
+    console.log('🚨🚨🚨 ROOM CREATE METHOD CALLED 🚨🚨🚨');
     console.log('🏠 Creating new room');
     console.log('📤 Create data received:', JSON.stringify(createRoomDto, null, 2));
+    console.log('🏨 Hostel ID received:', hostelId);
+    console.log('📐 Layout check - has layout?', !!createRoomDto.layout);
+    console.log('📐 Layout elements count:', createRoomDto.layout?.elements?.length || 0);
+
+    // If hostelId is not provided, we need to get it from the authenticated user's businessId
+    // This is a fallback for when the middleware/interceptor doesn't work
+    if (!hostelId) {
+      console.log('⚠️ No hostelId provided, this should not happen with proper authentication');
+      throw new Error('Hostel context is required for room creation. Please ensure you are authenticated with a Business Token.');
+    }
 
     // Find or create room type
     let roomType = null;
@@ -159,7 +188,7 @@ export class RoomsService {
       }
     }
 
-    // Create room entity
+    // Create room entity with hostelId
     const room = this.roomRepository.create({
       id: createRoomDto.id,
       name: createRoomDto.name,
@@ -172,7 +201,9 @@ export class RoomsService {
       maintenanceStatus: createRoomDto.maintenanceStatus || 'Good',
       lastCleaned: createRoomDto.lastCleaned,
       description: createRoomDto.description,
+      images: createRoomDto.images || [],
       roomTypeId: roomType?.id,
+      hostelId: hostelId, // Inject hostelId from context (validated above)
       // Map floor to building (simplified for now)
       buildingId: null // Will implement building logic later
     });
@@ -191,31 +222,166 @@ export class RoomsService {
 
     // Create layout if provided
     if (createRoomDto.layout) {
-      await this.roomLayoutRepository.save({
-        roomId: savedRoom.id,
-        name: 'Default Layout',
-        layoutData: createRoomDto.layout,
-        isActive: true,
-        version: 1,
-        dimensions: createRoomDto.layout.dimensions,
-        theme: createRoomDto.layout.theme
-      });
+      try {
+        console.log('💾 Creating room layout...');
+        console.log('📐 Layout data to save:', JSON.stringify(createRoomDto.layout, null, 2));
+        
+        // Convert elements to bedPositions if needed
+        let bedPositions = createRoomDto.layout.bedPositions;
+        if (!bedPositions && createRoomDto.layout.elements) {
+          bedPositions = createRoomDto.layout.elements.filter(e => e.type && e.type.includes('bed'));
+          console.log(`🔄 Converted ${bedPositions.length} elements to bedPositions for layout storage`);
+        }
+        
+        const layoutToSave = {
+          roomId: savedRoom.id,
+          layoutData: createRoomDto.layout, // Store complete layout object
+          dimensions: createRoomDto.layout.dimensions,
+          bedPositions: bedPositions, // CRITICAL FIX: Save bedPositions
+          furnitureLayout: createRoomDto.layout.elements ? 
+            createRoomDto.layout.elements.filter(e => e.type && !e.type.includes('bed')) : null,
+          layoutType: createRoomDto.layout.theme?.name || 'standard',
+          isActive: true,
+          createdBy: 'system'
+        };
+        
+        console.log('💾 Layout entity to save:', JSON.stringify(layoutToSave, null, 2));
+        const savedLayout = await this.roomLayoutRepository.save(layoutToSave);
+        console.log('✅ Layout saved successfully with ID:', savedLayout.id);
+      } catch (layoutError) {
+        console.error('❌ Layout creation failed:', layoutError.message);
+        console.error('❌ Layout error stack:', layoutError.stack);
+        // Don't throw - allow room creation to continue
+      }
+    } else {
+      console.log('⚠️ No layout provided in createRoomDto');
     }
 
     // Sync beds with layout after room creation (hybrid integration)
-    if (createRoomDto.layout && createRoomDto.layout.bedPositions) {
+    if (createRoomDto.layout) {
       console.log('🔄 Syncing beds with initial layout - hybrid integration');
-      await this.bedSyncService.syncBedsFromLayout(savedRoom.id, createRoomDto.layout.bedPositions);
+
+      // Handle both bedPositions (legacy) and elements (new frontend format)
+      let bedPositions = createRoomDto.layout.bedPositions;
+
+      if (!bedPositions && createRoomDto.layout.elements) {
+        // Convert elements to bedPositions format
+        console.log('🔄 Converting elements to bedPositions format for room creation');
+        bedPositions = [];
+
+        for (const element of createRoomDto.layout.elements) {
+          if (element.type && element.type.includes('bed')) {
+            // Handle bunk beds with levels
+            if (element.type === 'bunk-bed' && element.properties?.levels) {
+              console.log(`🔄 Processing bunk bed ${element.id} with ${element.properties.levels.length} levels`);
+
+              // Create separate bed positions for each bunk level
+              for (const level of element.properties.levels) {
+                bedPositions.push({
+                  id: level.id || level.bedId, // Use level.id or level.bedId
+                  x: element.x,
+                  y: element.y,
+                  width: element.width,
+                  height: element.height / 2, // Split height for bunk levels
+                  rotation: element.rotation || 0,
+                  bedType: 'bunk',
+                  status: level.status || 'Available',
+                  gender: element.properties?.gender || 'Any',
+                  bunkLevel: level.position || 'bottom' // top/bottom
+                });
+              }
+            } else {
+              // Handle regular single beds
+              bedPositions.push({
+                id: element.id,
+                x: element.x,
+                y: element.y,
+                width: element.width,
+                height: element.height,
+                rotation: element.rotation || 0,
+                bedType: element.properties?.bedType || 'single',
+                status: element.properties?.status || 'Available',
+                gender: element.properties?.gender || 'Any'
+              });
+            }
+          }
+        }
+
+        console.log(`🔄 Converted ${bedPositions.length} bed positions from ${createRoomDto.layout.elements.filter(e => e.type && e.type.includes('bed')).length} elements for room creation`);
+      }
+
+      // Also check if we need to get bedPositions from the saved layout
+      if (!bedPositions) {
+        console.log('🔍 No bedPositions found, checking saved layout...');
+        const savedLayout = await this.roomLayoutRepository.findOne({ where: { roomId: savedRoom.id } });
+        if (savedLayout?.bedPositions) {
+          bedPositions = savedLayout.bedPositions;
+          console.log(`🔄 Found ${bedPositions.length} bedPositions from saved layout`);
+        } else if (savedLayout?.layoutData?.elements) {
+          // Convert from saved layout elements
+          const elements = savedLayout.layoutData.elements.filter(e => e.type && e.type.includes('bed'));
+          bedPositions = elements.map(element => ({
+            id: element.id,
+            x: element.x,
+            y: element.y,
+            width: element.width,
+            height: element.height,
+            rotation: element.rotation || 0,
+            bedType: element.properties?.bedType || 'single',
+            status: element.properties?.status || 'Available',
+            gender: element.properties?.gender || 'Any'
+          }));
+          console.log(`🔄 Converted ${bedPositions.length} bedPositions from saved layout elements`);
+        }
+      }
+
+      if (bedPositions && Array.isArray(bedPositions) && bedPositions.length > 0) {
+        console.log('🔄 Syncing beds with initial layout');
+        console.log('🛏️ Bed positions to sync:', JSON.stringify(bedPositions, null, 2));
+        console.log('🏠 Room ID for sync:', savedRoom.id);
+        console.log('🏨 Room hostelId:', savedRoom.hostelId);
+        
+        try {
+          console.log('📞 Calling bedSyncService.syncBedsFromLayout...');
+          await this.bedSyncService.syncBedsFromLayout(savedRoom.id, bedPositions);
+          console.log('✅ Initial bed sync completed successfully');
+          
+          // Verify beds were actually created
+          console.log('🔍 Verifying beds were created...');
+          const createdBeds = await this.bedRepository.find({ where: { roomId: savedRoom.id } });
+          console.log(`✅ Verification: ${createdBeds.length} beds found in database`);
+          
+        } catch (error) {
+          console.error('❌ Initial bed sync failed:', error.message);
+          console.error('❌ Full error details:', error);
+          console.error('❌ Error stack:', error.stack);
+          // Log the error but don't throw to allow room creation to complete
+          // However, we should investigate why bed creation is failing
+        }
+      } else {
+        console.log('⚠️ No bed positions found in initial layout data');
+        console.log('📐 Layout data structure:', JSON.stringify(createRoomDto.layout, null, 2));
+      }
     }
 
-    return this.findOne(savedRoom.id);
+    // Return simplified response for now to avoid complex relations
+    return {
+      id: savedRoom.id,
+      name: savedRoom.name,
+      roomNumber: savedRoom.roomNumber,
+      capacity: savedRoom.bedCount,
+      rent: savedRoom.monthlyRate,
+      hostelId: savedRoom.hostelId,
+      status: savedRoom.status,
+      createdAt: savedRoom.createdAt
+    };
   }
 
-  async update(id: string, updateRoomDto: any) {
+  async update(id: string, updateRoomDto: any, hostelId?: string) {
     console.log('🏠 Updating room:', id);
     console.log('📤 Update data received:', JSON.stringify(updateRoomDto, null, 2));
 
-    const room = await this.findOne(id);
+    const room = await this.findOne(id, hostelId);
 
     // Update main room entity
     const updateData: any = {};
@@ -232,6 +398,7 @@ export class RoomsService {
     if (updateRoomDto.maintenanceStatus !== undefined) updateData.maintenanceStatus = updateRoomDto.maintenanceStatus;
     if (updateRoomDto.lastCleaned !== undefined) updateData.lastCleaned = updateRoomDto.lastCleaned;
     if (updateRoomDto.description !== undefined) updateData.description = updateRoomDto.description;
+    if (updateRoomDto.images !== undefined) updateData.images = updateRoomDto.images;
 
     // Handle room type update
     if (updateRoomDto.type !== undefined) {
@@ -261,8 +428,12 @@ export class RoomsService {
       // If bed count changed, ensure bed entities are synchronized
       if (updateData.bedCount !== undefined) {
         console.log('🔄 Bed count changed, ensuring bed synchronization');
+        const whereCondition: any = { id };
+        if (hostelId) {
+          whereCondition.hostelId = hostelId;
+        }
         const updatedRoom = await this.roomRepository.findOne({
-          where: { id },
+          where: whereCondition,
           relations: ['layout', 'beds']
         });
 
@@ -282,33 +453,51 @@ export class RoomsService {
       await this.updateRoomLayout(id, updateRoomDto.layout);
     }
 
-    return this.findOne(id);
+    return this.findOne(id, hostelId);
   }
 
-  async getStats() {
-    const totalRooms = await this.roomRepository.count();
+  async getStats(hostelId?: string) {
+    // Build where conditions conditionally
+    const baseWhere: any = {};
+    if (hostelId) {
+      baseWhere.hostelId = hostelId;
+    }
+
+    const totalRooms = await this.roomRepository.count({
+      where: baseWhere
+    });
     const activeRooms = await this.roomRepository.count({
-      where: { status: 'ACTIVE' }
+      where: { ...baseWhere, status: 'ACTIVE' }
     });
     const maintenanceRooms = await this.roomRepository.count({
-      where: { status: 'MAINTENANCE' }
+      where: { ...baseWhere, status: 'MAINTENANCE' }
     });
 
     // Get accurate occupancy data from RoomOccupant records
-    const occupancyResult = await this.roomRepository
+    const occupancyQueryBuilder = this.roomRepository
       .createQueryBuilder('room')
       .select('SUM(room.bedCount)', 'totalBeds')
-      .where('room.status = :status', { status: 'ACTIVE' })
-      .getRawOne();
+      .where('room.status = :status', { status: 'ACTIVE' });
+
+    if (hostelId) {
+      occupancyQueryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    }
+
+    const occupancyResult = await occupancyQueryBuilder.getRawOne();
 
     // Count actual active occupants
-    const actualOccupiedResult = await this.roomOccupantRepository
+    const occupiedQueryBuilder = this.roomOccupantRepository
       .createQueryBuilder('occupant')
       .innerJoin('occupant.room', 'room')
       .select('COUNT(occupant.id)', 'totalOccupied')
       .where('occupant.status = :status', { status: 'Active' })
-      .andWhere('room.status = :roomStatus', { roomStatus: 'ACTIVE' })
-      .getRawOne();
+      .andWhere('room.status = :roomStatus', { roomStatus: 'ACTIVE' });
+
+    if (hostelId) {
+      occupiedQueryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    }
+
+    const actualOccupiedResult = await occupiedQueryBuilder.getRawOne();
 
     const totalBeds = parseInt(occupancyResult?.totalBeds) || 0;
     const totalOccupied = parseInt(actualOccupiedResult?.totalOccupied) || 0;
@@ -327,9 +516,15 @@ export class RoomsService {
     };
   }
 
-  async getAvailableRooms() {
+  async getAvailableRooms(hostelId?: string) {
+    // Build where condition conditionally
+    const whereCondition: any = { status: 'ACTIVE' };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const availableRooms = await this.roomRepository.find({
-      where: { status: 'ACTIVE' },
+      where: whereCondition,
       relations: ['roomType', 'amenities', 'amenities.amenity', 'occupants', 'beds', 'layout']
     });
 
@@ -404,13 +599,28 @@ export class RoomsService {
     return colorMap[status] || '#6B7280'; // Default to gray
   }
 
+  // Convert bed status for API response - change Occupied beds from bookings to Reserved
+  private convertBedStatusForResponse(bed: any): string {
+    // If bed is Occupied but has notes indicating it's from a booking, return Reserved
+    if (bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')) {
+      return 'Reserved';
+    }
+    
+    // Otherwise return the actual status
+    return bed.status;
+  }
+
   // Transform normalized data back to exact API format
   private async transformToApiResponse(room: Room): Promise<any> {
     // Get active layout
     const activeLayout = room.layout;
 
-    // Get amenities list
-    const amenities = room.amenities?.map(ra => ra.amenity.name) || [];
+    // Get amenities list in proper format with string id, name, and description
+    const amenities = room.amenities?.map((ra, index) => ({
+      id: (index + 1).toString(), // Convert to string ID starting from "1"
+      name: ra.amenity.name,
+      description: ra.amenity.description || ra.amenity.name // Use name as fallback for description
+    })) || [];
 
     // Get occupants (from active RoomOccupant records)
     const occupants = room.occupants?.filter(occupant => occupant.status === 'Active')
@@ -429,11 +639,20 @@ export class RoomsService {
 
     if (room.beds && room.beds.length > 0) {
       // Use bed entities for more accurate calculations - bed entity is source of truth
-      const occupiedBeds = room.beds.filter(bed => bed.status === 'Occupied').length;
+      // Only count truly occupied beds (not those occupied via booking which should be reserved)
+      const occupiedBeds = room.beds.filter(bed => 
+        bed.status === 'Occupied' && (!bed.notes || !bed.notes.includes('via booking'))
+      ).length;
       const availableBedsFromBeds = room.beds.filter(bed => bed.status === 'Available').length;
+      const reservedBedsFromBookings = room.beds.filter(bed => 
+        bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')
+      ).length;
 
       actualOccupancy = occupiedBeds;
       availableBeds = availableBedsFromBeds;
+      
+      // Log for debugging
+      console.log(`Room ${room.roomNumber}: ${occupiedBeds} truly occupied, ${reservedBedsFromBookings} reserved from bookings, ${availableBedsFromBeds} available`);
     }
 
     // Enhance layout with bed data if beds exist (hybrid integration)
@@ -474,7 +693,7 @@ export class RoomsService {
             height: element.height,
             rotation: element.rotation || 0,
             bedType: element.properties?.bedType || 'single',
-            status: element.properties?.status || 'available',
+            status: element.properties?.status || 'Available',
             gender: element.properties?.gender || 'Any'
           }));
       }
@@ -483,26 +702,29 @@ export class RoomsService {
       if (bedPositions && room.beds && room.beds.length > 0) {
         // SIMPLE FIX: Map bedPosition IDs to match bed identifiers for frontend consistency
         const activeBeds = room.beds.filter(bed => bed.status !== 'Out_Of_Order');
-        
+
         enhancedLayout.bedPositions = bedPositions.map((position, index) => {
           // Try to find matching bed by position index or identifier
           let matchingBed = activeBeds.find(bed => bed.bedIdentifier === position.id);
-          
+
           // If no exact match, use bed by index (fallback)
           if (!matchingBed && activeBeds[index]) {
             matchingBed = activeBeds[index];
           }
-          
+
           if (matchingBed) {
+            // Convert bed status for response (Occupied from bookings -> Reserved)
+            const responseStatus = this.convertBedStatusForResponse(matchingBed);
+            
             // Update position ID to match bed identifier for frontend mapping
             return {
               ...position,
               id: matchingBed.bedIdentifier, // KEY FIX: Ensure IDs match
-              status: matchingBed.status,
+              status: responseStatus,
               occupantId: matchingBed.currentOccupantId,
               occupantName: matchingBed.currentOccupantName,
               gender: matchingBed.gender,
-              color: this.getBedStatusColor(matchingBed.status),
+              color: this.getBedStatusColor(responseStatus),
               bedDetails: {
                 bedNumber: matchingBed.bedNumber,
                 monthlyRate: matchingBed.monthlyRate,
@@ -512,7 +734,7 @@ export class RoomsService {
               }
             };
           }
-          
+
           // Return original position with default data if no matching bed
           return {
             ...position,
@@ -547,10 +769,14 @@ export class RoomsService {
       maintenanceStatus: room.maintenanceStatus,
       pricingModel: room.roomType?.pricingModel || 'monthly',
       description: room.description,
+      images: room.images || [], // Always include images array
       createdAt: room.createdAt,
       updatedAt: room.updatedAt,
-      // Include beds array for enhanced functionality (optional)
-      beds: room.beds || []
+      // Include beds array for enhanced functionality (optional) - convert status for response
+      beds: (room.beds || []).map(bed => ({
+        ...bed,
+        status: this.convertBedStatusForResponse(bed)
+      }))
     };
   }
 
@@ -592,6 +818,129 @@ export class RoomsService {
     }
   }
 
+  /**
+   * Create bed entities directly from layout data
+   * This ensures all beds are created immediately when layout is saved
+   */
+  private async createBedsFromLayoutData(roomId: string, layoutData: any) {
+    console.log('🛏️ Creating beds directly from layout data for room:', roomId);
+    
+    try {
+      // Get room details for bed creation
+      const room = await this.roomRepository.findOne({
+        where: { id: roomId }
+      });
+
+      if (!room) {
+        throw new Error(`Room ${roomId} not found`);
+      }
+
+      // Clear existing beds for this room to avoid conflicts
+      console.log('🗑️ Clearing existing beds for room:', roomId);
+      await this.bedRepository.delete({ roomId });
+
+      const bedsToCreate = [];
+      const roomPrefix = room.roomNumber || 'R'; // Use room number as prefix
+
+      // Process layout elements to extract bed data
+      if (layoutData.elements) {
+        console.log(`📐 Processing ${layoutData.elements.length} layout elements`);
+        
+        for (const element of layoutData.elements) {
+          if (element.type && element.type.includes('bed')) {
+            console.log(`🛏️ Processing bed element: ${element.id} (${element.type})`);
+            
+            if (element.type === 'bunk-bed' && element.properties?.levels) {
+              // Handle bunk bed - create separate entities for each level
+              console.log(`🏗️ Bunk bed ${element.id} has ${element.properties.levels.length} levels`);
+              
+              for (const level of element.properties.levels) {
+                const bedIdentifier = `${roomPrefix}-${level.id}`;
+                const bedNumber = element.id.replace('bed', '');
+                
+                bedsToCreate.push({
+                  bedIdentifier,
+                  bedNumber,
+                  description: `${level.position.charAt(0).toUpperCase() + level.position.slice(1)} bunk ${element.properties?.bedLabel || element.id} in ${room.name}`,
+                  bunkLevel: level.position
+                });
+                
+                console.log(`   ✅ Added bunk level: ${bedIdentifier} (${level.position})`);
+              }
+            } else {
+              // Handle single bed
+              const bedIdentifier = `${roomPrefix}-${element.id}`;
+              const bedNumber = element.id.replace('bed', '');
+              
+              bedsToCreate.push({
+                bedIdentifier,
+                bedNumber,
+                description: `${element.properties?.bedLabel || element.id} in ${room.name}`,
+                bunkLevel: null
+              });
+              
+              console.log(`   ✅ Added single bed: ${bedIdentifier}`);
+            }
+          }
+        }
+      }
+
+      // Also process bedPositions if elements are not available
+      if (!layoutData.elements && layoutData.bedPositions) {
+        console.log(`📍 Processing ${layoutData.bedPositions.length} bed positions`);
+        
+        for (const position of layoutData.bedPositions) {
+          const bedIdentifier = `${roomPrefix}-${position.id}`;
+          const bedNumber = position.id.replace('bed', '').replace(/[^0-9]/g, '') || '1';
+          
+          bedsToCreate.push({
+            bedIdentifier,
+            bedNumber,
+            description: `Bed ${bedNumber} in ${room.name}`,
+            bunkLevel: position.bunkLevel || null
+          });
+          
+          console.log(`   ✅ Added bed from position: ${bedIdentifier}`);
+        }
+      }
+
+      // Create all bed entities
+      console.log(`🆕 Creating ${bedsToCreate.length} bed entities`);
+      
+      for (const bedData of bedsToCreate) {
+        try {
+          const bed = this.bedRepository.create({
+            roomId,
+            hostelId: room.hostelId,
+            bedIdentifier: bedData.bedIdentifier,
+            bedNumber: bedData.bedNumber,
+            status: BedStatus.AVAILABLE,
+            gender: (room.gender as 'Male' | 'Female' | 'Any') || 'Any',
+            monthlyRate: room.monthlyRate,
+            description: bedData.description,
+            currentOccupantId: null,
+            currentOccupantName: null,
+            occupiedSince: null
+          });
+
+          await this.bedRepository.save(bed);
+          console.log(`   ✅ Created bed: ${bedData.bedIdentifier}`);
+          
+        } catch (error) {
+          console.error(`   ❌ Failed to create bed ${bedData.bedIdentifier}:`, error.message);
+          // Continue with other beds
+        }
+      }
+
+      console.log(`✅ Successfully created ${bedsToCreate.length} bed entities for room ${roomId}`);
+      return bedsToCreate.length;
+      
+    } catch (error) {
+      console.error('❌ Error creating beds from layout data:', error.message);
+      throw error;
+    }
+  }
+
   private async updateRoomLayout(roomId: string, layoutData: any) {
     if (!layoutData) {
       return;
@@ -606,74 +955,111 @@ export class RoomsService {
         where: { roomId }
       });
 
-      if (existingLayout) {
-        console.log('📝 Updating existing layout');
-        console.log('📐 Storing layout data:', JSON.stringify(layoutData, null, 2));
+      // Get room details for generating room-specific bed identifiers
+      const room = await this.roomRepository.findOne({
+        where: { id: roomId }
+      });
+      const roomPrefix = room?.roomNumber || 'R';
 
-        // Update existing layout - store complete layout data
-        await this.roomLayoutRepository.update(
-          { roomId },
-          {
-            layoutData, // Store complete layout object
-            dimensions: layoutData.dimensions,
-            bedPositions: layoutData.bedPositions || (layoutData.elements ?
-              layoutData.elements.filter(e => e.type && e.type.includes('bed')) : null),
-            furnitureLayout: layoutData.elements ?
-              layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
-            layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
-            isActive: true,
-            updatedBy: 'system' // You might want to pass the actual user
+      // Create corrected bedPositions with room-specific identifiers
+      let correctedBedPositions = [];
+      
+      if (layoutData.elements) {
+        for (const element of layoutData.elements) {
+          if (element.type && element.type.includes('bed')) {
+            if (element.type === 'bunk-bed' && element.properties?.levels) {
+              // Handle bunk bed levels
+              for (const level of element.properties.levels) {
+                correctedBedPositions.push({
+                  id: `${roomPrefix}-${level.id}`, // Room-specific identifier
+                  x: element.x,
+                  y: element.y,
+                  width: element.width,
+                  height: element.height,
+                  rotation: element.rotation || 0,
+                  type: 'bunk-bed-level',
+                  properties: {
+                    ...element.properties,
+                    bedId: `${roomPrefix}-${level.id}`,
+                    bunkLevel: level.position,
+                    parentBunkId: element.id
+                  },
+                  status: 'Available',
+                  gender: room?.gender || 'Any',
+                  color: '#10B981',
+                  bedType: 'bunk',
+                  bunkLevel: level.position
+                });
+              }
+            } else {
+              // Handle single bed
+              correctedBedPositions.push({
+                id: `${roomPrefix}-${element.id}`, // Room-specific identifier
+                x: element.x,
+                y: element.y,
+                width: element.width,
+                height: element.height,
+                rotation: element.rotation || 0,
+                type: element.type,
+                properties: {
+                  ...element.properties,
+                  bedId: `${roomPrefix}-${element.id}`
+                },
+                status: 'Available',
+                gender: room?.gender || 'Any',
+                color: '#10B981'
+              });
+            }
           }
-        );
-      } else {
-        console.log('🆕 Creating new layout');
-        console.log('📐 Storing layout data:', JSON.stringify(layoutData, null, 2));
+        }
+      } else if (layoutData.bedPositions) {
+        // Use existing bedPositions but update identifiers
+        correctedBedPositions = layoutData.bedPositions.map(pos => ({
+          ...pos,
+          id: `${roomPrefix}-${pos.id}`,
+          properties: {
+            ...pos.properties,
+            bedId: `${roomPrefix}-${pos.id}`
+          }
+        }));
+      }
 
-        // Create new layout - store complete layout object
+      // Store layout with corrected bedPositions
+      const layoutToSave = {
+        layoutData: {
+          ...layoutData,
+          bedPositions: correctedBedPositions // Use corrected identifiers
+        },
+        dimensions: layoutData.dimensions,
+        bedPositions: correctedBedPositions, // Use corrected identifiers
+        furnitureLayout: layoutData.elements ?
+          layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
+        layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
+        isActive: true,
+        updatedBy: 'system'
+      };
+
+      if (existingLayout) {
+        console.log('📝 Updating existing layout with corrected bed identifiers');
+        await this.roomLayoutRepository.update({ roomId }, layoutToSave);
+      } else {
+        console.log('🆕 Creating new layout with corrected bed identifiers');
         await this.roomLayoutRepository.save({
           roomId,
-          layoutData, // Store complete layout object
-          dimensions: layoutData.dimensions,
-          bedPositions: layoutData.bedPositions || (layoutData.elements ?
-            layoutData.elements.filter(e => e.type && e.type.includes('bed')) : null),
-          furnitureLayout: layoutData.elements ?
-            layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
-          layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',
-          isActive: true,
-          createdBy: 'system' // You might want to pass the actual user
+          ...layoutToSave,
+          createdBy: 'system'
         });
       }
 
-      // Sync beds with updated layout using BedSyncService (hybrid integration)
-      // Handle both bedPositions (legacy) and elements (new frontend format)
-      let bedPositions = layoutData.bedPositions;
-
-      if (!bedPositions && layoutData.elements) {
-        // Convert elements to bedPositions format
-        console.log('🔄 Converting elements to bedPositions format');
-        bedPositions = layoutData.elements
-          .filter(element => element.type && element.type.includes('bed'))
-          .map(element => ({
-            id: element.id,
-            x: element.x,
-            y: element.y,
-            width: element.width,
-            height: element.height,
-            rotation: element.rotation || 0,
-            // Extract bed properties
-            bedType: element.properties?.bedType || 'single',
-            status: element.properties?.status || 'available',
-            gender: element.properties?.gender || 'Any'
-          }));
-
-        console.log(`🔄 Converted ${bedPositions.length} elements to bedPositions`);
-      }
-
-      if (bedPositions && Array.isArray(bedPositions) && bedPositions.length > 0) {
-        console.log('🔄 Syncing beds with updated layout - hybrid integration');
-        await this.bedSyncService.syncBedsFromLayout(roomId, bedPositions);
-      } else {
-        console.log('⚠️ No bed positions found in layout data');
+      // Create bed entities directly from layout data (NEW APPROACH)
+      // This ensures all beds are created immediately when layout is saved
+      console.log('🛏️ Creating bed entities directly from layout data');
+      try {
+        const bedsCreated = await this.createBedsFromLayoutData(roomId, layoutData);
+        console.log(`✅ Successfully created ${bedsCreated} bed entities`);
+      } catch (error) {
+        console.error('❌ Direct bed creation failed:', error.message);
+        throw error;
       }
 
       console.log('✅ Layout updated successfully');

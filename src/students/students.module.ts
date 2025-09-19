@@ -8,6 +8,7 @@ import { StudentAcademicInfo } from './entities/student-academic-info.entity';
 import { StudentFinancialInfo } from './entities/student-financial-info.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { RoomsModule } from '../rooms/rooms.module';
+import { Hostel } from '../hostel/entities/hostel.entity';
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { RoomsModule } from '../rooms/rooms.module';
       StudentContact,
       StudentAcademicInfo,
       StudentFinancialInfo,
-      LedgerEntry
+      LedgerEntry,
+      Hostel
     ]),
     RoomsModule
   ],

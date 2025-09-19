@@ -1,10 +1,17 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, UseGuards, UseInterceptors } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { RoomsService } from './rooms.service';
 import { BedService } from './bed.service';
 import { BedSyncService } from './bed-sync.service';
 import { CreateRoomDto, UpdateRoomDto, AssignStudentDto, VacateStudentDto, MaintenanceDto } from './dto';
 import { BedStatus } from './entities/bed.entity';
+import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { HostelAuthGuard } from '../auth/guards/hostel-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { HostelService } from '../hostel/hostel.service';
 
 @ApiTags('rooms')
 @Controller('rooms')
@@ -12,15 +19,17 @@ export class RoomsController {
   constructor(
     private readonly roomsService: RoomsService,
     private readonly bedService: BedService,
-    private readonly bedSyncService: BedSyncService
-  ) {}
+    private readonly bedSyncService: BedSyncService,
+    private readonly hostelService: HostelService
+  ) { }
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get all rooms' })
   @ApiResponse({ status: 200, description: 'List of rooms retrieved successfully' })
-  async getAllRooms(@Query() query: any) {
-    const result = await this.roomsService.findAll(query);
-    
+  async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
+    const result = await this.roomsService.findAll(query, hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -29,11 +38,11 @@ export class RoomsController {
   }
 
   @Get('stats')
-  @ApiOperation({ summary: 'Get room https://github.com/openai/agents.md.gitstatistics' })
+  @ApiOperation({ summary: 'Get room statistics' })
   @ApiResponse({ status: 200, description: 'Room statistics retrieved successfully' })
-  async getRoomStats() {
-    const stats = await this.roomsService.getStats();
-    
+  async getRoomStats(@GetOptionalHostelId() hostelId?: string) {
+    const stats = await this.roomsService.getStats(hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -44,9 +53,9 @@ export class RoomsController {
   @Get('available')
   @ApiOperation({ summary: 'Get available rooms' })
   @ApiResponse({ status: 200, description: 'Available rooms retrieved successfully' })
-  async getAvailableRooms() {
-    const availableRooms = await this.roomsService.getAvailableRooms();
-    
+  async getAvailableRooms(@GetOptionalHostelId() hostelId?: string) {
+    const availableRooms = await this.roomsService.getAvailableRooms(hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -61,9 +70,9 @@ export class RoomsController {
   @ApiOperation({ summary: 'Get room by ID' })
   @ApiResponse({ status: 200, description: 'Room retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Room not found' })
-  async getRoomById(@Param('id') id: string) {
-    const room = await this.roomsService.findOne(id);
-    
+  async getRoomById(@Param('id') id: string, @GetOptionalHostelId() hostelId?: string) {
+    const room = await this.roomsService.findOne(id, hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -72,12 +81,23 @@ export class RoomsController {
   }
 
   @Post()
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create new room' })
   @ApiResponse({ status: 201, description: 'Room created successfully' })
-  async createRoom(@Body() createRoomDto: CreateRoomDto) {
-    const room = await this.roomsService.create(createRoomDto);
-    
-    // Return EXACT same format as current Express API
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid token' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Business token required' })
+  async createRoom(@Body() createRoomDto: CreateRoomDto, @CurrentUser() user: JwtPayload) {
+    console.log('🔧 User businessId:', user.businessId);
+
+    // Get hostel ID from the authenticated user's businessId
+    // The HostelAuthWithContextGuard ensures hostel exists and sets up context
+    const hostel = await this.hostelService.ensureHostelExists(user.businessId);
+
+    console.log('🏨 Using hostel:', hostel.name, 'ID:', hostel.id);
+
+    const room = await this.roomsService.create(createRoomDto, hostel.id);
+
     return {
       status: HttpStatus.CREATED,
       newRoom: room
@@ -85,11 +105,13 @@ export class RoomsController {
   }
 
   @Put(':id')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update room' })
   @ApiResponse({ status: 200, description: 'Room updated successfully' })
-  async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto) {
-    const room = await this.roomsService.update(id, updateRoomDto);
-    
+  async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetOptionalHostelId() hostelId?: string) {
+    const room = await this.roomsService.update(id, updateRoomDto, hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -98,11 +120,13 @@ export class RoomsController {
   }
 
   @Post(':id/assign')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Assign student to room' })
   @ApiResponse({ status: 200, description: 'Student assigned successfully' })
   async assignStudent(@Param('id') id: string, @Body() assignDto: AssignStudentDto) {
     const result = await this.roomsService.assignStudentToRoom(id, assignDto.studentId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -111,11 +135,13 @@ export class RoomsController {
   }
 
   @Post(':id/vacate')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Vacate student from room' })
   @ApiResponse({ status: 200, description: 'Student vacated successfully' })
   async vacateStudent(@Param('id') id: string, @Body() vacateDto: VacateStudentDto) {
     const result = await this.roomsService.vacateStudentFromRoom(id, vacateDto.studentId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -124,11 +150,13 @@ export class RoomsController {
   }
 
   @Post(':id/maintenance')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Schedule room maintenance' })
   @ApiResponse({ status: 200, description: 'Maintenance scheduled successfully' })
   async scheduleMaintenance(@Param('id') id: string, @Body() maintenanceDto: MaintenanceDto) {
     const result = await this.roomsService.scheduleRoomMaintenance(id, maintenanceDto);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -145,7 +173,7 @@ export class RoomsController {
   @ApiResponse({ status: 200, description: 'All beds retrieved successfully' })
   async getAllBeds() {
     const beds = await this.bedService.findAll();
-    
+
     return {
       status: HttpStatus.OK,
       data: beds
@@ -157,7 +185,7 @@ export class RoomsController {
   @ApiResponse({ status: 200, description: 'Beds retrieved successfully' })
   async getRoomBeds(@Param('roomId') roomId: string) {
     const beds = await this.bedService.findByRoomId(roomId);
-    
+
     return {
       status: HttpStatus.OK,
       data: beds
@@ -177,7 +205,7 @@ export class RoomsController {
       gender,
       limit ? parseInt(limit) : undefined
     );
-    
+
     return {
       status: HttpStatus.OK,
       data: beds
@@ -185,6 +213,8 @@ export class RoomsController {
   }
 
   @Post('beds/validate-availability')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Validate multiple bed availability' })
   @ApiResponse({ status: 200, description: 'Bed availability validated successfully' })
   async validateBedAvailability(
@@ -194,7 +224,7 @@ export class RoomsController {
       validateDto.bedIdentifiers,
       validateDto.guestGenders
     );
-    
+
     return {
       status: HttpStatus.OK,
       data: result
@@ -202,12 +232,14 @@ export class RoomsController {
   }
 
   @Post('beds/migrate-all')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Migrate all rooms to create bed entities from bedPositions' })
   @ApiResponse({ status: 200, description: 'Migration completed successfully' })
   async migrateAllRoomsBeds() {
     // This will use the BedSyncService migration method
     const result = await this.bedSyncService.migrateAllRoomsToBedsEntities();
-    
+
     return {
       status: HttpStatus.OK,
       message: 'Migration completed',
@@ -221,7 +253,7 @@ export class RoomsController {
   @ApiResponse({ status: 404, description: 'Bed not found' })
   async getBedByIdentifier(@Param('bedIdentifier') bedIdentifier: string) {
     const bed = await this.bedService.findByBedIdentifier(bedIdentifier);
-    
+
     return {
       status: HttpStatus.OK,
       data: bed
@@ -234,7 +266,7 @@ export class RoomsController {
   @ApiResponse({ status: 404, description: 'Bed not found' })
   async getBedById(@Param('bedId') bedId: string) {
     const bed = await this.bedService.findOne(bedId);
-    
+
     return {
       status: HttpStatus.OK,
       data: bed
@@ -242,14 +274,16 @@ export class RoomsController {
   }
 
   @Put('beds/:bedId/status')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update bed status' })
   @ApiResponse({ status: 200, description: 'Bed status updated successfully' })
   async updateBedStatus(
-    @Param('bedId') bedId: string, 
+    @Param('bedId') bedId: string,
     @Body() updateDto: { status: BedStatus; notes?: string }
   ) {
     const bed = await this.bedService.updateBedStatusWithSync(bedId, updateDto.status, updateDto.notes);
-    
+
     return {
       status: HttpStatus.OK,
       data: bed
@@ -257,6 +291,8 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/assign')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Assign occupant to bed' })
   @ApiResponse({ status: 200, description: 'Occupant assigned successfully' })
   async assignOccupantToBed(
@@ -268,7 +304,7 @@ export class RoomsController {
       occupantName: assignDto.occupantName,
       checkInDate: assignDto.checkInDate ? new Date(assignDto.checkInDate) : undefined
     });
-    
+
     return {
       status: HttpStatus.OK,
       data: bed
@@ -276,11 +312,13 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/release')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Release occupant from bed' })
   @ApiResponse({ status: 200, description: 'Occupant released successfully' })
   async releaseOccupantFromBed(@Param('bedId') bedId: string) {
     const bed = await this.bedService.releaseOccupant(bedId);
-    
+
     return {
       status: HttpStatus.OK,
       data: bed
@@ -288,6 +326,8 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/reserve')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Reserve bed' })
   @ApiResponse({ status: 200, description: 'Bed reserved successfully' })
   async reserveBed(
@@ -295,7 +335,7 @@ export class RoomsController {
     @Body() reserveDto: { notes?: string }
   ) {
     const bed = await this.bedService.reserveBed(bedId, reserveDto.notes);
-    
+
     return {
       status: HttpStatus.OK,
       data: bed
@@ -303,11 +343,13 @@ export class RoomsController {
   }
 
   @Post('beds/:bedId/cancel-reservation')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel bed reservation' })
   @ApiResponse({ status: 200, description: 'Bed reservation cancelled successfully' })
   async cancelBedReservation(@Param('bedId') bedId: string) {
     const bed = await this.bedService.cancelReservation(bedId);
-    
+
     return {
       status: HttpStatus.OK,
       data: bed
@@ -319,7 +361,7 @@ export class RoomsController {
   @ApiResponse({ status: 200, description: 'Bed availability summary retrieved successfully' })
   async getBedAvailabilitySummary(@Param('roomId') roomId: string) {
     const summary = await this.bedService.getBedAvailabilitySummary(roomId);
-    
+
     return {
       status: HttpStatus.OK,
       data: summary
@@ -327,20 +369,56 @@ export class RoomsController {
   }
 
   @Post(':roomId/beds/sync')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Sync bed entities from bedPositions' })
   @ApiResponse({ status: 200, description: 'Bed entities synced successfully' })
   async syncBedsFromPositions(@Param('roomId') roomId: string) {
+    console.log(`🔧 Manual bed sync requested for room: ${roomId}`);
+
     // Get room with layout
     const room = await this.roomsService.findOne(roomId);
-    
-    if (room.layout?.bedPositions) {
-      // Use BedSyncService to create bed entities from bedPositions
-      await this.bedSyncService.syncBedsFromLayout(roomId, room.layout.bedPositions);
+    console.log(`🏠 Room found: ${room.name}`);
+    console.log(`📐 Layout data:`, JSON.stringify(room.layout, null, 2));
+
+    let bedPositions = null;
+
+    // Try to get bedPositions from different sources
+    if (room.layout?.bedPositions && Array.isArray(room.layout.bedPositions) && room.layout.bedPositions.length > 0) {
+      bedPositions = room.layout.bedPositions;
+      console.log(`🛏️ Found ${bedPositions.length} bedPositions in layout.bedPositions`);
+    } else if (room.layout?.layoutData?.elements) {
+      // Convert elements to bedPositions
+      const elements = room.layout.layoutData.elements.filter(e => e.type && e.type.includes('bed'));
+      bedPositions = elements.map(element => ({
+        id: element.id,
+        x: element.x,
+        y: element.y,
+        width: element.width,
+        height: element.height,
+        rotation: element.rotation || 0,
+        bedType: element.properties?.bedType || 'single',
+        status: element.properties?.status || 'available',
+        gender: element.properties?.gender || 'Any'
+      }));
+      console.log(`🔄 Converted ${bedPositions.length} elements to bedPositions`);
+    } else if (room.layout?.layoutData?.bedPositions) {
+      bedPositions = room.layout.layoutData.bedPositions;
+      console.log(`🛏️ Found ${bedPositions.length} bedPositions in layoutData.bedPositions`);
     }
-    
+
+    if (bedPositions && bedPositions.length > 0) {
+      console.log(`🔄 Syncing ${bedPositions.length} bed positions...`);
+      // Use BedSyncService to create bed entities from bedPositions
+      await this.bedSyncService.syncBedsFromLayout(roomId, bedPositions);
+    } else {
+      console.log('⚠️ No bed positions found to sync');
+    }
+
     // Return updated bed count
     const beds = await this.bedService.findByRoomId(roomId);
-    
+    console.log(`✅ Manual sync completed: ${beds.length} beds found`);
+
     return {
       status: HttpStatus.OK,
       message: `Synced ${beds.length} bed entities for room`,

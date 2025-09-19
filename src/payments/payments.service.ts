@@ -15,7 +15,7 @@ export class PaymentsService {
     private ledgerService: LedgerService,
   ) {}
 
-  async findAll(filters: any = {}) {
+  async findAll(filters: any = {}, hostelId?: string) {
     const { 
       page = 1, 
       limit = 50, 
@@ -30,6 +30,11 @@ export class PaymentsService {
       .leftJoinAndSelect('payment.student', 'student')
       .leftJoinAndSelect('payment.invoiceAllocations', 'allocations')
       .leftJoinAndSelect('allocations.invoice', 'invoice');
+
+    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+    if (hostelId) {
+      queryBuilder.andWhere('payment.hostelId = :hostelId', { hostelId });
+    }
     
     // Apply filters
     if (studentId) {
@@ -78,9 +83,15 @@ export class PaymentsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, hostelId?: string) {
+    // Build where condition conditionally
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const payment = await this.paymentRepository.findOne({
-      where: { id },
+      where: whereCondition,
       relations: [
         'student',
         'invoiceAllocations',
@@ -162,32 +173,49 @@ export class PaymentsService {
     return this.findOne(id);
   }
 
-  async getStats() {
-    const totalPayments = await this.paymentRepository.count();
+  async getStats(hostelId?: string) {
+    // Build where conditions conditionally
+    const baseWhere: any = {};
+    if (hostelId) {
+      baseWhere.hostelId = hostelId;
+    }
+
+    const totalPayments = await this.paymentRepository.count({ where: baseWhere });
     const completedPayments = await this.paymentRepository.count({ 
-      where: { status: PaymentStatus.COMPLETED } 
+      where: { ...baseWhere, status: PaymentStatus.COMPLETED } 
     });
     const pendingPayments = await this.paymentRepository.count({ 
-      where: { status: PaymentStatus.PENDING } 
+      where: { ...baseWhere, status: PaymentStatus.PENDING } 
     });
     const failedPayments = await this.paymentRepository.count({ 
-      where: { status: PaymentStatus.FAILED } 
+      where: { ...baseWhere, status: PaymentStatus.FAILED } 
     });
     
-    const amountResult = await this.paymentRepository
+    const amountQueryBuilder = this.paymentRepository
       .createQueryBuilder('payment')
       .select('SUM(payment.amount)', 'totalAmount')
       .addSelect('AVG(payment.amount)', 'averageAmount')
-      .where('payment.status = :status', { status: PaymentStatus.COMPLETED })
-      .getRawOne();
+      .where('payment.status = :status', { status: PaymentStatus.COMPLETED });
+    
+    if (hostelId) {
+      amountQueryBuilder.andWhere('payment.hostelId = :hostelId', { hostelId });
+    }
+    
+    const amountResult = await amountQueryBuilder.getRawOne();
 
     // Payment method breakdown
-    const methodResult = await this.paymentRepository
+    const methodQueryBuilder = this.paymentRepository
       .createQueryBuilder('payment')
       .select('payment.paymentMethod', 'method')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(payment.amount)', 'amount')
-      .where('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .where('payment.status = :status', { status: PaymentStatus.COMPLETED });
+    
+    if (hostelId) {
+      methodQueryBuilder.andWhere('payment.hostelId = :hostelId', { hostelId });
+    }
+    
+    const methodResult = await methodQueryBuilder
       .groupBy('payment.paymentMethod')
       .getRawMany();
 

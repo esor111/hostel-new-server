@@ -11,6 +11,7 @@ import { StudentContact } from './student-contact.entity';
 import { StudentAcademicInfo } from './student-academic-info.entity';
 import { StudentFinancialInfo } from './student-financial-info.entity';
 import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 export enum StudentStatus {
   ACTIVE = 'Active',
@@ -25,7 +26,12 @@ export enum StudentStatus {
 @Index(['phone'], { unique: true })
 @Index(['status'])
 @Index(['enrollmentDate'])
+@Index(['hostelId'])
+@Index(['userId']) // Add index for userId lookup
 export class Student extends BaseEntity {
+  // User ID from JWT token - this creates the missing link
+  @Column({ name: 'user_id', nullable: true })
+  userId: string;
   @Column({ length: 255 })
   name: string;
 
@@ -56,6 +62,9 @@ export class Student extends BaseEntity {
 
 
   // Foreign Keys
+  @Column({ name: 'hostelId' })
+  hostelId: string;
+
   @Column({ name: 'room_id', nullable: true })
   roomId: string;
 
@@ -63,6 +72,10 @@ export class Student extends BaseEntity {
   // Removed: bookingRequestId: string;
 
   // Relations
+  @ManyToOne(() => Hostel, hostel => hostel.students, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hostelId' })
+  hostel: Hostel;
+
   @ManyToOne(() => Room, room => room.students, { nullable: true })
   @JoinColumn({ name: 'room_id' })
   room: Room;

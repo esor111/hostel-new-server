@@ -3,27 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { PushNotificationTypeEnum } from '../enums/notification-types.enum';
 
-class NotificationMetaUser {
-  @ApiProperty({ description: 'User ID' })
-  @IsString()
-  id: string;
-
-  @ApiProperty({ description: 'Link ID for user', required: false })
-  @IsString()
-  @IsOptional()
-  linkId?: string;
-}
-
-class NotificationMetaBusiness {
-  @ApiProperty({ description: 'Business ID' })
-  @IsString()
-  id: string;
-
-  @ApiProperty({ description: 'Link ID for business', required: false })
-  @IsString()
-  @IsOptional()
-  linkId?: string;
-}
+// Remove unused classes since we're not using user/business objects in meta
+// class NotificationMetaUser and NotificationMetaBusiness removed
 
 class NotificationMetaBooking {
   @ApiProperty({ description: 'Booking ID' })
@@ -42,19 +23,7 @@ class NotificationMetaBooking {
 class NotificationMeta {
   @ApiProperty({ enum: PushNotificationTypeEnum, description: 'Notification type' })
   @IsEnum(PushNotificationTypeEnum)
-  type: PushNotificationTypeEnum;
-
-  @ApiProperty({ type: NotificationMetaUser, required: false })
-  @ValidateNested()
-  @Type(() => NotificationMetaUser)
-  @IsOptional()
-  user?: NotificationMetaUser;
-
-  @ApiProperty({ type: NotificationMetaBusiness, required: false })
-  @ValidateNested()
-  @Type(() => NotificationMetaBusiness)
-  @IsOptional()
-  business?: NotificationMetaBusiness;
+  type?: PushNotificationTypeEnum;
 
   @ApiProperty({ type: NotificationMetaBooking, required: false })
   @ValidateNested()
@@ -99,7 +68,7 @@ export class SendPushNotificationDto {
   @ApiProperty({ type: NotificationMeta, description: 'Additional notification metadata' })
   @ValidateNested()
   @Type(() => NotificationMeta)
-  meta: NotificationMeta;
+  meta?: NotificationMeta;
 }
 
 // Simplified DTOs for specific booking notifications
@@ -112,7 +81,7 @@ export class BookingNotificationDto {
   @IsString()
   contactPersonId: string;
 
-  @ApiProperty({ description: 'Hostel business ID' })
+  @ApiProperty({ description: 'Hostel ID (will be converted to businessId for notifications)' })
   @IsString()
   hostelId: string;
 
