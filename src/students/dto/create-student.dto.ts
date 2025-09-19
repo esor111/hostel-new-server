@@ -4,7 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StudentStatus } from '../entities/student.entity';
 
 export class CreateStudentDto {
-  
+
   @ApiPropertyOptional({
     description: 'Student ID (optional, auto-generated if not provided)',
     example: 'student-123'
@@ -12,6 +12,14 @@ export class CreateStudentDto {
   @IsOptional()
   @IsString()
   id?: string;
+
+  @ApiPropertyOptional({
+    description: 'User ID from JWT token (creates the link between user and student)',
+    example: 'user-456'
+  })
+  @IsOptional()
+  @IsString()
+  userId?: string;
 
   @ApiProperty({
     description: 'Full name of the student',

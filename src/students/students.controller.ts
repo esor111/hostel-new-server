@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import { 
@@ -9,6 +9,8 @@ import {
   BulkUpdateStudentDto 
 } from './dto';
 import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @ApiTags('students')
 @Controller('students')
@@ -195,6 +197,59 @@ export class StudentsController {
     return {
       status: HttpStatus.OK,
       data: result
+    };
+  }
+
+  @Get('my-profile')
+  @ApiOperation({ summary: 'Get current user\'s student profile and financial data' })
+  @ApiResponse({ status: 200, description: 'User profile retrieved successfully' })
+  async getMyProfile(@CurrentUser() user: JwtPayload, @GetOptionalHostelId() hostelId?: string) {
+    try {
+      const financialData = await this.studentsService.getUserFinancialData(user.id, hostelId);
+      
+      return {
+        status: HttpStatus.OK,
+        data: financialData
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        // User doesn't have a student record yet - this is the auto-creation opportunity
+        const userData = {
+          name: `User ${user.id}`,
+          email: `${user.id}@temp.com`,
+          phone: `+977${Math.random().toString().substr(2, 10)}`
+        };
+        
+        const newStudent = await this.studentsService.createOrLinkStudentForUser(user.id, userData, hostelId);
+        
+        return {
+          status: HttpStatus.CREATED,
+          data: {
+            student: newStudent,
+            ledger: { studentId: newStudent.id, entries: [], summary: {} },
+            discounts: { studentId: newStudent.id, discounts: [], summary: {} },
+            adminCharges: { studentId: newStudent.id, charges: [], summary: {} },
+            mapping: { userId: user.id, studentId: newStudent.id, hostelId }
+          }
+        };
+      }
+      throw error;
+    }
+  }
+
+  @Get('by-user/:userId')
+  @ApiOperation({ summary: 'Get student profile by user ID (admin use)' })
+  @ApiResponse({ status: 200, description: 'Student profile retrieved successfully' })
+  async getStudentByUserId(@Param('userId') userId: string, @GetOptionalHostelId() hostelId?: string) {
+    const student = await this.studentsService.findByUserId(userId, hostelId);
+    
+    if (!student) {
+      throw new NotFoundException(`No student record found for user ${userId}`);
+    }
+    
+    return {
+      status: HttpStatus.OK,
+      data: student
     };
   }
 

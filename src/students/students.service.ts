@@ -127,6 +127,7 @@ export class StudentsService { // Removed HostelScopedService extension for back
     // Create student entity with hostelId
     const student = this.studentRepository.create({
       id: createStudentDto.id,
+      userId: createStudentDto.userId, // Link to user from JWT
       name: createStudentDto.name,
       phone: createStudentDto.phone,
       email: createStudentDto.email,
@@ -619,6 +620,124 @@ export class StudentsService { // Removed HostelScopedService extension for back
       success: true,
       message: 'Student deleted successfully',
       studentId: id
+    };
+  }
+
+  /**
+   * Find student by userId from JWT token
+   * This solves the core problem: userId (from JWT) → studentId (for ledger/discounts/charges)
+   */
+  async findByUserId(userId: string, hostelId?: string): Promise<any> {
+    const queryBuilder = this.studentRepository.createQueryBuilder('student')
+      .leftJoinAndSelect('student.room', 'room')
+      .leftJoinAndSelect('student.contacts', 'contacts')
+      .leftJoinAndSelect('student.academicInfo', 'academicInfo')
+      .leftJoinAndSelect('student.financialInfo', 'financialInfo')
+      .where('student.userId = :userId', { userId });
+
+    // Apply hostel filter if provided
+    if (hostelId) {
+      queryBuilder.andWhere('student.hostelId = :hostelId', { hostelId });
+    }
+
+    const student = await queryBuilder.getOne();
+    
+    if (!student) {
+      return null; // Student not found for this user
+    }
+
+    return this.formatStudentResponse(student);
+  }
+
+  /**
+   * Create or link student to userId
+   * This handles the automatic student creation when user first accesses the system
+   */
+  async createOrLinkStudentForUser(userId: string, userData: any, hostelId: string): Promise<any> {
+    // Check if student already exists for this user
+    let student = await this.studentRepository.findOne({
+      where: { userId, hostelId }
+    });
+
+    if (student) {
+      return this.findOne(student.id, hostelId);
+    }
+
+    // Create new student linked to user
+    const createStudentDto = {
+      userId, // Link to user from JWT
+      name: userData.name || `User ${userId}`,
+      email: userData.email || `${userId}@temp.com`,
+      phone: userData.phone || `+977${Math.random().toString().substr(2, 10)}`,
+      status: StudentStatus.PENDING_CONFIGURATION,
+      ...userData
+    };
+
+    return this.create(createStudentDto, hostelId);
+  }
+
+  /**
+   * Get user's financial data (ledger, discounts, charges)
+   * This is the main method that solves the problem
+   */
+  async getUserFinancialData(userId: string, hostelId?: string) {
+    // First, find the student record for this user
+    const student = await this.findByUserId(userId, hostelId);
+    
+    if (!student) {
+      throw new NotFoundException(`No student record found for user ${userId}`);
+    }
+
+    const studentId = student.id;
+
+    // Now we can get all financial data using studentId
+    const [ledgerData, discounts, adminCharges] = await Promise.all([
+      this.getStudentLedger(studentId),
+      this.getStudentDiscounts(studentId),
+      this.getStudentAdminCharges(studentId)
+    ]);
+
+    return {
+      student,
+      ledger: ledgerData,
+      discounts,
+      adminCharges,
+      // Include the mapping for reference
+      mapping: {
+        userId,
+        studentId,
+        hostelId
+      }
+    };
+  }
+
+  /**
+   * Get student's discounts
+   */
+  private async getStudentDiscounts(studentId: string) {
+    // This will integrate with DiscountsService
+    return {
+      studentId,
+      discounts: [],
+      summary: {
+        totalActive: 0,
+        totalAmount: 0
+      }
+    };
+  }
+
+  /**
+   * Get student's admin charges
+   */
+  private async getStudentAdminCharges(studentId: string) {
+    // This will integrate with AdminChargesService
+    return {
+      studentId,
+      charges: [],
+      summary: {
+        totalPending: 0,
+        totalAmount: 0
+      }
     };
   }
 

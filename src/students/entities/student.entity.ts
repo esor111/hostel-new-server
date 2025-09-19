@@ -27,7 +27,11 @@ export enum StudentStatus {
 @Index(['status'])
 @Index(['enrollmentDate'])
 @Index(['hostelId'])
+@Index(['userId']) // Add index for userId lookup
 export class Student extends BaseEntity {
+  // User ID from JWT token - this creates the missing link
+  @Column({ name: 'user_id', nullable: true })
+  userId: string;
   @Column({ length: 255 })
   name: string;
 
