@@ -624,6 +624,14 @@ export class StudentsService { // Removed HostelScopedService extension for back
   }
 
   /**
+   * Format student response for API
+   * Alias for transformToApiResponse method
+   */
+  private async formatStudentResponse(student: Student): Promise<any> {
+    return this.transformToApiResponse(student);
+  }
+
+  /**
    * Find student by userId from JWT token
    * This solves the core problem: userId (from JWT) → studentId (for ledger/discounts/charges)
    */

@@ -34,6 +34,7 @@ import { DiscountType } from '../../discounts/entities/discount-type.entity';
 
 import { Report } from '../../reports/entities/report.entity';
 import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
+import { Hostel } from '../../hostel/entities/hostel.entity';
 
 @Module({
   imports: [
@@ -73,6 +74,9 @@ import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
       
       // Admin charges entities
       AdminCharge,
+      
+      // Hostel entities
+      Hostel,
     ]),
   ],
   controllers: [SeedController],

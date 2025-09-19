@@ -63,6 +63,7 @@ import {
 
 import { Report } from "../../reports/entities/report.entity";
 import { AdminCharge, AdminChargeType, AdminChargeStatus } from "../../admin-charges/entities/admin-charge.entity";
+import { Hostel } from "../../hostel/entities/hostel.entity";
 
 @Injectable()
 export class SeedService {
@@ -123,7 +124,11 @@ export class SeedService {
 
     // Admin charges repository
     @InjectRepository(AdminCharge)
-    private adminChargeRepository: Repository<AdminCharge>
+    private adminChargeRepository: Repository<AdminCharge>,
+
+    // Hostel repository
+    @InjectRepository(Hostel)
+    private hostelRepository: Repository<Hostel>
   ) { }
 
   async checkSeedStatus() {
@@ -163,45 +168,23 @@ export class SeedService {
         await this.clearAllData();
       }
 
-      // Seed in proper dependency order (without force to avoid individual deletions)
-      const results = {
-        // 1. Independent entities first
-        buildings: await this.seedBuildings(false),
-        roomTypes: await this.seedRoomTypes(false),
-        amenities: await this.seedAmenities(false),
+      // Get or create a default hostel for seeding
+      let defaultHostel = await this.hostelRepository.findOne({
+        where: { businessId: 'default-hostel' }
+      });
 
-        // 2. Rooms depend on buildings, room types, and amenities
-        rooms: await this.seedRooms(false),
+      if (!defaultHostel) {
+        defaultHostel = await this.hostelRepository.save({
+          businessId: 'default-hostel',
+          name: 'Default Hostel for Seeding',
+          isActive: true
+        });
+        this.logger.log(`Created default hostel: ${defaultHostel.id}`);
+      }
 
-        // 3. Students depend on rooms
-        students: await this.seedStudents(false),
+      // Use the existing seedAllWithHostelId method which handles all hostel-aware seeding
+      return await this.seedAllWithHostelId(defaultHostel.id, false);
 
-        // 4. Room occupants depend on students and rooms
-        roomOccupants: await this.seedRoomOccupants(false),
-
-        // 5. Discount types before discounts
-        discountTypes: await this.seedDiscountTypes(false),
-
-        // 6. Financial entities
-        invoices: await this.seedInvoices(false),
-        payments: await this.seedPayments(false),
-        paymentAllocations: await this.seedPaymentAllocations(false),
-
-        // 7. Discounts depend on students and discount types
-        discounts: await this.seedDiscounts(false),
-
-        // 8. Admin charges depend on students
-        adminCharges: await this.seedAdminCharges(false),
-
-        // 9. Ledger entries depend on all financial entities
-        ledgerEntries: await this.seedLedgerEntries(false),
-
-        // 10. Bookings are temporarily disabled during transition
-        // bookings: await this.seedBookings(false),
-      };
-
-      this.logger.log("Complete database seeding finished", results);
-      return results;
     } catch (error) {
       this.logger.error("Error during complete seeding:", error);
       throw error;
@@ -1107,6 +1090,7 @@ export class SeedService {
     const invoices = invoiceData.map((invoice, index) => ({
       ...invoice,
       studentId: students[index].id,
+      hostelId: students[index].hostelId, // Get hostelId from the student
     }));
 
     if (force) {
@@ -1250,6 +1234,7 @@ export class SeedService {
     const payments = paymentData.map((payment, index) => ({
       ...payment,
       studentId: students[index].id,
+      hostelId: students[index].hostelId, // Get hostelId from the student
     }));
 
     if (force) {
@@ -1293,6 +1278,7 @@ export class SeedService {
       {
         id: `DSC${Date.now()}001`,
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         discountTypeId: discountTypes[0].id,
         amount: 200,
         reason: "Early payment for July 2024",
@@ -1311,6 +1297,7 @@ export class SeedService {
       {
         id: `DSC${Date.now()}002`,
         studentId: students[2].id,
+        hostelId: students[2].hostelId, // Get hostelId from the student
         discountTypeId: discountTypes[1].id,
         amount: 600,
         reason: "Financial hardship assistance",
@@ -1714,6 +1701,7 @@ export class SeedService {
     if (students.length > 0) {
       adminCharges.push({
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         title: "Late Payment Penalty",
         description: "Penalty for late payment of monthly fees",
         amount: 500.00,
@@ -1729,6 +1717,7 @@ export class SeedService {
     if (students.length > 1) {
       adminCharges.push({
         studentId: students[1].id,
+        hostelId: students[1].hostelId, // Get hostelId from the student
         title: "Room Damage Charge",
         description: "Charge for damaged window in room",
         amount: 2500.00,
@@ -1744,6 +1733,7 @@ export class SeedService {
     if (students.length > 2) {
       adminCharges.push({
         studentId: students[2].id,
+        hostelId: students[2].hostelId, // Get hostelId from the student
         title: "Extra Laundry Service",
         description: "Additional laundry service charges",
         amount: 300.00,
@@ -1761,6 +1751,7 @@ export class SeedService {
     if (students.length > 0) {
       adminCharges.push({
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         title: "Guest Stay Charge",
         description: "Charge for guest staying overnight",
         amount: 200.00,
@@ -1774,6 +1765,7 @@ export class SeedService {
 
       adminCharges.push({
         studentId: students[0].id,
+        hostelId: students[0].hostelId, // Get hostelId from the student
         title: "Key Replacement",
         description: "Replacement of lost room key",
         amount: 150.00,
