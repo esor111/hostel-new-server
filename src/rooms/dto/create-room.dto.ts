@@ -218,4 +218,14 @@ export class CreateRoomDto {
   @IsArray()
   @IsString({ each: true })
   images?: string[];
+
+  @ApiProperty({ 
+    description: 'Gender preference for the room',
+    example: 'Female',
+    enum: ['Male', 'Female', 'Mixed', 'Any'],
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  gender?: string;
 }
