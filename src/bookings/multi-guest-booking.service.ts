@@ -37,6 +37,29 @@ export interface BookingStats {
   averageGuestsPerBooking: number;
 }
 
+// Status mapping function to handle case-insensitive status queries
+function mapStatusToEnum(status: string): MultiGuestBookingStatus | null {
+  if (!status) return null;
+  
+  const statusMap: { [key: string]: MultiGuestBookingStatus } = {
+    'pending': MultiGuestBookingStatus.PENDING,
+    'confirmed': MultiGuestBookingStatus.CONFIRMED,
+    'partially_confirmed': MultiGuestBookingStatus.PARTIALLY_CONFIRMED,
+    'rejected': MultiGuestBookingStatus.REJECTED,
+    'cancelled': MultiGuestBookingStatus.CANCELLED,
+    'completed': MultiGuestBookingStatus.COMPLETED,
+    // Also handle the actual enum values in case they're passed directly
+    'Pending': MultiGuestBookingStatus.PENDING,
+    'Confirmed': MultiGuestBookingStatus.CONFIRMED,
+    'Partially_Confirmed': MultiGuestBookingStatus.PARTIALLY_CONFIRMED,
+    'Rejected': MultiGuestBookingStatus.REJECTED,
+    'Cancelled': MultiGuestBookingStatus.CANCELLED,
+    'Completed': MultiGuestBookingStatus.COMPLETED
+  };
+  
+  return statusMap[status.toLowerCase()] || statusMap[status] || null;
+}
+
 export interface ConfirmationResult {
   success: boolean;
   message: string;
@@ -564,7 +587,24 @@ export class MultiGuestBookingService {
 
     // Apply filters
     if (status) {
-      queryBuilder.andWhere('booking.status = :status', { status });
+      const mappedStatus = mapStatusToEnum(status as string);
+      if (mappedStatus) {
+        queryBuilder.andWhere('booking.status = :status', { status: mappedStatus });
+      } else {
+        this.logger.warn(`Invalid status value provided: ${status}`);
+        // Return empty result for invalid status
+        return {
+          items: [],
+          pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false
+          }
+        };
+      }
     }
 
     if (contactEmail) {
