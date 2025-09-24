@@ -849,13 +849,18 @@ export class BedService {
    * Find available beds with gender filtering (for mobile app)
    * Used by booking service to suggest available beds
    */
-  async findAvailableBedsForBooking(roomId?: string, gender?: string, limit?: number): Promise<Bed[]> {
+  async findAvailableBedsForBooking(roomId?: string, gender?: string, limit?: number, hostelId?: string): Promise<Bed[]> {
     const queryBuilder = this.bedRepository.createQueryBuilder('bed')
       .leftJoinAndSelect('bed.room', 'room')
       .where('bed.status = :status', { status: BedStatus.AVAILABLE });
 
     if (roomId) {
       queryBuilder.andWhere('bed.roomId = :roomId', { roomId });
+    }
+
+    // Filter by hostelId if provided (frontend sends hostelId, we search by room.hostelId)
+    if (hostelId) {
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
     }
 
     if (gender) {
