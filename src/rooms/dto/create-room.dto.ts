@@ -78,6 +78,31 @@ export class CreateRoomLayoutDto {
   })
   @IsOptional()
   theme?: any; // JSONB data for theme
+
+  @ApiProperty({ 
+    description: 'Layout data containing elements and other layout information (JSONB data)',
+    example: { elements: [], bedPositions: [] },
+    required: false
+  })
+  @IsOptional()
+  layoutData?: any; // JSONB data for layoutData structure
+
+  @ApiProperty({ 
+    description: 'Creation timestamp (auto-generated, should be ignored in updates)',
+    required: false
+  })
+  @IsOptional()
+  createdAt?: any; // Allow but ignore
+
+  @ApiProperty({ 
+    description: 'Warnings array (validation warnings, should be ignored in updates)',
+    required: false
+  })
+  @IsOptional()
+  warnings?: any; // Allow but ignore
+
+  // Allow any additional properties that might be sent from frontend
+  [key: string]: any;
 }
 
 export class CreateRoomDto {
