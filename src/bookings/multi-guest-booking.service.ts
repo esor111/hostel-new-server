@@ -121,16 +121,7 @@ export class MultiGuestBookingService {
           throw new BadRequestException(`Bed validation failed: ${bedValidation.errors.join('; ')}`);
         }
 
-        // Validate gender compatibility
-        const guestAssignments = bookingData.guests.map(guest => ({
-          bedId: guest.bedId,
-          gender: guest.gender
-        }));
-
-        const genderValidation = await this.validationService.validateGenderCompatibility(guestAssignments);
-        if (!genderValidation.isValid) {
-          throw new BadRequestException(`Gender compatibility validation failed: ${genderValidation.errors.join('; ')}`);
-        }
+        // Gender validation removed - any guest can book any bed
 
         // Get bed details for booking creation
         const beds = await manager.find(Bed, {

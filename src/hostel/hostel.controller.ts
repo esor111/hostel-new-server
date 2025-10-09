@@ -149,23 +149,4 @@ export class HostelController {
     }
   }
 
-  @Post('cache/clear')
-  @ApiOperation({ summary: 'Clear hostel and business cache (admin only)' })
-  @ApiResponse({ status: 200, description: 'Cache cleared successfully' })
-  async clearCache() {
-    try {
-      this.hostelService.clearAllCache();
-      return {
-        success: true,
-        message: 'Hostel and business cache cleared successfully'
-      };
-    } catch (error) {
-      this.logger.error('Error clearing hostel cache:', error);
-      return {
-        success: false,
-        message: error.message,
-        statusCode: HttpStatus.INTERNAL_SERVER_ERROR
-      };
-    }
-  }
 }

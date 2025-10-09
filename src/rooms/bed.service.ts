@@ -252,12 +252,7 @@ export class BedService {
         errors.push(`Bed ${bed.bedIdentifier} is not available (status: ${bed.status})`);
       }
 
-      // Check gender compatibility
-      if (guestGender && bed.gender && bed.gender !== 'Any') {
-        if (bed.gender !== guestGender) {
-          errors.push(`Gender mismatch: Bed is for ${bed.gender}, guest is ${guestGender}`);
-        }
-      }
+      // Gender validation removed - any guest can book any bed
 
       // Check if bed is in maintenance
       if (bed.status === BedStatus.MAINTENANCE) {
@@ -292,15 +287,8 @@ export class BedService {
    * Validate gender compatibility for bed assignment
    */
   async validateGenderCompatibility(bedId: string, guestGender: string): Promise<boolean> {
-    const bed = await this.findOne(bedId);
-
-    // Any gender bed accepts all guests
-    if (bed.gender === 'Any') {
-      return true;
-    }
-
-    // Specific gender bed only accepts matching gender
-    return bed.gender === guestGender;
+    // Gender validation removed - any guest can book any bed
+    return true;
   }
 
   /**
@@ -852,6 +840,8 @@ export class BedService {
   async findAvailableBedsForBooking(roomId?: string, gender?: string, limit?: number, hostelId?: string): Promise<Bed[]> {
     const queryBuilder = this.bedRepository.createQueryBuilder('bed')
       .leftJoinAndSelect('bed.room', 'room')
+      .leftJoinAndSelect('bed.hostel', 'hostel')
+      .leftJoinAndSelect('room.hostel', 'roomHostel')
       .where('bed.status = :status', { status: BedStatus.AVAILABLE });
 
     if (roomId) {

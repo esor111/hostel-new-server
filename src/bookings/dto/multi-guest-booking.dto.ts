@@ -184,7 +184,6 @@ export class MultiGuestBookingDataDto {
   @ValidateNested({ each: true, message: 'Each guest must have valid details' })
   @Type(() => GuestDto)
   @HasUniqueBedAssignments({ message: 'Each guest must be assigned to a unique bed' })
-  @IsGenderCompatible({ message: 'Guest assignments must be compatible with bed requirements' })
   guests: GuestDto[];
 
   @ApiProperty({ 

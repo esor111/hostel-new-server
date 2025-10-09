@@ -27,7 +27,7 @@ export class BookingValidationService {
     private bedRepository: Repository<Bed>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
-  ) {}
+  ) { }
 
   /**
    * Validate bed IDs for booking
@@ -101,48 +101,17 @@ export class BookingValidationService {
   }
 
   /**
-   * Validate gender compatibility for bed assignments
+   * Gender validation removed - any guest can book any bed
+   * This method is kept for backward compatibility but always returns valid
    */
   async validateGenderCompatibility(guestAssignments: { bedId: string; gender: string }[]): Promise<BedValidationResult> {
-    const result: BedValidationResult = {
+    return {
       isValid: true,
       errors: [],
       warnings: [],
-      validBeds: [],
+      validBeds: guestAssignments.map(a => a.bedId),
       invalidBeds: []
     };
-
-    try {
-      const bedIds = guestAssignments.map(assignment => assignment.bedId);
-      const beds = await this.bedRepository.find({
-        where: bedIds.map(bedId => ({ id: bedId }))
-      });
-
-      for (const assignment of guestAssignments) {
-        const bed = beds.find(b => b.id === assignment.bedId);
-        
-        if (!bed) {
-          result.invalidBeds.push(assignment.bedId);
-          continue;
-        }
-
-        if (bed.gender && bed.gender !== 'Any' && bed.gender !== assignment.gender) {
-          result.isValid = false;
-          result.errors.push(
-            `Gender mismatch: Bed ${assignment.bedId} is designated for ${bed.gender} but guest is ${assignment.gender}`
-          );
-          result.invalidBeds.push(assignment.bedId);
-        } else {
-          result.validBeds.push(assignment.bedId);
-        }
-      }
-    } catch (error) {
-      this.logger.error(`Error validating gender compatibility: ${error.message}`);
-      result.isValid = false;
-      result.errors.push(`Database error while validating gender compatibility: ${error.message}`);
-    }
-
-    return result;
   }
 
   /**
@@ -192,7 +161,7 @@ export class BookingValidationService {
     if (bedId === 'auto-assign') {
       return true;
     }
-    
+
     // Check if it's a valid UUID v4
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     return uuidRegex.test(bedId);
@@ -265,11 +234,11 @@ export class BookingValidationService {
     const allWarnings = results.flatMap(result => result.warnings);
 
     let message = 'Booking validation failed:\n';
-    
+
     if (allErrors.length > 0) {
       message += 'Errors:\n' + allErrors.map(error => `  - ${error}`).join('\n');
     }
-    
+
     if (allWarnings.length > 0) {
       message += '\nWarnings:\n' + allWarnings.map(warning => `  - ${warning}`).join('\n');
     }

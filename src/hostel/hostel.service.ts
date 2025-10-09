@@ -19,8 +19,6 @@ export interface SyncHostelDataDto {
 @Injectable()
 export class HostelService {
   private readonly logger = new Logger(HostelService.name);
-  private readonly hostelCache = new Map<string, Hostel>();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     @InjectRepository(Hostel)
@@ -29,18 +27,10 @@ export class HostelService {
   ) {}
 
   /**
-   * Find hostel by businessId with caching
+   * Find hostel by businessId
    */
   async findByBusinessId(businessId: string): Promise<Hostel | null> {
     this.logger.debug(`Finding hostel by businessId: ${businessId}`);
-
-    // Check cache first
-    const cacheKey = `hostel_${businessId}`;
-    const cached = this.hostelCache.get(cacheKey);
-    if (cached && (Date.now() - cached['_cacheTime']) < this.CACHE_TTL) {
-      this.logger.debug(`Returning cached hostel for businessId: ${businessId}`);
-      return cached;
-    }
 
     try {
       const hostel = await this.hostelRepository.findOne({
@@ -48,10 +38,7 @@ export class HostelService {
       });
 
       if (hostel) {
-        // Cache the result
-        hostel['_cacheTime'] = Date.now();
-        this.hostelCache.set(cacheKey, hostel);
-        this.logger.debug(`Hostel found and cached for businessId: ${businessId}`);
+        this.logger.debug(`Hostel found for businessId: ${businessId}`);
       } else {
         this.logger.debug(`No hostel found for businessId: ${businessId}`);
       }
@@ -88,9 +75,6 @@ export class HostelService {
 
       const savedHostel = await this.hostelRepository.save(hostel);
 
-      // Clear cache for this businessId
-      this.clearHostelCache(createHostelDto.businessId);
-
       this.logger.log(`Hostel created successfully for businessId: ${createHostelDto.businessId}`);
       return savedHostel;
     } catch (error) {
@@ -120,9 +104,6 @@ export class HostelService {
         const updatedHostel = await this.hostelRepository.findOne({
           where: { id: existingHostel.id }
         });
-
-        // Clear cache
-        this.clearHostelCache(syncData.businessId);
 
         this.logger.log(`Hostel updated for businessId: ${syncData.businessId}`);
         return updatedHostel;
@@ -232,15 +213,6 @@ export class HostelService {
   }
 
   /**
-   * Clear hostel cache
-   */
-  private clearHostelCache(businessId: string): void {
-    const cacheKey = `hostel_${businessId}`;
-    this.hostelCache.delete(cacheKey);
-    this.logger.debug(`Cleared cache for businessId: ${businessId}`);
-  }
-
-  /**
    * Find hostel by hostelId (internal ID) to get businessId
    */
   async findByHostelId(hostelId: string): Promise<Hostel | null> {
@@ -277,15 +249,6 @@ export class HostelService {
       this.logger.error(`Error getting businessId for hostelId ${hostelId}:`, error);
       return null;
     }
-  }
-
-  /**
-   * Clear all hostel cache (for maintenance)
-   */
-  clearAllCache(): void {
-    this.hostelCache.clear();
-    this.businessIntegrationService.clearAllCache();
-    this.logger.log('Cleared all hostel cache');
   }
 
   /**

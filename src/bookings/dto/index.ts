@@ -37,3 +37,8 @@ export {
   BookingDetailDto,
   PaginationDto
 } from './my-bookings.dto';
+export {
+  BookingRequirementsResponseDto,
+  AvailableBedDto,
+  HostelInfoDto as BookingHostelInfoDto
+} from './booking-requirements.dto';
