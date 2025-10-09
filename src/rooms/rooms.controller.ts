@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, UseGuards, UseInterceptors } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { RoomsService } from './rooms.service';
 import { BedService } from './bed.service';
 import { BedSyncService } from './bed-sync.service';
@@ -27,17 +27,37 @@ export class RoomsController {
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get all rooms' })
   @ApiResponse({ status: 200, description: 'List of rooms retrieved successfully' })
+  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
+  @ApiQuery({ name: 'status', required: false, description: 'Filter by room status (Active, Maintenance, Inactive)' })
+  @ApiQuery({ name: 'gender', required: false, description: 'Filter by gender (Male, Female, Mixed, Any)' })
+  @ApiQuery({ name: 'floor', required: false, description: 'Filter by floor number' })
+  @ApiQuery({ name: 'buildingId', required: false, description: 'Filter by building ID' })
+  @ApiQuery({ name: 'roomTypeId', required: false, description: 'Filter by room type ID' })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by room name or number' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number for pagination', type: Number })
+  @ApiQuery({ name: 'limit', required: false, description: 'Number of items per page', type: Number })
   async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    // Handle optional hostelId from query params (frontend sends hostelId, we need to find by businessId)
+    // Handle optional hostelId from query params
     let effectiveHostelId = hostelId; // From JWT token context
 
-    if (query.hostelId && !effectiveHostelId) {
-      // Frontend sent hostelId in query params, need to find the actual hostel record
-      const hostel = await this.hostelService.findByBusinessId(query.hostelId);
-      if (hostel) {
-        effectiveHostelId = hostel.id; // Use the actual hostel.id for database queries
+    console.log('🔍 getAllRooms - query.hostelId:', query.hostelId);
+    console.log('🔍 getAllRooms - JWT hostelId:', hostelId);
+
+    if (query.hostelId) {
+      // Frontend sent hostelId in query params
+      // Try to find hostel by businessId first
+      const hostelByBusinessId = await this.hostelService.findByBusinessId(query.hostelId);
+      if (hostelByBusinessId) {
+        effectiveHostelId = hostelByBusinessId.id;
+        console.log('✅ Found hostel by businessId:', query.hostelId, '-> hostelId:', effectiveHostelId);
+      } else {
+        // If not found by businessId, assume it's already a hostelId (UUID)
+        effectiveHostelId = query.hostelId;
+        console.log('⚠️ Not found by businessId, using as hostelId directly:', effectiveHostelId);
       }
     }
+
+    console.log('🎯 Final effectiveHostelId:', effectiveHostelId);
 
     const result = await this.roomsService.findAll(query, effectiveHostelId);
 
@@ -51,6 +71,7 @@ export class RoomsController {
   @Get('stats')
   @ApiOperation({ summary: 'Get room statistics' })
   @ApiResponse({ status: 200, description: 'Room statistics retrieved successfully' })
+  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getRoomStats(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
     // Handle optional hostelId from query params (frontend sends hostelId, we need to find by businessId)
     let effectiveHostelId = hostelId; // From JWT token context
@@ -75,6 +96,7 @@ export class RoomsController {
   @Get('available')
   @ApiOperation({ summary: 'Get available rooms' })
   @ApiResponse({ status: 200, description: 'Available rooms retrieved successfully' })
+  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getAvailableRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
     // Handle optional hostelId from query params (frontend sends hostelId, we need to find by businessId)
     let effectiveHostelId = hostelId; // From JWT token context
@@ -239,6 +261,10 @@ export class RoomsController {
   @Get('beds/available')
   @ApiOperation({ summary: 'Get available beds' })
   @ApiResponse({ status: 200, description: 'Available beds retrieved successfully' })
+  @ApiQuery({ name: 'roomId', required: false, description: 'Filter by room ID' })
+  @ApiQuery({ name: 'gender', required: false, description: 'Filter by gender (Male, Female, Any)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Limit number of results', type: Number })
+  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getAvailableBeds(
     @Query('roomId') roomId?: string,
     @Query('gender') gender?: string,

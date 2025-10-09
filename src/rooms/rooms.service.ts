@@ -44,6 +44,9 @@ export class RoomsService extends HostelScopedService<Room> {
   async findAll(filters: any = {}, hostelId?: string) {
     const { status = 'all', type = 'all', search = '', page = 1, limit = 20 } = filters;
 
+    console.log('🔍 RoomsService.findAll - hostelId:', hostelId);
+    console.log('🔍 RoomsService.findAll - filters:', filters);
+
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
       .leftJoinAndSelect('room.building', 'building')
       .leftJoinAndSelect('room.roomType', 'roomType')
@@ -56,7 +59,10 @@ export class RoomsService extends HostelScopedService<Room> {
 
     // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
     if (hostelId) {
+      console.log('✅ Filtering by hostelId:', hostelId);
       queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    } else {
+      console.log('⚠️ No hostelId provided - returning ALL rooms');
     }
 
     // Apply status filter
