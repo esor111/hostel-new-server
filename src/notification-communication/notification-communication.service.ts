@@ -37,6 +37,10 @@ export class NotificationCommunicationService {
     const baseUrl = `${this.notificationServiceUrl}/push-notifications/structured`;
     
     // Log full request payload
+    console.log('📱 ========== NOTIFICATION PAYLOAD ==========');
+    console.log(JSON.stringify(body, null, 2));
+    console.log('📱 ==========================================');
+    
     this.logger.log(`Full Request Payload: ${JSON.stringify(body, null, 2)}`);
     this.logger.log(`Request URL: ${baseUrl}`);
     this.logger.log(`Request Method: POST`);
@@ -91,6 +95,8 @@ export class NotificationCommunicationService {
    * Send booking request notification to admins (business notification)
    */
   async sendBookingRequestNotification(data: BookingNotificationDto): Promise<void> {
+    console.log('📱 Preparing BOOKING_REQUEST notification with data:', JSON.stringify(data, null, 2));
+    
     const template = BOOKING_NOTIFICATION_MESSAGES[PushNotificationTypeEnum.BOOKING_REQUEST];
     const { title, message } = formatNotificationMessage(template, {
       contactName: data.contactName,
@@ -100,6 +106,7 @@ export class NotificationCommunicationService {
 
     // Convert hostelId to businessId for notification system
     const businessId = await this.getBusinessIdFromHostelId(data.hostelId);
+    console.log('📱 Converted hostelId to businessId:', data.hostelId, '->', businessId);
 
     const notification: SendPushNotificationDto = {
       receiverBusinessIds: [businessId], // Use businessId instead of hostelId
