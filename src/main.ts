@@ -19,7 +19,8 @@ async function bootstrap() {
       'Origin',
       'X-Requested-With',
       'Access-Control-Request-Method',
-      'Access-Control-Request-Headers'
+      'Access-Control-Request-Headers',
+      'x-cache-warmup'
     ],
     credentials: true,
     optionsSuccessStatus: 200, // For legacy browser support
@@ -33,7 +34,7 @@ async function bootstrap() {
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header(
       'Access-Control-Allow-Headers',
-      'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-cache-warmup'
     );
     res.header(
       'Access-Control-Allow-Methods',
