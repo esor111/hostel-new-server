@@ -1391,7 +1391,7 @@ export class MultiGuestBookingService {
           ]
         }),
         this.multiGuestBookingRepository.count({
-          where: { status: MultiGuestBookingStatus.CANCELLED, rejectionReason: Not(IsNull()) }
+          where: { status: MultiGuestBookingStatus.REJECTED }
         }),
         this.multiGuestBookingRepository.count({
           where: { status: MultiGuestBookingStatus.CANCELLED }
