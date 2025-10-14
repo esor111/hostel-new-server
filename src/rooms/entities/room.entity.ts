@@ -32,7 +32,7 @@ export enum MaintenanceStatus {
 }
 
 @Entity('rooms')
-@Index(['roomNumber'], { unique: true })
+@Index(['roomNumber', 'hostelId'], { unique: true }) // Room number unique per hostel
 @Index(['status'])
 @Index(['buildingId'])
 @Index(['roomTypeId'])
@@ -42,7 +42,7 @@ export class Room extends BaseEntity {
   @Column({ length: 255 })
   name: string;
 
-  @Column({ length: 20, unique: true })
+  @Column({ length: 20 })
   roomNumber: string;
 
   @Column({ type: 'int', default: 1 })

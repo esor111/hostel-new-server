@@ -235,7 +235,19 @@ export class RoomsService extends HostelScopedService<Room> {
         // Convert elements to bedPositions if needed
         let bedPositions = createRoomDto.layout.bedPositions;
         if (!bedPositions && createRoomDto.layout.elements) {
-          bedPositions = createRoomDto.layout.elements.filter(e => e.type && e.type.includes('bed'));
+          bedPositions = createRoomDto.layout.elements
+            .filter(e => e.type && e.type.includes('bed'))
+            .map(e => ({
+              id: e.id,
+              x: e.x,
+              y: e.y,
+              width: e.width,
+              height: e.height,
+              rotation: e.rotation || 0,
+              bedType: e.properties?.bedType || 'single',
+              status: e.properties?.status || 'Available',
+              gender: e.properties?.gender || 'Any'
+            }));
           console.log(`🔄 Converted ${bedPositions.length} elements to bedPositions for layout storage`);
         }
         
@@ -254,6 +266,16 @@ export class RoomsService extends HostelScopedService<Room> {
         console.log('💾 Layout entity to save:', JSON.stringify(layoutToSave, null, 2));
         const savedLayout = await this.roomLayoutRepository.save(layoutToSave);
         console.log('✅ Layout saved successfully with ID:', savedLayout.id);
+        console.log('✅ Saved layout details:', {
+          id: savedLayout.id,
+          roomId: savedLayout.roomId,
+          hasBedPositions: !!savedLayout.bedPositions,
+          bedPositionsCount: savedLayout.bedPositions?.length || 0,
+          hasFurnitureLayout: !!savedLayout.furnitureLayout,
+          furnitureCount: savedLayout.furnitureLayout?.length || 0,
+          hasLayoutData: !!savedLayout.layoutData,
+          layoutDataElementsCount: savedLayout.layoutData?.elements?.length || 0
+        });
       } catch (layoutError) {
         console.error('❌ Layout creation failed:', layoutError.message);
         console.error('❌ Layout error stack:', layoutError.stack);
@@ -620,6 +642,15 @@ export class RoomsService extends HostelScopedService<Room> {
   private async transformToApiResponse(room: Room): Promise<any> {
     // Get active layout
     const activeLayout = room.layout;
+    
+    console.log(`🔍 transformToApiResponse for room ${room.roomNumber}:`, {
+      hasLayout: !!activeLayout,
+      layoutId: activeLayout?.id,
+      hasBedPositions: !!activeLayout?.bedPositions,
+      bedPositionsCount: activeLayout?.bedPositions?.length || 0,
+      hasLayoutData: !!activeLayout?.layoutData,
+      layoutDataElementsCount: activeLayout?.layoutData?.elements?.length || 0
+    });
 
     // Get amenities list in proper format with string id, name, and description
     const amenities = room.amenities?.map((ra, index) => ({

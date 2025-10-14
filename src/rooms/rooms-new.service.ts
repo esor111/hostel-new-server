@@ -133,6 +133,20 @@ export class RoomsNewService {
     }
 
     const layout = room.layout;
+    
+    // DEBUG: Log what's in the layout
+    console.log('📐 Layout structure:', {
+      hasBedPositions: !!layout.bedPositions,
+      bedPositionsCount: layout.bedPositions?.length || 0,
+      hasLayoutData: !!layout.layoutData,
+      layoutDataKeys: layout.layoutData ? Object.keys(layout.layoutData) : [],
+      hasElements: !!layout.layoutData?.elements,
+      elementsCount: layout.layoutData?.elements?.length || 0,
+      elementTypes: layout.layoutData?.elements?.map(e => e.type) || []
+    });
+    
+    console.log('🛏️ Bed entities in room:', room.beds?.length || 0);
+    console.log('🛏️ Bed identifiers:', room.beds?.map(b => b.bedIdentifier) || []);
 
     // Return dimensions in FEET (unscaled) - frontend will scale
     const dimensions = {
@@ -141,8 +155,15 @@ export class RoomsNewService {
       unit: 'feet' // Important: feet, not px!
     };
 
+    // Extract doors from elements if they exist there
+    let doorsData = layout.layoutData?.doors || layout.layoutData?.doorPositions || [];
+    if (doorsData.length === 0 && layout.layoutData?.elements) {
+      // Check if doors are in elements array
+      doorsData = layout.layoutData.elements.filter(e => e.type === 'door');
+    }
+
     // Return doors UNSCALED (in feet)
-    const doors = this.getDoorsUnscaled(layout.layoutData?.doors || layout.layoutData?.doorPositions || []);
+    const doors = this.getDoorsUnscaled(doorsData);
 
     // Build furniture array UNSCALED (in feet)
     const furniture = await this.buildFurnitureArrayUnscaled(room, layout);
@@ -182,7 +203,10 @@ export class RoomsNewService {
     // Get bed positions from layout
     let bedPositions = layout.bedPositions || layout.layoutData?.bedPositions || [];
 
-    // If no bedPositions but has elements, convert
+    // DEBUG: Check what's in bedPositions from database
+    console.log(`🔍 Raw bedPositions from DB:`, JSON.stringify(bedPositions, null, 2));
+
+    // If no bedPositions but has elements, convert (excluding doors)
     if (bedPositions.length === 0 && layout.layoutData?.elements) {
       bedPositions = layout.layoutData.elements
         .filter(e => e.type && e.type.includes('bed'))
@@ -197,18 +221,45 @@ export class RoomsNewService {
           status: e.properties?.status || 'Available',
           gender: e.properties?.gender || 'Any'
         }));
+      console.log(`🔄 Converted from elements to bedPositions:`, JSON.stringify(bedPositions, null, 2));
     }
 
+    // CRITICAL FIX: Filter out any doors that might have snuck into bedPositions
+    bedPositions = bedPositions.filter(pos => pos.id && !pos.id.includes('door'));
+    console.log(`🔍 Final bedPositions after door filtering:`, JSON.stringify(bedPositions, null, 2));
+
     console.log(`🛏️ Processing ${bedPositions.length} bed positions`);
+    console.log(`🛏️ Bed positions data:`, JSON.stringify(bedPositions, null, 2));
+    
+    // DEBUG: Check what elements are being processed as beds
+    if (layout.layoutData?.elements) {
+      const bedElements = layout.layoutData.elements.filter(e => e.type && e.type.includes('bed'));
+      const doorElements = layout.layoutData.elements.filter(e => e.type === 'door');
+      console.log(`🔍 Elements analysis: ${bedElements.length} beds, ${doorElements.length} doors`);
+      console.log(`🔍 Bed elements:`, bedElements.map(e => `${e.id}:${e.type}`));
+      console.log(`🔍 Door elements:`, doorElements.map(e => `${e.id}:${e.type}`));
+    }
 
     // Process beds - UNSCALED (in feet)
     for (const position of bedPositions) {
-      // Find matching bed entity
-      const matchingBed = room.beds?.find(bed => bed.bedIdentifier === position.id);
+      // Find matching bed entity - try multiple matching strategies
+      let matchingBed = room.beds?.find(bed => bed.bedIdentifier === position.id);
+      
+      // If not found by exact match, try to find by ending with position.id
+      if (!matchingBed) {
+        matchingBed = room.beds?.find(bed => bed.bedIdentifier.endsWith(`-${position.id}`));
+      }
+      
+      // If still not found, try to find by bed number
+      if (!matchingBed) {
+        const bedNumber = position.id.replace('bed', '');
+        matchingBed = room.beds?.find(bed => bed.bedNumber === bedNumber);
+      }
 
       if (!matchingBed) {
         console.log(`⚠️ No matching bed entity for position: ${position.id}`);
-        continue;
+        console.log(`⚠️ Available bed identifiers: ${room.beds?.map(b => b.bedIdentifier).join(', ') || 'none'}`);
+        // Don't create on-the-fly - beds should be created during room creation
       }
 
       // Calculate orientation
@@ -216,15 +267,37 @@ export class RoomsNewService {
       const orientation = isRotated ? 'vertical' :
         (position.width >= position.height ? 'horizontal' : 'vertical');
 
-      // Convert status (Occupied from booking -> Reserved)
-      let status: string = matchingBed.status;
-      if (status === 'Occupied' && matchingBed.notes && matchingBed.notes.includes('via booking')) {
-        status = 'Reserved';
+      // Get status and metadata from bed entity if available, otherwise use defaults
+      let status: string = 'Available';
+      let refId: string = position.id; // Fallback to position ID
+      let bedId: string = position.id;
+      let occupantId: string | null = null;
+      let bedNumber: string = position.id;
+      let monthlyRate: string = '0';
+      let gender: string = 'Any';
+
+      if (matchingBed) {
+        // Convert status (Occupied from booking -> Reserved)
+        status = matchingBed.status;
+        if (status === 'Occupied' && matchingBed.notes && matchingBed.notes.includes('via booking')) {
+          status = 'Reserved';
+        }
+        
+        refId = matchingBed.id;
+        bedId = matchingBed.id;
+        occupantId = matchingBed.currentOccupantId;
+        bedNumber = matchingBed.bedNumber;
+        monthlyRate = matchingBed.monthlyRate?.toString() || '0';
+        gender = matchingBed.gender || 'Any';
+      } else {
+        // Use position data as fallback
+        status = position.status || 'Available';
+        gender = position.gender || 'Any';
       }
 
       furniture.push({
         id: position.id, // "B1" - visual identifier
-        refId: matchingBed.id, // "bed-uuid-aaa-111" - real UUID for booking
+        refId, // "bed-uuid-aaa-111" - real UUID for booking (or position ID as fallback)
         type: 'bed',
         hostelId: room.hostelId,
 
@@ -239,8 +312,8 @@ export class RoomsNewService {
 
         // Properties for bed
         properties: {
-          bedId: matchingBed.id,
-          status, // From Bed entity!
+          bedId,
+          status,
           bedType: position.bedType || 'single',
           bedLabel: position.id,
           orientation
@@ -248,16 +321,23 @@ export class RoomsNewService {
 
         metadata: {
           rotation: position.rotation || 0,
-          occupantId: matchingBed.currentOccupantId,
-          bedNumber: matchingBed.bedNumber,
-          monthlyRate: matchingBed.monthlyRate?.toString(),
-          gender: matchingBed.gender
+          occupantId,
+          bedNumber,
+          monthlyRate,
+          gender
         }
       });
     }
 
-    // Process other furniture - UNSCALED (in feet)
-    const furnitureLayout = layout.furnitureLayout || layout.layoutData?.furnitureLayout || [];
+    // Process other furniture - UNSCALED (in feet) - EXCLUDE doors and beds
+    let furnitureLayout = layout.furnitureLayout || layout.layoutData?.furnitureLayout || [];
+    
+    // If no furnitureLayout but has elements, extract non-bed, non-door items
+    if (furnitureLayout.length === 0 && layout.layoutData?.elements) {
+      furnitureLayout = layout.layoutData.elements.filter(e => 
+        e.type && !e.type.includes('bed') && e.type !== 'door'
+      );
+    }
 
     console.log(`🪑 Processing ${furnitureLayout.length} other furniture items`);
 
@@ -281,6 +361,7 @@ export class RoomsNewService {
       });
     }
 
+    console.log(`✅ Built furniture array with ${furniture.length} items total`);
     return furniture;
   }
 }

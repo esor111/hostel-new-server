@@ -70,12 +70,13 @@ export class BedSyncService {
         this.logger.warn(`Validation warnings: ${validation.warnings.join(', ')}`);
       }
 
-      // Normalize bed positions to handle complex IDs
-      const normalizedPositions = await this.normalizeBedPositions(bedPositions, roomId);
-      this.logger.debug(`Normalized ${bedPositions.length} bed positions`);
+      // TEMPORARY FIX: Skip normalization to avoid conflicts
+      // const normalizedPositions = await this.normalizeBedPositions(bedPositions, roomId);
+      // this.logger.debug(`Normalized ${bedPositions.length} bed positions`);
 
-      // Use normalized positions for the rest of the sync process
-      const processedPositions = normalizedPositions;
+      // Use original positions directly
+      const processedPositions = bedPositions;
+      this.logger.debug(`Processing ${processedPositions.length} bed positions directly (normalization disabled)`);
 
       // Get existing beds for this room
       const existingBeds = await this.bedRepository.find({
