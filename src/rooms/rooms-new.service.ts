@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Room } from './entities/room.entity';
 import { RoomLayout } from './entities/room-layout.entity';
 import { Bed } from './entities/bed.entity';
+import { Hostel } from '../hostel/entities/hostel.entity';
 import { BedSyncService } from './bed-sync.service';
 
 @Injectable()
@@ -17,8 +18,52 @@ export class RoomsNewService {
     private roomLayoutRepository: Repository<RoomLayout>,
     @InjectRepository(Bed)
     private bedRepository: Repository<Bed>,
+    @InjectRepository(Hostel)
+    private hostelRepository: Repository<Hostel>,
     private bedSyncService: BedSyncService,
   ) { }
+
+  /**
+   * SIMPLIFIED: Find hostelId by checking BOTH hostel.id AND hostel.businessId
+   * Mobile app sends businessId, Web app sends hostel.id - we check both!
+   */
+  private async resolveHostelId(inputId?: string): Promise<string | null> {
+    if (!inputId) {
+      console.log('🔍 NEW-ROOMS: No inputId provided for hostel resolution');
+      return null;
+    }
+
+    const cleanInputId = inputId.trim();
+    console.log('🔍 NEW-ROOMS: Resolving hostelId from input:', `"${cleanInputId}"`);
+
+    try {
+      // DIRECT APPROACH: Find hostel where EITHER id OR businessId matches the input
+      const hostel = await this.hostelRepository
+        .createQueryBuilder('hostel')
+        .where('hostel.id = :inputId OR hostel.businessId = :inputId', { inputId: cleanInputId })
+        .andWhere('hostel.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (hostel) {
+        console.log('✅ NEW-ROOMS: Found hostel:', {
+          inputId: cleanInputId,
+          matchedBy: hostel.id === cleanInputId ? 'hostel.id' : 'hostel.businessId',
+          hostelId: hostel.id,
+          businessId: hostel.businessId,
+          name: hostel.name
+        });
+        
+        return hostel.id; // Always return the actual hostel.id for room queries
+      }
+
+      console.log('❌ NEW-ROOMS: No hostel found with id OR businessId:', cleanInputId);
+      return null;
+      
+    } catch (error) {
+      console.error('❌ NEW-ROOMS: Error resolving hostelId:', error.message);
+      return null;
+    }
+  }
 
   /**
    * Get all rooms WITHOUT layout data (lightweight for listing)
@@ -28,6 +73,9 @@ export class RoomsNewService {
 
     console.log('🆕 RoomsNewService.findAllLightweight - hostelId:', hostelId);
 
+    // FLEXIBLE HOSTEL QUERYING: Try both hostelId (UUID) and businessId
+    let effectiveHostelId = await this.resolveHostelId(hostelId);
+
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
       .leftJoinAndSelect('room.building', 'building')
       .leftJoinAndSelect('room.roomType', 'roomType')
@@ -36,8 +84,11 @@ export class RoomsNewService {
       .leftJoinAndSelect('room.layout', 'layout') // Only to check if layout exists
       .leftJoinAndSelect('room.beds', 'beds'); // For accurate availability
 
-    if (hostelId) {
-      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    if (effectiveHostelId) {
+      console.log('✅ NEW-ROOMS: Filtering by resolved hostelId:', effectiveHostelId);
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
+    } else {
+      console.log('⚠️ NEW-ROOMS: No hostelId resolved - returning ALL rooms');
     }
 
     if (status !== 'all') {

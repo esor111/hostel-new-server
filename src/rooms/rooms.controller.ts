@@ -37,29 +37,16 @@ export class RoomsController {
   @ApiQuery({ name: 'page', required: false, description: 'Page number for pagination', type: Number })
   @ApiQuery({ name: 'limit', required: false, description: 'Number of items per page', type: Number })
   async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    // Handle optional hostelId from query params
-    let effectiveHostelId = hostelId; // From JWT token context
-
     console.log('🔍 getAllRooms - query.hostelId:', query.hostelId);
-    console.log('🔍 getAllRooms - JWT hostelId:', hostelId);
+    console.log('🔍 getAllRooms - JWT hostelId (optional):', hostelId);
 
-    if (query.hostelId) {
-      // Frontend sent hostelId in query params
-      // Try to find hostel by businessId first
-      const hostelByBusinessId = await this.hostelService.findByBusinessId(query.hostelId);
-      if (hostelByBusinessId) {
-        effectiveHostelId = hostelByBusinessId.id;
-        console.log('✅ Found hostel by businessId:', query.hostelId, '-> hostelId:', effectiveHostelId);
-      } else {
-        // If not found by businessId, assume it's already a hostelId (UUID)
-        effectiveHostelId = query.hostelId;
-        console.log('⚠️ Not found by businessId, using as hostelId directly:', effectiveHostelId);
-      }
-    }
+    // SIMPLIFIED: Use query.hostelId directly, let the service handle flexible resolution
+    // No JWT token required - purely query-parameter based
+    const queryHostelId = query.hostelId || null;
+    
+    console.log('🎯 Using query hostelId for flexible resolution:', queryHostelId);
 
-    console.log('🎯 Final effectiveHostelId:', effectiveHostelId);
-
-    const result = await this.roomsService.findAll(query, effectiveHostelId);
+    const result = await this.roomsService.findAll(query, queryHostelId);
 
     // Return EXACT same format as current Express API
     return {
@@ -73,18 +60,12 @@ export class RoomsController {
   @ApiResponse({ status: 200, description: 'Room statistics retrieved successfully' })
   @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getRoomStats(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    // Handle optional hostelId from query params (frontend sends hostelId, we need to find by businessId)
-    let effectiveHostelId = hostelId; // From JWT token context
-
-    if (query.hostelId && !effectiveHostelId) {
-      // Frontend sent hostelId in query params, need to find the actual hostel record
-      const hostel = await this.hostelService.findByBusinessId(query.hostelId);
-      if (hostel) {
-        effectiveHostelId = hostel.id; // Use the actual hostel.id for database queries
-      }
-    }
-
-    const stats = await this.roomsService.getStats(effectiveHostelId);
+    console.log('📊 getRoomStats - query.hostelId:', query.hostelId);
+    
+    // SIMPLIFIED: Use query.hostelId directly for flexible resolution
+    const queryHostelId = query.hostelId || null;
+    
+    const stats = await this.roomsService.getStats(queryHostelId);
 
     // Return EXACT same format as current Express API
     return {
@@ -98,18 +79,12 @@ export class RoomsController {
   @ApiResponse({ status: 200, description: 'Available rooms retrieved successfully' })
   @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getAvailableRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    // Handle optional hostelId from query params (frontend sends hostelId, we need to find by businessId)
-    let effectiveHostelId = hostelId; // From JWT token context
-
-    if (query.hostelId && !effectiveHostelId) {
-      // Frontend sent hostelId in query params, need to find the actual hostel record
-      const hostel = await this.hostelService.findByBusinessId(query.hostelId);
-      if (hostel) {
-        effectiveHostelId = hostel.id; // Use the actual hostel.id for database queries
-      }
-    }
-
-    const availableRooms = await this.roomsService.getAvailableRooms(effectiveHostelId);
+    console.log('🏠 getAvailableRooms - query.hostelId:', query.hostelId);
+    
+    // SIMPLIFIED: Use query.hostelId directly for flexible resolution
+    const queryHostelId = query.hostelId || null;
+    
+    const availableRooms = await this.roomsService.getAvailableRooms(queryHostelId);
 
     // Return EXACT same format as current Express API
     return {
@@ -126,18 +101,12 @@ export class RoomsController {
   @ApiResponse({ status: 200, description: 'Room retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Room not found' })
   async getRoomById(@Param('id') id: string, @Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    // Handle optional hostelId from query params (frontend sends hostelId, we need to find by businessId)
-    let effectiveHostelId = hostelId; // From JWT token context
-
-    if (query.hostelId && !effectiveHostelId) {
-      // Frontend sent hostelId in query params, need to find the actual hostel record
-      const hostel = await this.hostelService.findByBusinessId(query.hostelId);
-      if (hostel) {
-        effectiveHostelId = hostel.id; // Use the actual hostel.id for database queries
-      }
-    }
-
-    const room = await this.roomsService.findOne(id, effectiveHostelId);
+    console.log('🏠 getRoomById - query.hostelId:', query.hostelId);
+    
+    // SIMPLIFIED: Use query.hostelId directly for flexible resolution
+    const queryHostelId = query.hostelId || null;
+    
+    const room = await this.roomsService.findOne(id, queryHostelId);
 
     // Return EXACT same format as current Express API
     return {

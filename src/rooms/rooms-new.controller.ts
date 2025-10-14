@@ -23,25 +23,16 @@ export class RoomsNewController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    let effectiveHostelId = hostelId;
-
     console.log('🆕 NEW-ROOMS API - query.hostelId:', query.hostelId);
-    console.log('🆕 NEW-ROOMS API - JWT hostelId:', hostelId);
+    console.log('🆕 NEW-ROOMS API - JWT hostelId (optional):', hostelId);
 
-    if (query.hostelId) {
-      const hostelByBusinessId = await this.hostelService.findByBusinessId(query.hostelId);
-      if (hostelByBusinessId) {
-        effectiveHostelId = hostelByBusinessId.id;
-        console.log('✅ Found hostel by businessId:', query.hostelId, '-> hostelId:', effectiveHostelId);
-      } else {
-        effectiveHostelId = query.hostelId;
-        console.log('⚠️ Not found by businessId, using as hostelId directly:', effectiveHostelId);
-      }
-    }
+    // SIMPLIFIED: Use query.hostelId directly, let the service handle flexible resolution
+    // No JWT token required - purely query-parameter based
+    const queryHostelId = query.hostelId || null;
+    
+    console.log('🎯 NEW-ROOMS: Using query hostelId for flexible resolution:', queryHostelId);
 
-    console.log('🎯 Final effectiveHostelId:', effectiveHostelId);
-
-    const result = await this.roomsNewService.findAllLightweight(query, effectiveHostelId);
+    const result = await this.roomsNewService.findAllLightweight(query, queryHostelId);
 
     return {
       status: HttpStatus.OK,

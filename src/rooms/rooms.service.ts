@@ -10,6 +10,7 @@ import { RoomLayout } from './entities/room-layout.entity';
 import { RoomOccupant } from './entities/room-occupant.entity';
 import { Student } from '../students/entities/student.entity';
 import { Bed, BedStatus } from './entities/bed.entity';
+import { Hostel } from '../hostel/entities/hostel.entity';
 
 import { BedSyncService } from './bed-sync.service';
 import { HostelScopedService } from '../common/services/hostel-scoped.service';
@@ -35,10 +36,66 @@ export class RoomsService extends HostelScopedService<Room> {
     private studentRepository: Repository<Student>,
     @InjectRepository(Bed)
     private bedRepository: Repository<Bed>,
+    @InjectRepository(Hostel)
+    private hostelRepository: Repository<Hostel>,
 
     private bedSyncService: BedSyncService,
   ) {
     super(roomRepository, 'Room');
+  }
+
+  /**
+   * SIMPLIFIED: Find hostelId by checking BOTH hostel.id AND hostel.businessId
+   * Mobile app sends businessId, Web app sends hostel.id - we check both!
+   */
+  private async resolveHostelId(inputId?: string): Promise<string | null> {
+    if (!inputId) {
+      console.log('🔍 No inputId provided for hostel resolution');
+      return null;
+    }
+
+    const cleanInputId = inputId.trim();
+    console.log('🔍 Resolving hostelId from input:', `"${cleanInputId}"`);
+
+    try {
+      // DIRECT APPROACH: Find hostel where EITHER id OR businessId matches the input
+      const hostel = await this.hostelRepository
+        .createQueryBuilder('hostel')
+        .where('hostel.id = :inputId OR hostel.businessId = :inputId', { inputId: cleanInputId })
+        .andWhere('hostel.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (hostel) {
+        console.log('✅ Found hostel:', {
+          inputId: cleanInputId,
+          matchedBy: hostel.id === cleanInputId ? 'hostel.id' : 'hostel.businessId',
+          hostelId: hostel.id,
+          businessId: hostel.businessId,
+          name: hostel.name
+        });
+        
+        return hostel.id; // Always return the actual hostel.id for room queries
+      }
+
+      console.log('❌ No hostel found with id OR businessId:', cleanInputId);
+      
+      // Debug: Show available hostels
+      const allHostels = await this.hostelRepository.find({ 
+        where: { isActive: true },
+        take: 3
+      });
+      console.log('🔍 Available hostels:', allHostels.map(h => ({ 
+        id: h.id, 
+        businessId: h.businessId, 
+        name: h.name 
+      })));
+      
+      return null;
+      
+    } catch (error) {
+      console.error('❌ Error resolving hostelId:', error.message);
+      return null;
+    }
   }
 
   async findAll(filters: any = {}, hostelId?: string) {
@@ -46,6 +103,9 @@ export class RoomsService extends HostelScopedService<Room> {
 
     console.log('🔍 RoomsService.findAll - hostelId:', hostelId);
     console.log('🔍 RoomsService.findAll - filters:', filters);
+
+    // FLEXIBLE HOSTEL QUERYING: Try both hostelId (UUID) and businessId
+    let effectiveHostelId = await this.resolveHostelId(hostelId);
 
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
       .leftJoinAndSelect('room.building', 'building')
@@ -57,12 +117,12 @@ export class RoomsService extends HostelScopedService<Room> {
       .leftJoinAndSelect('room.layout', 'layout')
       .leftJoinAndSelect('room.beds', 'beds');
 
-    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
-    if (hostelId) {
-      console.log('✅ Filtering by hostelId:', hostelId);
-      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId });
+    // Apply hostel filtering with flexible resolution
+    if (effectiveHostelId) {
+      console.log('✅ Filtering by resolved hostelId:', effectiveHostelId);
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
     } else {
-      console.log('⚠️ No hostelId provided - returning ALL rooms');
+      console.log('⚠️ No hostelId resolved - returning ALL rooms');
     }
 
     // Apply status filter
@@ -231,7 +291,7 @@ export class RoomsService extends HostelScopedService<Room> {
       try {
         console.log('💾 Creating room layout...');
         console.log('📐 Layout data to save:', JSON.stringify(createRoomDto.layout, null, 2));
-        
+
         // Convert elements to bedPositions if needed
         let bedPositions = createRoomDto.layout.bedPositions;
         if (!bedPositions && createRoomDto.layout.elements) {
@@ -250,19 +310,19 @@ export class RoomsService extends HostelScopedService<Room> {
             }));
           console.log(`🔄 Converted ${bedPositions.length} elements to bedPositions for layout storage`);
         }
-        
+
         const layoutToSave = {
           roomId: savedRoom.id,
           layoutData: createRoomDto.layout, // Store complete layout object
           dimensions: createRoomDto.layout.dimensions,
           bedPositions: bedPositions, // CRITICAL FIX: Save bedPositions
-          furnitureLayout: createRoomDto.layout.elements ? 
+          furnitureLayout: createRoomDto.layout.elements ?
             createRoomDto.layout.elements.filter(e => e.type && !e.type.includes('bed')) : null,
           layoutType: createRoomDto.layout.theme?.name || 'standard',
           isActive: true,
           createdBy: 'system'
         };
-        
+
         console.log('💾 Layout entity to save:', JSON.stringify(layoutToSave, null, 2));
         const savedLayout = await this.roomLayoutRepository.save(layoutToSave);
         console.log('✅ Layout saved successfully with ID:', savedLayout.id);
@@ -368,17 +428,17 @@ export class RoomsService extends HostelScopedService<Room> {
         console.log('🛏️ Bed positions to sync:', JSON.stringify(bedPositions, null, 2));
         console.log('🏠 Room ID for sync:', savedRoom.id);
         console.log('🏨 Room hostelId:', savedRoom.hostelId);
-        
+
         try {
           console.log('📞 Calling bedSyncService.syncBedsFromLayout...');
           await this.bedSyncService.syncBedsFromLayout(savedRoom.id, bedPositions);
           console.log('✅ Initial bed sync completed successfully');
-          
+
           // Verify beds were actually created
           console.log('🔍 Verifying beds were created...');
           const createdBeds = await this.bedRepository.find({ where: { roomId: savedRoom.id } });
           console.log(`✅ Verification: ${createdBeds.length} beds found in database`);
-          
+
         } catch (error) {
           console.error('❌ Initial bed sync failed:', error.message);
           console.error('❌ Full error details:', error);
@@ -633,7 +693,7 @@ export class RoomsService extends HostelScopedService<Room> {
     if (bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')) {
       return 'Reserved';
     }
-    
+
     // Otherwise return the actual status
     return bed.status;
   }
@@ -642,7 +702,7 @@ export class RoomsService extends HostelScopedService<Room> {
   private async transformToApiResponse(room: Room): Promise<any> {
     // Get active layout
     const activeLayout = room.layout;
-    
+
     console.log(`🔍 transformToApiResponse for room ${room.roomNumber}:`, {
       hasLayout: !!activeLayout,
       layoutId: activeLayout?.id,
@@ -677,17 +737,17 @@ export class RoomsService extends HostelScopedService<Room> {
     if (room.beds && room.beds.length > 0) {
       // Use bed entities for more accurate calculations - bed entity is source of truth
       // Only count truly occupied beds (not those occupied via booking which should be reserved)
-      const occupiedBeds = room.beds.filter(bed => 
+      const occupiedBeds = room.beds.filter(bed =>
         bed.status === 'Occupied' && (!bed.notes || !bed.notes.includes('via booking'))
       ).length;
       const availableBedsFromBeds = room.beds.filter(bed => bed.status === 'Available').length;
-      const reservedBedsFromBookings = room.beds.filter(bed => 
+      const reservedBedsFromBookings = room.beds.filter(bed =>
         bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')
       ).length;
 
       actualOccupancy = occupiedBeds;
       availableBeds = availableBedsFromBeds;
-      
+
       // Log for debugging
       console.log(`Room ${room.roomNumber}: ${occupiedBeds} truly occupied, ${reservedBedsFromBookings} reserved from bookings, ${availableBedsFromBeds} available`);
     }
@@ -752,7 +812,7 @@ export class RoomsService extends HostelScopedService<Room> {
           if (matchingBed) {
             // Convert bed status for response (Occupied from bookings -> Reserved)
             const responseStatus = this.convertBedStatusForResponse(matchingBed);
-            
+
             // Update position ID to match bed identifier for frontend mapping
             return {
               ...position,
@@ -861,7 +921,7 @@ export class RoomsService extends HostelScopedService<Room> {
    */
   private async createBedsFromLayoutData(roomId: string, layoutData: any) {
     console.log('🛏️ Creating beds directly from layout data for room:', roomId);
-    
+
     try {
       // Get room details for bed creation
       const room = await this.roomRepository.findOne({
@@ -882,40 +942,40 @@ export class RoomsService extends HostelScopedService<Room> {
       // Process layout elements to extract bed data
       if (layoutData.elements) {
         console.log(`📐 Processing ${layoutData.elements.length} layout elements`);
-        
+
         for (const element of layoutData.elements) {
           if (element.type && element.type.includes('bed')) {
             console.log(`🛏️ Processing bed element: ${element.id} (${element.type})`);
-            
+
             if (element.type === 'bunk-bed' && element.properties?.levels) {
               // Handle bunk bed - create separate entities for each level
               console.log(`🏗️ Bunk bed ${element.id} has ${element.properties.levels.length} levels`);
-              
+
               for (const level of element.properties.levels) {
                 const bedIdentifier = `${roomPrefix}-${level.id}`;
                 const bedNumber = element.id.replace('bed', '');
-                
+
                 bedsToCreate.push({
                   bedIdentifier,
                   bedNumber,
                   description: `${level.position.charAt(0).toUpperCase() + level.position.slice(1)} bunk ${element.properties?.bedLabel || element.id} in ${room.name}`,
                   bunkLevel: level.position
                 });
-                
+
                 console.log(`   ✅ Added bunk level: ${bedIdentifier} (${level.position})`);
               }
             } else {
               // Handle single bed
               const bedIdentifier = `${roomPrefix}-${element.id}`;
               const bedNumber = element.id.replace('bed', '');
-              
+
               bedsToCreate.push({
                 bedIdentifier,
                 bedNumber,
                 description: `${element.properties?.bedLabel || element.id} in ${room.name}`,
                 bunkLevel: null
               });
-              
+
               console.log(`   ✅ Added single bed: ${bedIdentifier}`);
             }
           }
@@ -925,25 +985,25 @@ export class RoomsService extends HostelScopedService<Room> {
       // Also process bedPositions if elements are not available
       if (!layoutData.elements && layoutData.bedPositions) {
         console.log(`📍 Processing ${layoutData.bedPositions.length} bed positions`);
-        
+
         for (const position of layoutData.bedPositions) {
           const bedIdentifier = `${roomPrefix}-${position.id}`;
           const bedNumber = position.id.replace('bed', '').replace(/[^0-9]/g, '') || '1';
-          
+
           bedsToCreate.push({
             bedIdentifier,
             bedNumber,
             description: `Bed ${bedNumber} in ${room.name}`,
             bunkLevel: position.bunkLevel || null
           });
-          
+
           console.log(`   ✅ Added bed from position: ${bedIdentifier}`);
         }
       }
 
       // Create all bed entities
       console.log(`🆕 Creating ${bedsToCreate.length} bed entities`);
-      
+
       for (const bedData of bedsToCreate) {
         try {
           const bed = this.bedRepository.create({
@@ -962,7 +1022,7 @@ export class RoomsService extends HostelScopedService<Room> {
 
           await this.bedRepository.save(bed);
           console.log(`   ✅ Created bed: ${bedData.bedIdentifier}`);
-          
+
         } catch (error) {
           console.error(`   ❌ Failed to create bed ${bedData.bedIdentifier}:`, error.message);
           // Continue with other beds
@@ -971,7 +1031,7 @@ export class RoomsService extends HostelScopedService<Room> {
 
       console.log(`✅ Successfully created ${bedsToCreate.length} bed entities for room ${roomId}`);
       return bedsToCreate.length;
-      
+
     } catch (error) {
       console.error('❌ Error creating beds from layout data:', error.message);
       throw error;
@@ -1000,7 +1060,7 @@ export class RoomsService extends HostelScopedService<Room> {
 
       // Create corrected bedPositions with room-specific identifiers
       let correctedBedPositions = [];
-      
+
       if (layoutData.elements) {
         for (const element of layoutData.elements) {
           if (element.type && element.type.includes('bed')) {
