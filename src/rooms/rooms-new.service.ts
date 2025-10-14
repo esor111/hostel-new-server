@@ -240,8 +240,13 @@ export class RoomsNewService {
       console.log(`🔍 Door elements:`, doorElements.map(e => `${e.id}:${e.type}`));
     }
 
-    // Process beds - UNSCALED (in feet)
+    // Process beds - UNSCALED (in feet) - SKIP DOORS
     for (const position of bedPositions) {
+      // CRITICAL: Skip any doors that might be in bedPositions
+      if (position.id && position.id.includes('door')) {
+        console.log(`🚫 Skipping door ${position.id} in bed processing`);
+        continue;
+      }
       // Find matching bed entity - try multiple matching strategies
       let matchingBed = room.beds?.find(bed => bed.bedIdentifier === position.id);
       
@@ -340,8 +345,14 @@ export class RoomsNewService {
     }
 
     console.log(`🪑 Processing ${furnitureLayout.length} other furniture items`);
+    console.log(`🪑 Furniture items:`, furnitureLayout.map(f => `${f.id}:${f.type}`));
 
     for (const item of furnitureLayout) {
+      // CRITICAL: Skip doors - they should be in doors array, not furniture
+      if (item.type === 'door') {
+        console.log(`🚫 Skipping door ${item.id} in furniture processing`);
+        continue;
+      }
       const orientation = item.width >= item.height ? 'horizontal' : 'vertical';
 
       furniture.push({
