@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
+import { RoomsNewController } from './rooms-new.controller';
+import { RoomsNewService } from './rooms-new.service';
 import { BedSyncService } from './bed-sync.service';
 import { BedService } from './bed.service';
 import { Room } from './entities/room.entity';
@@ -33,8 +35,8 @@ import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-cont
     ]),
     HostelModule
   ],
-  controllers: [RoomsController],
-  providers: [RoomsService, BedSyncService, BedService, HostelAuthWithContextGuard],
-  exports: [RoomsService, BedSyncService, BedService],
+  controllers: [RoomsController, RoomsNewController],
+  providers: [RoomsService, RoomsNewService, BedSyncService, BedService, HostelAuthWithContextGuard],
+  exports: [RoomsService, RoomsNewService, BedSyncService, BedService],
 })
 export class RoomsModule {}
