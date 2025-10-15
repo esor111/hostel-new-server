@@ -48,7 +48,7 @@ export class BusinessIntegrationService {
           timeout: 5000 // 5 second timeout
         }
       );
-
+console.log("response", response.data)
       if (response.data && response.data.businesses) {
         for (const business of response.data.businesses) {
           results.set(business.id, business);

@@ -37,10 +37,11 @@ export class RoomsNewService {
     console.log('🔍 NEW-ROOMS: Resolving hostelId from input:', `"${cleanInputId}"`);
 
     try {
-      // DIRECT APPROACH: Find hostel where EITHER id OR businessId matches the input
+      // FIXED: Handle UUID vs string type mismatch by using separate parameters
+      // Try to match as UUID first, then as businessId (string)
       const hostel = await this.hostelRepository
         .createQueryBuilder('hostel')
-        .where('hostel.id = :inputId OR hostel.businessId = :inputId', { inputId: cleanInputId })
+        .where('(hostel.id::text = :inputId OR hostel.businessId = :inputId)', { inputId: cleanInputId })
         .andWhere('hostel.isActive = :isActive', { isActive: true })
         .getOne();
 
@@ -57,6 +58,28 @@ export class RoomsNewService {
       }
 
       console.log('❌ NEW-ROOMS: No hostel found with id OR businessId:', cleanInputId);
+      
+      // DEBUG: Show available hostels for debugging
+      const hostelCount = await this.hostelRepository.count();
+      console.log('🔍 NEW-ROOMS: Total hostels in database:', hostelCount);
+      
+      const allHostels = await this.hostelRepository.find({ 
+        where: { isActive: true },
+        take: 5
+      });
+      console.log('🔍 NEW-ROOMS: Available hostels for debugging:', allHostels.map(h => ({ 
+        id: h.id, 
+        businessId: h.businessId, 
+        name: h.name 
+      })));
+      
+      // DEBUG: Try direct query with the input
+      const directQuery = await this.hostelRepository
+        .createQueryBuilder('hostel')
+        .where('hostel.businessId = :businessId', { businessId: cleanInputId })
+        .getOne();
+      console.log('🔍 NEW-ROOMS: Direct businessId query result:', directQuery ? 'FOUND' : 'NOT FOUND');
+      
       return null;
       
     } catch (error) {
@@ -88,7 +111,20 @@ export class RoomsNewService {
       console.log('✅ NEW-ROOMS: Filtering by resolved hostelId:', effectiveHostelId);
       queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
     } else {
-      console.log('⚠️ NEW-ROOMS: No hostelId resolved - returning ALL rooms');
+      console.log('⚠️ NEW-ROOMS: No hostelId resolved - returning empty result');
+      // If hostelId was provided but couldn't be resolved, return empty result
+      if (hostelId) {
+        return {
+          items: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0
+          }
+        };
+      }
+      console.log('⚠️ NEW-ROOMS: No hostelId provided - returning ALL rooms');
     }
 
     if (status !== 'all') {
@@ -159,7 +195,8 @@ export class RoomsNewService {
       availableBeds,
       description: room.description,
       images: room.images || [],
-      hasLayout: !!room.layout // Flag to indicate layout exists
+      hasLayout: !!room.layout, // Flag to indicate layout exists
+      hostelId: room.hostelId // Include hostelId for debugging and verification
     };
   }
 

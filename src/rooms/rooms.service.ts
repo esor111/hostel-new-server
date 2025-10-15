@@ -58,10 +58,11 @@ export class RoomsService extends HostelScopedService<Room> {
     console.log('🔍 Resolving hostelId from input:', `"${cleanInputId}"`);
 
     try {
-      // DIRECT APPROACH: Find hostel where EITHER id OR businessId matches the input
+      // FIXED: Handle UUID vs string type mismatch by using separate parameters
+      // Try to match as UUID first, then as businessId (string)
       const hostel = await this.hostelRepository
         .createQueryBuilder('hostel')
-        .where('hostel.id = :inputId OR hostel.businessId = :inputId', { inputId: cleanInputId })
+        .where('(hostel.id::text = :inputId OR hostel.businessId = :inputId)', { inputId: cleanInputId })
         .andWhere('hostel.isActive = :isActive', { isActive: true })
         .getOne();
 
@@ -873,7 +874,8 @@ export class RoomsService extends HostelScopedService<Room> {
       beds: (room.beds || []).map(bed => ({
         ...bed,
         status: this.convertBedStatusForResponse(bed)
-      }))
+      })),
+      hostelId: room.hostelId // Include hostelId for debugging and verification
     };
   }
 
