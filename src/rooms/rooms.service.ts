@@ -905,15 +905,63 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   private async updateRoomAmenities(roomId: string, amenityNames: string[]) {
-    // Deactivate existing amenities
-    await this.roomAmenityRepository.update(
-      { roomId },
-      { isActive: false }
+    // Get existing room-amenity relationships
+    const existingRoomAmenities = await this.roomAmenityRepository.find({
+      where: { roomId },
+      relations: ['amenity']
+    });
+
+    // Create a map of existing amenities by name
+    const existingAmenitiesMap = new Map(
+      existingRoomAmenities.map(ra => [ra.amenity.name, ra])
     );
 
-    // Add new amenities
-    if (amenityNames.length > 0) {
-      await this.createRoomAmenities(roomId, amenityNames);
+    // Process each amenity name
+    for (const amenityName of amenityNames) {
+      // Check if this amenity already exists for this room
+      const existingRoomAmenity = existingAmenitiesMap.get(amenityName);
+
+      if (existingRoomAmenity) {
+        // Reactivate existing amenity if it was deactivated
+        if (!existingRoomAmenity.isActive) {
+          await this.roomAmenityRepository.update(
+            { id: existingRoomAmenity.id },
+            { isActive: true }
+          );
+        }
+        // Remove from map so we know it's still needed
+        existingAmenitiesMap.delete(amenityName);
+      } else {
+        // Create new amenity relationship
+        let amenity = await this.amenityRepository.findOne({
+          where: { name: amenityName }
+        });
+
+        if (!amenity) {
+          amenity = await this.amenityRepository.save({
+            name: amenityName,
+            category: AmenityCategory.UTILITIES,
+            isActive: true
+          });
+        }
+
+        await this.roomAmenityRepository.save({
+          roomId,
+          amenityId: amenity.id,
+          isActive: true,
+          installedDate: new Date()
+        });
+      }
+    }
+
+    // Deactivate amenities that are no longer selected
+    for (const [_, roomAmenity] of existingAmenitiesMap) {
+      if (roomAmenity.isActive) {
+        await this.roomAmenityRepository.update(
+          { id: roomAmenity.id },
+          { isActive: false }
+        );
+      }
     }
   }
 
