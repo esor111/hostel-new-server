@@ -517,3 +517,46 @@ in the service where you did
 
 
 
+when i open the layout view showing 10m* 8m ...
+showing in meter insted i want in foot
+
+
+in the add new room there is 3 steps  if i go another stpe and try to go back it redirect into whole room page insted back into previous step
+
+without designing the layout why iam able to go 
+next:images & review step?
+
+please first understand what exact i mean and the edit code 
+
+
+what about this active inactive is this working right now
+do we have the api for this toggle
+and what about able in the forntend understand?
+
+
+remove approve node from booking filter?
+
+booking come in the request or not
+
+change perday to permonth
+
+
+what about this active inactive is this working right now
+do we have the api for this toggle
+and what about able in the forntend understand?
+another one is
+
+
+in the bookin request list all status should show the pending list first understand?
+where do we need to fix this backend or frontend do it smartly only chang where is required to change
+
+
+business serarch not working right now
+
+
+perfreeed room --> showing not specified
+remove this  perfreeed room 
+
+recent activites is not funcational
+i also need 
+when someonebook, cacel, reject, confirm and so on

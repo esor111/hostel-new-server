@@ -40,7 +40,7 @@ export interface BookingStats {
 // Status mapping function to handle case-insensitive status queries
 function mapStatusToEnum(status: string): MultiGuestBookingStatus | null {
   if (!status) return null;
-  
+
   const statusMap: { [key: string]: MultiGuestBookingStatus } = {
     'pending': MultiGuestBookingStatus.PENDING,
     'confirmed': MultiGuestBookingStatus.CONFIRMED,
@@ -56,7 +56,7 @@ function mapStatusToEnum(status: string): MultiGuestBookingStatus | null {
     'Cancelled': MultiGuestBookingStatus.CANCELLED,
     'Completed': MultiGuestBookingStatus.COMPLETED
   };
-  
+
   return statusMap[status.toLowerCase()] || statusMap[status] || null;
 }
 
@@ -614,12 +614,35 @@ export class MultiGuestBookingService {
       queryBuilder.andWhere('booking.source = :source', { source });
     }
 
-    // Pagination
-    const offset = (page - 1) * limit;
-    queryBuilder.skip(offset).take(limit);
+    // Get all bookings first for custom sorting
     queryBuilder.orderBy('booking.createdAt', 'DESC');
+    const [allBookings, total] = await queryBuilder.getManyAndCount();
 
-    const [bookings, total] = await queryBuilder.getManyAndCount();
+    // Sort by status priority (Pending first), then by creation date
+    const statusPriority = {
+      'Pending': 1,
+      'Confirmed': 2,
+      'Partially_Confirmed': 3,
+      'Completed': 4,
+      'Cancelled': 5,
+      'Rejected': 6
+    };
+
+    const sortedBookings = allBookings.sort((a, b) => {
+      const aPriority = statusPriority[a.status] || 7;
+      const bPriority = statusPriority[b.status] || 7;
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+
+      // If same status, sort by creation date (newest first)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    // Apply pagination to sorted results
+    const offset = (page - 1) * limit;
+    const bookings = sortedBookings.slice(offset, offset + limit);
 
     return {
       items: bookings, // Return raw bookings for controller to transform
@@ -928,12 +951,35 @@ export class MultiGuestBookingService {
       queryBuilder.andWhere('booking.status = :status', { status });
     }
 
-    // Pagination
-    const offset = (page - 1) * limit;
-    queryBuilder.skip(offset).take(limit);
+    // Get all bookings first for custom sorting
     queryBuilder.orderBy('booking.createdAt', 'DESC');
+    const [allBookings, total] = await queryBuilder.getManyAndCount();
 
-    const [bookings, total] = await queryBuilder.getManyAndCount();
+    // Sort by status priority (Pending first), then by creation date
+    const statusPriority = {
+      'Pending': 1,
+      'Confirmed': 2,
+      'Partially_Confirmed': 3,
+      'Completed': 4,
+      'Cancelled': 5,
+      'Rejected': 6
+    };
+
+    const sortedBookings = allBookings.sort((a, b) => {
+      const aPriority = statusPriority[a.status] || 7;
+      const bPriority = statusPriority[b.status] || 7;
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+
+      // If same status, sort by creation date (newest first)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    // Apply pagination to sorted results
+    const offset = (page - 1) * limit;
+    const bookings = sortedBookings.slice(offset, offset + limit);
 
     // Transform bookings with enhanced business data
     const transformedBookings = await Promise.all(
