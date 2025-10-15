@@ -140,8 +140,6 @@ export class RoomsController {
   }
 
   @Put(':id')
-  @UseGuards(HostelAuthWithContextGuard)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update room' })
   @ApiResponse({ status: 200, description: 'Room updated successfully' })
   async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetOptionalHostelId() hostelId?: string) {

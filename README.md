@@ -560,3 +560,4 @@ remove this  perfreeed room
 recent activites is not funcational
 i also need 
 when someonebook, cacel, reject, confirm and so on
+do we have all of these?
