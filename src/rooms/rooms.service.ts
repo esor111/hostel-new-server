@@ -527,7 +527,20 @@ export class RoomsService extends HostelScopedService<Room> {
         });
 
         if (updatedRoom?.layout?.layoutData?.bedPositions) {
-          await this.bedSyncService.syncBedsFromLayout(id, updatedRoom.layout.layoutData.bedPositions);
+          // Deduplicate bed positions before syncing (in case of corrupted data)
+          const bedPositions = updatedRoom.layout.layoutData.bedPositions;
+          const seenIds = new Set<string>();
+          const deduplicatedPositions = bedPositions.filter(pos => {
+            if (seenIds.has(pos.id)) {
+              console.log(`⚠️ Skipping duplicate bed position during sync: ${pos.id}`);
+              return false;
+            }
+            seenIds.add(pos.id);
+            return true;
+          });
+          
+          console.log(`✅ Bed count sync: ${bedPositions.length} → ${deduplicatedPositions.length} positions`);
+          await this.bedSyncService.syncBedsFromLayout(id, deduplicatedPositions);
         }
       }
     }
@@ -854,8 +867,8 @@ export class RoomsService extends HostelScopedService<Room> {
       bedCount: room.bedCount,
       occupancy: actualOccupancy, // Use bed-based occupancy if available
       gender: room.gender,
-      monthlyRate: room.roomType?.baseMonthlyRate || 0,
-      dailyRate: room.roomType?.baseDailyRate || 0,
+      monthlyRate: room.monthlyRate || room.roomType?.baseMonthlyRate || 0,
+      dailyRate: room.roomType?.baseDailyRate || Math.round((room.monthlyRate || 0) / 30) || 0,
       amenities: amenities,
       status: room.status,
       layout: enhancedLayout, // Enhanced with bed data
@@ -966,11 +979,11 @@ export class RoomsService extends HostelScopedService<Room> {
   }
 
   /**
-   * Create bed entities directly from layout data
-   * This ensures all beds are created immediately when layout is saved
+   * Create or update bed entities from layout data
+   * IMPORTANT: Updates existing beds instead of deleting to preserve booking references
    */
   private async createBedsFromLayoutData(roomId: string, layoutData: any) {
-    console.log('🛏️ Creating beds directly from layout data for room:', roomId);
+    console.log('🛏️ Syncing bed entities from layout data for room:', roomId);
 
     try {
       // Get room details for bed creation
@@ -982,12 +995,23 @@ export class RoomsService extends HostelScopedService<Room> {
         throw new Error(`Room ${roomId} not found`);
       }
 
-      // Clear existing beds for this room to avoid conflicts
-      console.log('🗑️ Clearing existing beds for room:', roomId);
-      await this.bedRepository.delete({ roomId });
+      // Get existing beds instead of deleting them (preserve booking references)
+      console.log('🔍 Fetching existing beds for room:', roomId);
+      const existingBeds = await this.bedRepository.find({ where: { roomId } });
+      const existingBedsMap = new Map(existingBeds.map(bed => [bed.bedIdentifier, bed]));
+      console.log(`📊 Found ${existingBeds.length} existing beds`);
 
-      const bedsToCreate = [];
+      const bedsToSync = [];
       const roomPrefix = room.roomNumber || 'R'; // Use room number as prefix
+
+      // Helper function to strip existing prefix to avoid double-prefixing
+      const stripPrefix = (id: string): string => {
+        // If ID already starts with room prefix, remove it
+        if (id.startsWith(`${roomPrefix}-`)) {
+          return id.substring(roomPrefix.length + 1);
+        }
+        return id;
+      };
 
       // Process layout elements to extract bed data
       if (layoutData.elements) {
@@ -1002,31 +1026,33 @@ export class RoomsService extends HostelScopedService<Room> {
               console.log(`🏗️ Bunk bed ${element.id} has ${element.properties.levels.length} levels`);
 
               for (const level of element.properties.levels) {
-                const bedIdentifier = `${roomPrefix}-${level.id}`;
+                const cleanLevelId = stripPrefix(level.id);
+                const bedIdentifier = `${roomPrefix}-${cleanLevelId}`;
                 const bedNumber = element.id.replace('bed', '');
 
-                bedsToCreate.push({
+                bedsToSync.push({
                   bedIdentifier,
                   bedNumber,
                   description: `${level.position.charAt(0).toUpperCase() + level.position.slice(1)} bunk ${element.properties?.bedLabel || element.id} in ${room.name}`,
                   bunkLevel: level.position
                 });
 
-                console.log(`   ✅ Added bunk level: ${bedIdentifier} (${level.position})`);
+                console.log(`   ✅ Queued bunk level: ${bedIdentifier} (${level.position})`);
               }
             } else {
               // Handle single bed
-              const bedIdentifier = `${roomPrefix}-${element.id}`;
-              const bedNumber = element.id.replace('bed', '');
+              const cleanElementId = stripPrefix(element.id);
+              const bedIdentifier = `${roomPrefix}-${cleanElementId}`;
+              const bedNumber = cleanElementId.replace('bed', '');
 
-              bedsToCreate.push({
+              bedsToSync.push({
                 bedIdentifier,
                 bedNumber,
-                description: `${element.properties?.bedLabel || element.id} in ${room.name}`,
+                description: `${element.properties?.bedLabel || cleanElementId} in ${room.name}`,
                 bunkLevel: null
               });
 
-              console.log(`   ✅ Added single bed: ${bedIdentifier}`);
+              console.log(`   ✅ Queued single bed: ${bedIdentifier}`);
             }
           }
         }
@@ -1037,50 +1063,75 @@ export class RoomsService extends HostelScopedService<Room> {
         console.log(`📍 Processing ${layoutData.bedPositions.length} bed positions`);
 
         for (const position of layoutData.bedPositions) {
-          const bedIdentifier = `${roomPrefix}-${position.id}`;
-          const bedNumber = position.id.replace('bed', '').replace(/[^0-9]/g, '') || '1';
+          const cleanPosId = stripPrefix(position.id);
+          const bedIdentifier = `${roomPrefix}-${cleanPosId}`;
+          const bedNumber = cleanPosId.replace('bed', '').replace(/[^0-9]/g, '') || '1';
 
-          bedsToCreate.push({
+          bedsToSync.push({
             bedIdentifier,
             bedNumber,
             description: `Bed ${bedNumber} in ${room.name}`,
             bunkLevel: position.bunkLevel || null
           });
 
-          console.log(`   ✅ Added bed from position: ${bedIdentifier}`);
+          console.log(`   ✅ Queued bed from position: ${bedIdentifier}`);
         }
       }
 
-      // Create all bed entities
-      console.log(`🆕 Creating ${bedsToCreate.length} bed entities`);
+      // Sync bed entities: update existing, create new
+      console.log(`🔄 Syncing ${bedsToSync.length} bed entities`);
+      let createdCount = 0;
+      let updatedCount = 0;
 
-      for (const bedData of bedsToCreate) {
+      for (const bedData of bedsToSync) {
         try {
-          const bed = this.bedRepository.create({
-            roomId,
-            hostelId: room.hostelId,
-            bedIdentifier: bedData.bedIdentifier,
-            bedNumber: bedData.bedNumber,
-            status: BedStatus.AVAILABLE,
-            gender: (room.gender as 'Male' | 'Female' | 'Any') || 'Any',
-            monthlyRate: room.monthlyRate,
-            description: bedData.description,
-            currentOccupantId: null,
-            currentOccupantName: null,
-            occupiedSince: null
-          });
+          const existingBed = existingBedsMap.get(bedData.bedIdentifier);
 
-          await this.bedRepository.save(bed);
-          console.log(`   ✅ Created bed: ${bedData.bedIdentifier}`);
-
+          if (existingBed) {
+            // Update existing bed (preserve ID and booking references)
+            console.log(`   🔄 Updating existing bed: ${bedData.bedIdentifier}`);
+            await this.bedRepository.update(existingBed.id, {
+              bedNumber: bedData.bedNumber,
+              description: bedData.description,
+              gender: (room.gender as 'Male' | 'Female' | 'Any') || 'Any',
+              monthlyRate: room.monthlyRate
+              // DO NOT update: status, currentOccupantId, occupiedSince (preserve booking data)
+            });
+            updatedCount++;
+            existingBedsMap.delete(bedData.bedIdentifier); // Mark as processed
+          } else {
+            // Create new bed
+            console.log(`   ✅ Creating new bed: ${bedData.bedIdentifier}`);
+            const bed = this.bedRepository.create({
+              roomId,
+              hostelId: room.hostelId,
+              bedIdentifier: bedData.bedIdentifier,
+              bedNumber: bedData.bedNumber,
+              status: BedStatus.AVAILABLE,
+              gender: (room.gender as 'Male' | 'Female' | 'Any') || 'Any',
+              monthlyRate: room.monthlyRate,
+              description: bedData.description,
+              currentOccupantId: null,
+              currentOccupantName: null,
+              occupiedSince: null
+            });
+            await this.bedRepository.save(bed);
+            createdCount++;
+          }
         } catch (error) {
-          console.error(`   ❌ Failed to create bed ${bedData.bedIdentifier}:`, error.message);
+          console.error(`   ❌ Failed to sync bed ${bedData.bedIdentifier}:`, error.message);
           // Continue with other beds
         }
       }
 
-      console.log(`✅ Successfully created ${bedsToCreate.length} bed entities for room ${roomId}`);
-      return bedsToCreate.length;
+      // Note: We don't delete beds that are no longer in layout to preserve booking references
+      // They will remain in database but won't be visible in layout
+      if (existingBedsMap.size > 0) {
+        console.log(`⚠️ ${existingBedsMap.size} beds not in layout (preserved for booking references)`);
+      }
+
+      console.log(`✅ Bed sync complete: ${createdCount} created, ${updatedCount} updated`);
+      return createdCount + updatedCount;
 
     } catch (error) {
       console.error('❌ Error creating beds from layout data:', error.message);
@@ -1108,6 +1159,16 @@ export class RoomsService extends HostelScopedService<Room> {
       });
       const roomPrefix = room?.roomNumber || 'R';
 
+      // Helper function to strip existing prefix to avoid double-prefixing
+      const stripPrefix = (id: string): string => {
+        if (!id) return id;
+        // If ID already starts with room prefix, remove it
+        if (id.startsWith(`${roomPrefix}-`)) {
+          return id.substring(roomPrefix.length + 1);
+        }
+        return id;
+      };
+
       // Create corrected bedPositions with room-specific identifiers
       let correctedBedPositions = [];
 
@@ -1117,8 +1178,9 @@ export class RoomsService extends HostelScopedService<Room> {
             if (element.type === 'bunk-bed' && element.properties?.levels) {
               // Handle bunk bed levels
               for (const level of element.properties.levels) {
+                const cleanLevelId = stripPrefix(level.id);
                 correctedBedPositions.push({
-                  id: `${roomPrefix}-${level.id}`, // Room-specific identifier
+                  id: `${roomPrefix}-${cleanLevelId}`, // Room-specific identifier
                   x: element.x,
                   y: element.y,
                   width: element.width,
@@ -1127,9 +1189,9 @@ export class RoomsService extends HostelScopedService<Room> {
                   type: 'bunk-bed-level',
                   properties: {
                     ...element.properties,
-                    bedId: `${roomPrefix}-${level.id}`,
+                    bedId: `${roomPrefix}-${cleanLevelId}`,
                     bunkLevel: level.position,
-                    parentBunkId: element.id
+                    parentBunkId: stripPrefix(element.id)
                   },
                   status: 'Available',
                   gender: room?.gender || 'Any',
@@ -1140,8 +1202,9 @@ export class RoomsService extends HostelScopedService<Room> {
               }
             } else {
               // Handle single bed
+              const cleanElementId = stripPrefix(element.id);
               correctedBedPositions.push({
-                id: `${roomPrefix}-${element.id}`, // Room-specific identifier
+                id: `${roomPrefix}-${cleanElementId}`, // Room-specific identifier
                 x: element.x,
                 y: element.y,
                 width: element.width,
@@ -1150,7 +1213,7 @@ export class RoomsService extends HostelScopedService<Room> {
                 type: element.type,
                 properties: {
                   ...element.properties,
-                  bedId: `${roomPrefix}-${element.id}`
+                  bedId: `${roomPrefix}-${cleanElementId}`
                 },
                 status: 'Available',
                 gender: room?.gender || 'Any',
@@ -1160,25 +1223,45 @@ export class RoomsService extends HostelScopedService<Room> {
           }
         }
       } else if (layoutData.bedPositions) {
-        // Use existing bedPositions but update identifiers
-        correctedBedPositions = layoutData.bedPositions.map(pos => ({
-          ...pos,
-          id: `${roomPrefix}-${pos.id}`,
-          properties: {
-            ...pos.properties,
-            bedId: `${roomPrefix}-${pos.id}`
-          }
-        }));
+        // Use existing bedPositions but avoid double-prefixing
+        correctedBedPositions = layoutData.bedPositions.map(pos => {
+          // Check if ID already has the room prefix
+          const hasPrefix = pos.id.startsWith(`${roomPrefix}-`);
+          const correctedId = hasPrefix ? pos.id : `${roomPrefix}-${pos.id}`;
+          
+          return {
+            ...pos,
+            id: correctedId,
+            properties: {
+              ...pos.properties,
+              bedId: correctedId
+            }
+          };
+        });
       }
 
-      // Store layout with corrected bedPositions
+      // CRITICAL: Deduplicate bed positions before saving
+      // Remove duplicates by ID to prevent validation errors
+      const seenIds = new Set<string>();
+      const deduplicatedBedPositions = correctedBedPositions.filter(pos => {
+        if (seenIds.has(pos.id)) {
+          console.log(`⚠️ Removing duplicate bed position: ${pos.id}`);
+          return false;
+        }
+        seenIds.add(pos.id);
+        return true;
+      });
+
+      console.log(`✅ Deduplicated: ${correctedBedPositions.length} → ${deduplicatedBedPositions.length} bed positions`);
+
+      // Store layout with corrected and deduplicated bedPositions
       const layoutToSave = {
         layoutData: {
           ...layoutData,
-          bedPositions: correctedBedPositions // Use corrected identifiers
+          bedPositions: deduplicatedBedPositions // Use corrected and deduplicated identifiers
         },
         dimensions: layoutData.dimensions,
-        bedPositions: correctedBedPositions, // Use corrected identifiers
+        bedPositions: deduplicatedBedPositions, // Use corrected and deduplicated identifiers
         furnitureLayout: layoutData.elements ?
           layoutData.elements.filter(e => e.type && !e.type.includes('bed')) : layoutData.furnitureLayout,
         layoutType: layoutData.layoutType || layoutData.theme?.name || 'standard',

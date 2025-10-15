@@ -372,22 +372,6 @@ export class MultiGuestBookingService {
             throw new BadRequestException(`Cannot confirm booking: ${failedAssignments.join('; ')}`);
           } else {
             // Partial confirmation
-            finalStatus = MultiGuestBookingStatus.PARTIALLY_CONFIRMED;
-            confirmedGuestCount = successfulAssignments.length;
-          }
-        }
-
-        // Update booking status using the actual booking ID
-        await manager.update(MultiGuestBooking, booking.id, {
-          status: finalStatus,
-          confirmedGuests: confirmedGuestCount,
-          processedBy: processedBy || 'admin',
-          processedDate: new Date()
-        });
-
-        // Update guest statuses and assign beds
-        const guestAssignments = [];
-
         for (const guest of booking.guests) {
           if (successfulAssignments.includes(guest.bedId)) {
             // Confirm guest
