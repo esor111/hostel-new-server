@@ -246,6 +246,71 @@ export class RoomsNewService {
   }
 
   /**
+   * Update room
+   */
+  async update(id: string, updateRoomDto: any, hostelId?: string) {
+    console.log('🏠 NEW-ROOMS: Updating room:', id);
+    console.log('📤 NEW-ROOMS: Update data received:', JSON.stringify(updateRoomDto, null, 2));
+
+    const room = await this.findOne(id, hostelId);
+
+    // Update main room entity
+    const updateData: any = {};
+
+    if (updateRoomDto.name !== undefined) updateData.name = updateRoomDto.name;
+    if (updateRoomDto.roomNumber !== undefined) updateData.roomNumber = updateRoomDto.roomNumber;
+    if (updateRoomDto.capacity !== undefined) updateData.bedCount = updateRoomDto.capacity;
+    if (updateRoomDto.bedCount !== undefined) updateData.bedCount = updateRoomDto.bedCount;
+    if (updateRoomDto.rent !== undefined) updateData.monthlyRate = updateRoomDto.rent;
+    if (updateRoomDto.monthlyRate !== undefined) updateData.monthlyRate = updateRoomDto.monthlyRate;
+    if (updateRoomDto.occupancy !== undefined) updateData.occupancy = updateRoomDto.occupancy;
+    if (updateRoomDto.gender !== undefined) updateData.gender = updateRoomDto.gender;
+    if (updateRoomDto.status !== undefined) updateData.status = updateRoomDto.status;
+    if (updateRoomDto.description !== undefined) updateData.description = updateRoomDto.description;
+
+    console.log('📝 NEW-ROOMS: Update data to apply:', JSON.stringify(updateData, null, 2));
+
+    // Apply updates
+    await this.roomRepository.update(id, updateData);
+
+    // Return updated room
+    const updatedRoom = await this.findOne(id, hostelId);
+    console.log('✅ NEW-ROOMS: Room updated successfully');
+
+    return updatedRoom;
+  }
+
+  /**
+   * Find one room by ID
+   */
+  async findOne(id: string, hostelId?: string) {
+    console.log('🔍 NEW-ROOMS: Finding room by ID:', id);
+
+    let effectiveHostelId = await this.resolveHostelId(hostelId);
+
+    const queryBuilder = this.roomRepository.createQueryBuilder('room')
+      .leftJoinAndSelect('room.building', 'building')
+      .leftJoinAndSelect('room.roomType', 'roomType')
+      .leftJoinAndSelect('room.amenities', 'roomAmenities')
+      .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
+      .leftJoinAndSelect('room.layout', 'layout')
+      .leftJoinAndSelect('room.beds', 'beds')
+      .where('room.id = :id', { id });
+
+    if (effectiveHostelId) {
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
+    }
+
+    const room = await queryBuilder.getOne();
+
+    if (!room) {
+      throw new NotFoundException('Room not found');
+    }
+
+    return this.transformToLightweightResponse(room);
+  }
+
+  /**
    * Build complete furniture array UNSCALED (in feet) - frontend will scale
    */
   private async buildFurnitureArrayUnscaled(room: Room, layout: RoomLayout): Promise<any[]> {

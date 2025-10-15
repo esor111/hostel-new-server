@@ -26,7 +26,7 @@ export class NotificationCommunicationService {
     // Get notification service URL from environment or use default
     this.notificationServiceUrl = this.configService.get<string>(
       'NOTIFICATION_SERVICE_URL',
-      'https://api.kaha.com.np/notifications/api/v3'
+      'https://dev.kaha.com.np/notifications/api/v3'
     );
   }
 
