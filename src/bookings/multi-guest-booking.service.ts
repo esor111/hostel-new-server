@@ -649,8 +649,11 @@ export class MultiGuestBookingService {
     const offset = (page - 1) * limit;
     const bookings = sortedBookings.slice(offset, offset + limit);
 
+    // Transform bookings to include preferredRoom
+    const transformedBookings = bookings.map(booking => this.transformToApiResponse(booking));
+
     return {
-      items: bookings, // Return raw bookings for controller to transform
+      items: transformedBookings,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -732,6 +735,9 @@ export class MultiGuestBookingService {
   }
 
   private transformToApiResponse(booking: MultiGuestBooking) {
+    // Get the room number from the first guest's assigned room (for preferredRoom field)
+    const preferredRoom = booking.guests?.[0]?.assignedRoomNumber || booking.preferredRoom || null;
+
     return {
       id: booking.id,
       bookingReference: booking.bookingReference,
@@ -740,6 +746,7 @@ export class MultiGuestBookingService {
         phone: booking.contactPhone,
         email: booking.contactEmail
       },
+      preferredRoom: preferredRoom, // Show actual room number instead of bed ID
       guests: booking.guests?.map(guest => ({
         id: guest.id,
         bedId: guest.bedId,
@@ -865,7 +872,7 @@ export class MultiGuestBookingService {
   /**
    * Get bookings by status
    */
-  async getBookingsByStatus(status: MultiGuestBookingStatus, hostelId?: string): Promise<MultiGuestBooking[]> {
+  async getBookingsByStatus(status: MultiGuestBookingStatus, hostelId?: string): Promise<any[]> {
     // Build where condition conditionally
     const whereCondition: any = { status };
     if (hostelId) {
@@ -878,7 +885,8 @@ export class MultiGuestBookingService {
       order: { createdAt: 'DESC' }
     });
 
-    return bookings; // Return raw bookings for controller to transform
+    // Transform bookings to include preferredRoom
+    return bookings.map(booking => this.transformToApiResponse(booking));
   }
 
   /**

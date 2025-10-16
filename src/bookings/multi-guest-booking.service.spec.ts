@@ -140,6 +140,7 @@ describe('MultiGuestBookingService', () => {
         id: 'mock-booking-id',
         bookingReference: 'MGB123456',
         contactPerson: createBookingDto.data.contactPerson,
+        preferredRoom: 'R101',
         guests: createBookingDto.data.guests.map((guest, index) => ({
           id: `guest-${index}`,
           bedId: guest.bedId,
