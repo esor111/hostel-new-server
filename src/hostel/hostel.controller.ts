@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Put, Body, Param, HttpStatus, Logger } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { HostelService, CreateHostelDto, SyncHostelDataDto } from './hostel.service';
 
 @ApiTags('hostel')
@@ -10,10 +10,39 @@ export class HostelController {
   constructor(private readonly hostelService: HostelService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all hostels' })
+  @ApiOperation({ summary: 'Get all hostels or filter by hostelId (id or businessId)' })
   @ApiResponse({ status: 200, description: 'Hostels retrieved successfully' })
-  async getAllHostels() {
+  @ApiQuery({ 
+    name: 'hostelId', 
+    required: false, 
+    description: 'Filter by hostel ID (UUID) or businessId (string). Web app sends UUID, mobile app sends businessId' 
+  })
+  async getAllHostels(@Query('hostelId') hostelId?: string) {
     try {
+      // If hostelId query parameter is provided, search by id OR businessId
+      if (hostelId) {
+        this.logger.log(`Filtering hostel by hostelId: ${hostelId}`);
+        const hostel = await this.hostelService.findByIdOrBusinessId(hostelId);
+        
+        if (!hostel) {
+          return {
+            success: false,
+            message: 'Hostel not found',
+            statusCode: HttpStatus.NOT_FOUND
+          };
+        }
+
+        // Enhance with business data
+        const enhancedHostel = await this.hostelService.enhanceHostelWithBusinessData(hostel);
+        
+        return {
+          success: true,
+          data: [enhancedHostel], // Return as array for consistency
+          message: 'Hostel retrieved successfully'
+        };
+      }
+
+      // No filter - return all hostels
       const hostels = await this.hostelService.findAllWithBusinessData();
       return {
         success: true,
@@ -21,7 +50,7 @@ export class HostelController {
         message: 'Hostels retrieved successfully'
       };
     } catch (error) {
-      this.logger.error('Error getting all hostels:', error);
+      this.logger.error('Error getting hostels:', error);
       return {
         success: false,
         message: error.message,

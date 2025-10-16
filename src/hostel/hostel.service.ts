@@ -213,6 +213,33 @@ export class HostelService {
   }
 
   /**
+   * Find hostel by either id (UUID) OR businessId (string)
+   * This supports both web app (sends UUID) and mobile app (sends businessId)
+   */
+  async findByIdOrBusinessId(hostelId: string): Promise<Hostel | null> {
+    this.logger.debug(`Finding hostel by id OR businessId: ${hostelId}`);
+
+    try {
+      const hostel = await this.hostelRepository
+        .createQueryBuilder('hostel')
+        .where('(hostel.id::text = :hostelId OR hostel.businessId = :hostelId)', { hostelId })
+        .andWhere('hostel.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (hostel) {
+        this.logger.debug(`Hostel found: ${hostel.name} (id: ${hostel.id}, businessId: ${hostel.businessId})`);
+      } else {
+        this.logger.debug(`No hostel found for: ${hostelId}`);
+      }
+
+      return hostel;
+    } catch (error) {
+      this.logger.error(`Error finding hostel by id OR businessId ${hostelId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Find hostel by hostelId (internal ID) to get businessId
    */
   async findByHostelId(hostelId: string): Promise<Hostel | null> {

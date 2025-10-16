@@ -74,25 +74,25 @@ export class RoomsService extends HostelScopedService<Room> {
           businessId: hostel.businessId,
           name: hostel.name
         });
-        
+
         return hostel.id; // Always return the actual hostel.id for room queries
       }
 
       console.log('❌ No hostel found with id OR businessId:', cleanInputId);
-      
+
       // Debug: Show available hostels
-      const allHostels = await this.hostelRepository.find({ 
+      const allHostels = await this.hostelRepository.find({
         where: { isActive: true },
         take: 3
       });
-      console.log('🔍 Available hostels:', allHostels.map(h => ({ 
-        id: h.id, 
-        businessId: h.businessId, 
-        name: h.name 
+      console.log('🔍 Available hostels:', allHostels.map(h => ({
+        id: h.id,
+        businessId: h.businessId,
+        name: h.name
       })));
-      
+
       return null;
-      
+
     } catch (error) {
       console.error('❌ Error resolving hostelId:', error.message);
       return null;
@@ -105,8 +105,98 @@ export class RoomsService extends HostelScopedService<Room> {
     console.log('🔍 RoomsService.findAll - hostelId:', hostelId);
     console.log('🔍 RoomsService.findAll - filters:', filters);
 
-    // FLEXIBLE HOSTEL QUERYING: Try both hostelId (UUID) and businessId
-    let effectiveHostelId = await this.resolveHostelId(hostelId);
+    // CRITICAL FIX: Distinguish between "no filter" vs "hostel not found"
+    // If hostelId was provided but not found, return empty results
+    if (hostelId !== undefined && hostelId !== null && hostelId !== '') {
+      // hostelId was provided, try to resolve it
+      const effectiveHostelId = await this.resolveHostelId(hostelId);
+
+      if (!effectiveHostelId) {
+        // Hostel not found - return empty results
+        console.log('❌ Hostel not found for hostelId:', hostelId, '- returning empty results');
+        return {
+          items: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0
+          }
+        };
+      }
+
+      // Hostel found - filter by it
+      console.log('✅ Filtering by resolved hostelId:', effectiveHostelId);
+
+      const queryBuilder = this.roomRepository.createQueryBuilder('room')
+        .leftJoinAndSelect('room.building', 'building')
+        .leftJoinAndSelect('room.roomType', 'roomType')
+        .leftJoinAndSelect('room.occupants', 'occupants', 'occupants.status = :occupantStatus', { occupantStatus: 'Active' })
+        .leftJoinAndSelect('occupants.student', 'student')
+        .leftJoinAndSelect('room.amenities', 'roomAmenities')
+        .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
+        .leftJoinAndSelect('room.layout', 'layout')
+        .leftJoinAndSelect('room.beds', 'beds');
+
+      // Apply hostel filter
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
+
+      // Apply status filter
+      if (status !== 'all') {
+        queryBuilder.andWhere('room.status = :status', { status });
+      }
+
+      // Apply type filter
+      if (type !== 'all') {
+        queryBuilder.andWhere('roomType.name = :type', { type });
+      }
+
+      // Apply search filter
+      if (search) {
+        queryBuilder.andWhere(
+          '(room.name ILIKE :search OR room.roomNumber ILIKE :search)',
+          { search: `%${search}%` }
+        );
+      }
+
+      // Apply pagination
+      const offset = (page - 1) * limit;
+      queryBuilder.skip(offset).take(limit);
+
+      // Order by creation date
+      queryBuilder.orderBy('room.createdAt', 'DESC');
+
+      const [rooms, total] = await queryBuilder.getManyAndCount();
+
+      // Ensure occupancy is accurate for all rooms
+      await this.syncRoomOccupancy(rooms);
+
+      // Merge Bed entity data into bedPositions for all rooms (hybrid integration)
+      for (const room of rooms) {
+        if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
+          room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+            room.layout.layoutData.bedPositions,
+            room.beds
+          );
+        }
+      }
+
+      // Transform to API response format (EXACT same as current JSON structure)
+      const transformedItems = await Promise.all(rooms.map(room => this.transformToApiResponse(room)));
+
+      return {
+        items: transformedItems,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      };
+    }
+
+    // No hostelId provided - return ALL rooms
+    console.log('⚠️ No hostelId provided - returning ALL rooms');
 
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
       .leftJoinAndSelect('room.building', 'building')
@@ -117,14 +207,6 @@ export class RoomsService extends HostelScopedService<Room> {
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
       .leftJoinAndSelect('room.layout', 'layout')
       .leftJoinAndSelect('room.beds', 'beds');
-
-    // Apply hostel filtering with flexible resolution
-    if (effectiveHostelId) {
-      console.log('✅ Filtering by resolved hostelId:', effectiveHostelId);
-      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
-    } else {
-      console.log('⚠️ No hostelId resolved - returning ALL rooms');
-    }
 
     // Apply status filter
     if (status !== 'all') {
@@ -538,7 +620,7 @@ export class RoomsService extends HostelScopedService<Room> {
             seenIds.add(pos.id);
             return true;
           });
-          
+
           console.log(`✅ Bed count sync: ${bedPositions.length} → ${deduplicatedPositions.length} positions`);
           await this.bedSyncService.syncBedsFromLayout(id, deduplicatedPositions);
         }
@@ -668,7 +750,7 @@ export class RoomsService extends HostelScopedService<Room> {
       // If room has beds, use bed occupancy as source of truth (hybrid integration)
       if (room.beds && room.beds.length > 0) {
         // Count both Occupied and Reserved beds as occupied for display purposes
-        const bedBasedOccupancy = room.beds.filter(bed => 
+        const bedBasedOccupancy = room.beds.filter(bed =>
           bed.status === 'Occupied' || bed.status === 'Reserved'
         ).length;
 
@@ -1228,7 +1310,7 @@ export class RoomsService extends HostelScopedService<Room> {
           // Check if ID already has the room prefix
           const hasPrefix = pos.id.startsWith(`${roomPrefix}-`);
           const correctedId = hasPrefix ? pos.id : `${roomPrefix}-${pos.id}`;
-          
+
           return {
             ...pos,
             id: correctedId,
