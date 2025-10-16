@@ -49,7 +49,7 @@ async function bootstrap() {
     next();
   });
 
-  app.useGlobalPipes(new ValidationPipe({ 
+  app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true
@@ -69,7 +69,7 @@ async function bootstrap() {
   SwaggerModule.setup("hostel/api/v1/docs", app, document);
 
   const port = Number(process.env.PORT) || Number(process.env.APP_PORT) || 3001;
-  
+
   await app.listen(port, '0.0.0.0', () => {
     console.log(`🚀 Hostel Server running on: http://localhost:${port}`);
     console.log(`📚 API Docs available at: http://localhost:${port}/hostel/api/v1/docs`);

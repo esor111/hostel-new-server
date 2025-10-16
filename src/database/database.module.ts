@@ -7,7 +7,7 @@ import { dataSourceOptions } from './data-source';
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       // Override specific settings if needed
-      synchronize: false, // Always false to prevent accidental schema changes
+      synchronize: true, // Always false to prevent accidental schema changes
       logging: process.env.NODE_ENV === 'development',
     }),
   ],

@@ -20,7 +20,6 @@ export enum MealType {
 }
 
 @Entity('meal_plans')
-@Index(['hostelId'])
 @Index(['day'])
 @Index(['hostelId', 'day'], { unique: true })
 export class MealPlan extends BaseEntity {
@@ -50,7 +49,6 @@ export class MealPlan extends BaseEntity {
 
   // Foreign Key
   @Column({ name: 'hostelId' })
-  @Index()
   hostelId: string;
 
   // Relations

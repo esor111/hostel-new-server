@@ -97,11 +97,12 @@ export const dataSourceOptions: DataSourceOptions = {
     // Meal Plan entities
     MealPlan,
   ],
-  migrations: [path.join(__dirname, '..', 'migrations', '*{.ts,.js}')],
-  synchronize: false, // Always false in production
+  // Migrations disabled - using synchronize mode for development
+  migrations: [],
+  synchronize: process.env.NODE_ENV === 'development', // Auto-sync schema in development only
   logging: process.env.NODE_ENV === 'development',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  migrationsRun: false, // Disable auto-run migrations on startup
+  migrationsRun: false,
   migrationsTableName: 'typeorm_migrations',
 };
 

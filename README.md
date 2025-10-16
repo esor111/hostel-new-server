@@ -2,6 +2,23 @@
 
 A comprehensive hostel management system built with NestJS, TypeORM, and PostgreSQL.
 
+## 🔄 **IMPORTANT: Running in Synchronize Mode**
+
+> ⚡ **No migrations needed!** This project uses TypeORM synchronize mode for development.  
+> Just edit entities and restart the server - schema syncs automatically.
+
+### 🎯 **New to this project?** → [START_HERE.md](./START_HERE.md)
+
+📚 **Documentation** (8 comprehensive guides):
+- **📑 Index**: [SYNCHRONIZE_MODE_INDEX.md](./SYNCHRONIZE_MODE_INDEX.md) - Navigate all docs
+- **⭐ Start Here**: [START_HERE.md](./START_HERE.md) - Read this first!
+- **⚡ Quick Start**: [QUICK_START_SYNCHRONIZE.md](./QUICK_START_SYNCHRONIZE.md) - 2 min read
+- **📖 Full Guide**: [SYNCHRONIZE_MODE_GUIDE.md](./SYNCHRONIZE_MODE_GUIDE.md) - Complete reference
+- **🔄 Workflow**: [SYNCHRONIZE_WORKFLOW.md](./SYNCHRONIZE_WORKFLOW.md) - Visual diagrams
+- **✅ Checklist**: [SYNCHRONIZE_MODE_CHECKLIST.md](./SYNCHRONIZE_MODE_CHECKLIST.md) - Verification
+- **🔧 Troubleshooting**: [SYNCHRONIZE_TROUBLESHOOTING.md](./SYNCHRONIZE_TROUBLESHOOTING.md) - Fix issues
+- **📊 Summary**: [MIGRATION_TO_SYNCHRONIZE_SUMMARY.md](./MIGRATION_TO_SYNCHRONIZE_SUMMARY.md) - What changed
+
 ## 🚀 Quick Start
 
 ### 1. Environment Setup
