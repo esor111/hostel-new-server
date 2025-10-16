@@ -667,12 +667,15 @@ export class RoomsService extends HostelScopedService<Room> {
 
       // If room has beds, use bed occupancy as source of truth (hybrid integration)
       if (room.beds && room.beds.length > 0) {
-        const bedBasedOccupancy = room.beds.filter(bed => bed.status === 'Occupied').length;
+        // Count both Occupied and Reserved beds as occupied for display purposes
+        const bedBasedOccupancy = room.beds.filter(bed => 
+          bed.status === 'Occupied' || bed.status === 'Reserved'
+        ).length;
 
         // Bed entity is source of truth for occupancy in hybrid architecture
         if (bedBasedOccupancy !== actualOccupancy) {
           console.log(`🔄 Hybrid sync: Bed occupancy (${bedBasedOccupancy}) differs from room occupant records (${actualOccupancy}) for room ${room.roomNumber}`);
-          console.log(`🔄 Using bed-based occupancy as source of truth`);
+          console.log(`🔄 Using bed-based occupancy as source of truth (including Reserved beds)`);
           actualOccupancy = bedBasedOccupancy;
         }
       }
@@ -750,20 +753,17 @@ export class RoomsService extends HostelScopedService<Room> {
 
     if (room.beds && room.beds.length > 0) {
       // Use bed entities for more accurate calculations - bed entity is source of truth
-      // Only count truly occupied beds (not those occupied via booking which should be reserved)
-      const occupiedBeds = room.beds.filter(bed =>
-        bed.status === 'Occupied' && (!bed.notes || !bed.notes.includes('via booking'))
-      ).length;
+      // Count both occupied and reserved beds as occupied for display purposes
+      const occupiedBeds = room.beds.filter(bed => bed.status === 'Occupied').length;
+      const reservedBeds = room.beds.filter(bed => bed.status === 'Reserved').length;
       const availableBedsFromBeds = room.beds.filter(bed => bed.status === 'Available').length;
-      const reservedBedsFromBookings = room.beds.filter(bed =>
-        bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')
-      ).length;
 
-      actualOccupancy = occupiedBeds;
+      // Total occupancy includes both occupied and reserved beds
+      actualOccupancy = occupiedBeds + reservedBeds;
       availableBeds = availableBedsFromBeds;
 
       // Log for debugging
-      console.log(`Room ${room.roomNumber}: ${occupiedBeds} truly occupied, ${reservedBedsFromBookings} reserved from bookings, ${availableBedsFromBeds} available`);
+      console.log(`Room ${room.roomNumber}: ${occupiedBeds} occupied, ${reservedBeds} reserved, ${availableBedsFromBeds} available, total occupancy: ${actualOccupancy}`);
     }
 
     // Enhance layout with bed data if beds exist (hybrid integration)

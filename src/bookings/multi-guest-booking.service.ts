@@ -366,12 +366,24 @@ export class MultiGuestBookingService {
         let finalStatus = MultiGuestBookingStatus.CONFIRMED;
         let confirmedGuestCount = booking.totalGuests;
 
+        // Initialize guest assignments array for bed sync service
+        const guestAssignments: Array<{
+          bedId: string;
+          guestName: string;
+          guestId: string;
+        }> = [];
+
         if (failedAssignments.length > 0) {
           if (successfulAssignments.length === 0) {
             // All assignments failed
             throw new BadRequestException(`Cannot confirm booking: ${failedAssignments.join('; ')}`);
           } else {
             // Partial confirmation
+            finalStatus = MultiGuestBookingStatus.PARTIALLY_CONFIRMED;
+            confirmedGuestCount = successfulAssignments.length;
+          }
+        }
+
         for (const guest of booking.guests) {
           if (successfulAssignments.includes(guest.bedId)) {
             // Confirm guest
@@ -1730,6 +1742,34 @@ export class MultiGuestBookingService {
     const savedStudent = await manager.save(Student, student);
 
     this.logger.log(`✅ Created student profile for ${guest.guestName} (ID: ${savedStudent.id}) with room UUID: ${roomUuid}`);
+
+    // Create RoomOccupant record if room is assigned
+    if (roomUuid) {
+      const RoomOccupant = (await import('../rooms/entities/room-occupant.entity')).RoomOccupant;
+      const roomOccupant = manager.create(RoomOccupant, {
+        roomId: roomUuid,
+        studentId: savedStudent.id,
+        checkInDate: booking.checkInDate || new Date(),
+        bedNumber: guest.assignedBedNumber,
+        status: 'Active',
+        assignedBy: approvalData.processedBy || 'admin',
+        notes: `Created from booking ${booking.bookingReference}`
+      });
+
+      await manager.save(RoomOccupant, roomOccupant);
+      this.logger.log(`✅ Created RoomOccupant record for student ${savedStudent.id} in room ${roomUuid}`);
+
+      // Update room occupancy count
+      const Room = (await import('../rooms/entities/room.entity')).Room;
+      const room = await manager.findOne(Room, { where: { id: roomUuid } });
+      if (room) {
+        const occupantCount = await manager.count(RoomOccupant, {
+          where: { roomId: roomUuid, status: 'Active' }
+        });
+        await manager.update(Room, roomUuid, { occupancy: occupantCount });
+        this.logger.log(`✅ Updated room ${roomUuid} occupancy to ${occupantCount}`);
+      }
+    }
 
     return savedStudent;
   }
