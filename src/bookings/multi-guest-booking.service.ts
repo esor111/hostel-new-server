@@ -416,6 +416,15 @@ export class MultiGuestBookingService {
           }
         }
 
+        // Update booking status AFTER bed confirmation
+        await manager.update(MultiGuestBooking, booking.id, {
+          status: finalStatus,
+          confirmedGuests: confirmedGuestCount,
+          processedBy: processedBy || 'admin',
+          processedDate: new Date()
+        });
+        this.logger.log(`✅ Updated booking status to ${finalStatus} with ${confirmedGuestCount} confirmed guests`);
+
         // Create student profiles for confirmed guests
         const createdStudents = [];
         this.logger.log(`🎓 Creating student profiles for confirmed guests`);
