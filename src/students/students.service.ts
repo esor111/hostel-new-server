@@ -276,6 +276,11 @@ export class StudentsService { // Removed HostelScopedService extension for back
       roomNumber: student.room?.roomNumber || null,
       guardianName: guardianContact?.name || null,
       guardianPhone: guardianContact?.phone || null,
+      guardian: guardianContact ? {
+        name: guardianContact.name,
+        phone: guardianContact.phone,
+        relation: guardianContact.relationship
+      } : null,
       address: student.address,
       baseMonthlyFee: baseMonthlyFee?.amount || 0,
       laundryFee: laundryFee?.amount || 0,
@@ -752,6 +757,46 @@ export class StudentsService { // Removed HostelScopedService extension for back
   async configureStudent(studentId: string, configData: any) {
     const student = await this.findOne(studentId);
     
+    // ✅ CRITICAL FIX: Save guardian information
+    if (configData.guardian) {
+      // First, deactivate any existing guardian contacts
+      await this.contactRepository.update(
+        { studentId, type: ContactType.GUARDIAN },
+        { isActive: false }
+      );
+
+      // Create new guardian contact
+      if (configData.guardian.name || configData.guardian.phone) {
+        await this.contactRepository.save({
+          studentId,
+          type: ContactType.GUARDIAN,
+          name: configData.guardian.name,
+          phone: configData.guardian.phone,
+          relationship: configData.guardian.relation,
+          isPrimary: true,
+          isActive: true
+        });
+      }
+    }
+
+    // ✅ CRITICAL FIX: Save academic information
+    if (configData.course || configData.institution) {
+      // First, deactivate any existing academic info
+      await this.academicRepository.update(
+        { studentId },
+        { isActive: false }
+      );
+
+      // Create new academic info
+      await this.academicRepository.save({
+        studentId,
+        course: configData.course,
+        institution: configData.institution,
+        academicYear: new Date().getFullYear().toString(),
+        isActive: true
+      });
+    }
+    
     // Create/update financial info records
     const financialEntries = [];
     
@@ -838,7 +883,9 @@ export class StudentsService { // Removed HostelScopedService extension for back
       message: 'Student configuration completed successfully',
       studentId,
       configurationDate: new Date(),
-      totalMonthlyFee: financialEntries.reduce((sum, entry) => sum + entry.amount, 0)
+      totalMonthlyFee: financialEntries.reduce((sum, entry) => sum + entry.amount, 0),
+      guardianConfigured: !!(configData.guardian?.name || configData.guardian?.phone),
+      academicConfigured: !!(configData.course || configData.institution)
     };
   }
 
