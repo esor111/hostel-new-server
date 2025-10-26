@@ -4,6 +4,8 @@ import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
 import { RoomsNewController } from './rooms-new.controller';
 import { RoomsNewService } from './rooms-new.service';
+import { RoomsOptimizedController } from './rooms-optimized.controller';
+import { RoomsOptimizedService } from './rooms-optimized.service';
 import { BedSyncService } from './bed-sync.service';
 import { BedService } from './bed.service';
 import { Room } from './entities/room.entity';
@@ -35,8 +37,8 @@ import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-cont
     ]),
     HostelModule
   ],
-  controllers: [RoomsController, RoomsNewController],
-  providers: [RoomsService, RoomsNewService, BedSyncService, BedService, HostelAuthWithContextGuard],
-  exports: [RoomsService, RoomsNewService, BedSyncService, BedService],
+  controllers: [RoomsController, RoomsNewController, RoomsOptimizedController],
+  providers: [RoomsService, RoomsNewService, RoomsOptimizedService, BedSyncService, BedService, HostelAuthWithContextGuard],
+  exports: [RoomsService, RoomsNewService, RoomsOptimizedService, BedSyncService, BedService],
 })
 export class RoomsModule {}

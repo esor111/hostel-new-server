@@ -99,6 +99,108 @@ export class RoomsService extends HostelScopedService<Room> {
     }
   }
 
+  // NEW: Lightweight room list for UI cards (no layout data)
+  async findAllLightweight(filters: any = {}, hostelId?: string) {
+    const { status = 'all', type = 'all', search = '', page = 1, limit = 20 } = filters;
+
+    console.log('🔍 RoomsService.findAllLightweight - hostelId:', hostelId);
+    console.log('🔍 RoomsService.findAllLightweight - filters:', filters);
+
+    // CRITICAL FIX: Distinguish between "no filter" vs "hostel not found"
+    if (hostelId !== undefined && hostelId !== null && hostelId !== '') {
+      const effectiveHostelId = await this.resolveHostelId(hostelId);
+
+      if (!effectiveHostelId) {
+        console.log('❌ Hostel not found for hostelId:', hostelId, '- returning empty results');
+        return {
+          items: [],
+          pagination: { page, limit, total: 0, totalPages: 0 }
+        };
+      }
+
+      // Lightweight query - only essential data for room cards
+      const queryBuilder = this.roomRepository.createQueryBuilder('room')
+        .leftJoinAndSelect('room.roomType', 'roomType')
+        .leftJoin('room.beds', 'beds')
+        .select([
+          'room.id',
+          'room.name', 
+          'room.roomNumber',
+          'room.bedCount',
+          'room.occupancy',
+          'room.gender',
+          'room.monthlyRate',
+          'room.status',
+          'room.maintenanceStatus',
+          'room.createdAt',
+          'room.updatedAt',
+          'roomType.name',
+          'roomType.baseDailyRate'
+        ])
+        .addSelect('COUNT(CASE WHEN beds.status = \'Available\' THEN 1 END)', 'availableBeds')
+        .groupBy('room.id, roomType.id');
+
+      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
+
+      if (status !== 'all') {
+        queryBuilder.andWhere('room.status = :status', { status });
+      }
+      if (type !== 'all') {
+        queryBuilder.andWhere('roomType.name = :type', { type });
+      }
+      if (search) {
+        queryBuilder.andWhere(
+          '(room.name ILIKE :search OR room.roomNumber ILIKE :search)',
+          { search: `%${search}%` }
+        );
+      }
+
+      const offset = (page - 1) * limit;
+      queryBuilder.skip(offset).take(limit);
+      queryBuilder.orderBy('room.createdAt', 'DESC');
+
+      const [rooms, total] = await queryBuilder.getManyAndCount();
+
+      // Transform to lightweight response
+      const transformedItems = rooms.map(room => ({
+        id: room.id,
+        name: room.name,
+        type: room.roomType?.name || 'Private',
+        bedCount: room.bedCount,
+        occupancy: room.occupancy,
+        gender: room.gender,
+        monthlyRate: room.monthlyRate || room.roomType?.baseMonthlyRate || 0,
+        dailyRate: room.roomType?.baseDailyRate || Math.round((room.monthlyRate || 0) / 30) || 0,
+        status: room.status,
+        roomNumber: room.roomNumber,
+        availableBeds: room.bedCount - room.occupancy, // Simple calculation
+        maintenanceStatus: room.maintenanceStatus,
+        createdAt: room.createdAt,
+        updatedAt: room.updatedAt,
+        // Minimal amenities count instead of full list
+        amenitiesCount: 0, // Will be populated separately if needed
+        hasLayout: false // Will be checked separately if needed
+      }));
+
+      return {
+        items: transformedItems,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      };
+    }
+
+    // No hostelId provided - return empty for security
+    console.log('⚠️ No hostelId provided - returning empty results for security');
+    return {
+      items: [],
+      pagination: { page, limit, total: 0, totalPages: 0 }
+    };
+  }
+
   async findAll(filters: any = {}, hostelId?: string) {
     const { status = 'all', type = 'all', search = '', page = 1, limit = 20 } = filters;
 
@@ -259,6 +361,96 @@ export class RoomsService extends HostelScopedService<Room> {
         total,
         totalPages: Math.ceil(total / limit)
       }
+    };
+  }
+
+  // NEW: Get room layout data separately for design view
+  async getRoomLayout(id: string, hostelId?: string) {
+    console.log('🎨 Getting room layout for room:', id);
+
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
+    const room = await this.roomRepository.findOne({
+      where: whereCondition,
+      relations: ['layout', 'beds'],
+      select: ['id', 'name', 'roomNumber', 'bedCount', 'gender', 'monthlyRate']
+    });
+
+    if (!room) {
+      throw new NotFoundException('Room not found');
+    }
+
+    if (!room.layout) {
+      return {
+        roomId: room.id,
+        roomName: room.name,
+        roomNumber: room.roomNumber,
+        layout: null,
+        message: 'No layout configured for this room'
+      };
+    }
+
+    // Merge bed data into layout for design view
+    let enhancedLayout = room.layout.layoutData;
+    
+    if (enhancedLayout?.bedPositions && room.beds?.length > 0) {
+      enhancedLayout.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+        enhancedLayout.bedPositions,
+        room.beds
+      );
+    }
+
+    return {
+      roomId: room.id,
+      roomName: room.name,
+      roomNumber: room.roomNumber,
+      layout: enhancedLayout,
+      bedCount: room.bedCount,
+      lastUpdated: room.layout.updatedAt
+    };
+  }
+
+  // NEW: Get bed status only for quick status checks
+  async getRoomBedStatus(id: string, hostelId?: string) {
+    console.log('🛏️ Getting bed status for room:', id);
+
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
+    const beds = await this.bedRepository.find({
+      where: { roomId: id },
+      select: ['id', 'bedNumber', 'bedIdentifier', 'status', 'currentOccupantName', 'monthlyRate']
+    });
+
+    const room = await this.roomRepository.findOne({
+      where: whereCondition,
+      select: ['id', 'name', 'roomNumber', 'bedCount', 'occupancy']
+    });
+
+    if (!room) {
+      throw new NotFoundException('Room not found');
+    }
+
+    return {
+      roomId: room.id,
+      roomName: room.name,
+      roomNumber: room.roomNumber,
+      totalBeds: room.bedCount,
+      occupancy: room.occupancy,
+      beds: beds.map(bed => ({
+        id: bed.id,
+        bedNumber: bed.bedNumber,
+        bedIdentifier: bed.bedIdentifier,
+        status: bed.status,
+        occupantName: bed.currentOccupantName,
+        monthlyRate: bed.monthlyRate,
+        color: this.getBedStatusColor(bed.status)
+      }))
     };
   }
 
