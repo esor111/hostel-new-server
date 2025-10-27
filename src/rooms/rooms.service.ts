@@ -550,6 +550,10 @@ export class RoomsService extends HostelScopedService<Room> {
     });
 
     const savedRoom = await this.roomRepository.save(room);
+    
+    // Debug: Verify images were saved
+    console.log('🖼️ Images saved to database:', savedRoom.images);
+    console.log('📊 Total images saved:', savedRoom.images?.length || 0);
 
     // Create amenities if provided
     if (createRoomDto.amenities && createRoomDto.amenities.length > 0) {
@@ -736,6 +740,7 @@ export class RoomsService extends HostelScopedService<Room> {
       rent: savedRoom.monthlyRate,
       hostelId: savedRoom.hostelId,
       status: savedRoom.status,
+      images: savedRoom.images || [], // Include images in response
       createdAt: savedRoom.createdAt
     };
   }
