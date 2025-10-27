@@ -171,7 +171,8 @@ export class DashboardService {
       .createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
       .where('student.status = :status', { status: StudentStatus.ACTIVE })
-      .orderBy('student.createdAt', 'DESC')
+      .orderBy('student.updatedAt', 'DESC')
+      .addOrderBy('student.createdAt', 'DESC')
       .limit(3)
       .getMany();
 

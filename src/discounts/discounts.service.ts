@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Discount, DiscountStatus } from './entities/discount.entity';
 import { DiscountType, DiscountCategory } from './entities/discount-type.entity';
+import { Student } from '../students/entities/student.entity';
 import { LedgerService } from '../ledger/ledger.service';
 
 @Injectable()
@@ -12,20 +13,22 @@ export class DiscountsService {
     private discountRepository: Repository<Discount>,
     @InjectRepository(DiscountType)
     private discountTypeRepository: Repository<DiscountType>,
+    @InjectRepository(Student)
+    private studentRepository: Repository<Student>,
     private ledgerService: LedgerService,
-  ) {}
+  ) { }
 
   async findAll(filters: any = {}, hostelId?: string) {
-    const { 
-      page = 1, 
-      limit = 50, 
-      studentId, 
+    const {
+      page = 1,
+      limit = 50,
+      studentId,
       status,
       dateFrom,
       dateTo,
-      search 
+      search
     } = filters;
-    
+
     const queryBuilder = this.discountRepository.createQueryBuilder('discount')
       .leftJoinAndSelect('discount.student', 'student')
       .leftJoinAndSelect('student.room', 'room')
@@ -35,43 +38,43 @@ export class DiscountsService {
     if (hostelId) {
       queryBuilder.andWhere('discount.hostelId = :hostelId', { hostelId });
     }
-    
+
     // Apply filters
     if (studentId) {
       queryBuilder.andWhere('discount.studentId = :studentId', { studentId });
     }
-    
+
     if (status) {
       queryBuilder.andWhere('discount.status = :status', { status });
     }
-    
+
     if (dateFrom) {
       queryBuilder.andWhere('discount.date >= :dateFrom', { dateFrom });
     }
-    
+
     if (dateTo) {
       queryBuilder.andWhere('discount.date <= :dateTo', { dateTo });
     }
-    
+
     if (search) {
       queryBuilder.andWhere(
         '(student.name ILIKE :search OR discount.reason ILIKE :search)',
         { search: `%${search}%` }
       );
     }
-    
+
     // Apply pagination
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
-    
+
     // Order by date
     queryBuilder.orderBy('discount.date', 'DESC');
-    
+
     const [discounts, total] = await queryBuilder.getManyAndCount();
-    
+
     // Transform to API response format
     const transformedItems = discounts.map(discount => this.transformToApiResponse(discount));
-    
+
     return {
       items: transformedItems,
       pagination: {
@@ -94,11 +97,11 @@ export class DiscountsService {
       where: whereCondition,
       relations: ['student', 'student.room', 'discountType']
     });
-    
+
     if (!discount) {
       throw new NotFoundException('Discount not found');
     }
-    
+
     return this.transformToApiResponse(discount);
   }
 
@@ -108,18 +111,31 @@ export class DiscountsService {
       relations: ['student', 'student.room', 'discountType'],
       order: { date: 'DESC' }
     });
-    
+
     return discounts.map(discount => this.transformToApiResponse(discount));
   }
 
   async create(createDiscountDto: any) {
+    // First, fetch the student to get the hostelId
+    const student = await this.studentRepository.findOne({
+      where: { id: createDiscountDto.studentId }
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${createDiscountDto.studentId} not found`);
+    }
+
+    if (!student.hostelId) {
+      throw new NotFoundException(`Student ${createDiscountDto.studentId} is not associated with any hostel`);
+    }
+
     // Find or create discount type if provided
     let discountType = null;
     if (createDiscountDto.discountType) {
-      discountType = await this.discountTypeRepository.findOne({ 
-        where: { name: createDiscountDto.discountType } 
+      discountType = await this.discountTypeRepository.findOne({
+        where: { name: createDiscountDto.discountType }
       });
-      
+
       if (!discountType) {
         // Create basic discount type if it doesn't exist
         discountType = await this.discountTypeRepository.save({
@@ -144,10 +160,11 @@ export class DiscountsService {
     // Generate custom discount ID if not provided
     const discountId = createDiscountDto.id || this.generateDiscountId();
 
-    // Create discount entity
+    // Create discount entity with hostelId from student
     const discount = this.discountRepository.create({
       id: discountId,
       studentId: createDiscountDto.studentId,
+      hostelId: student.hostelId, // Set the hostelId from the student
       discountTypeId: discountType?.id,
       amount: finalAmount,
       reason: createDiscountDto.reason,
@@ -171,12 +188,12 @@ export class DiscountsService {
       await this.ledgerService.createDiscountEntry(savedDiscount);
     }
 
-    return this.findOne(savedDiscount.id);
+    return this.findOne(savedDiscount.id, student.hostelId);
   }
 
   async update(id: string, updateDiscountDto: any) {
     const discount = await this.findOne(id);
-    
+
     // Update main discount entity
     await this.discountRepository.update(id, {
       amount: updateDiscountDto.amount,
@@ -224,24 +241,24 @@ export class DiscountsService {
     }
 
     const totalDiscounts = await this.discountRepository.count({ where: baseWhere });
-    const activeDiscounts = await this.discountRepository.count({ 
-      where: { ...baseWhere, status: DiscountStatus.ACTIVE } 
+    const activeDiscounts = await this.discountRepository.count({
+      where: { ...baseWhere, status: DiscountStatus.ACTIVE }
     });
-    const expiredDiscounts = await this.discountRepository.count({ 
-      where: { ...baseWhere, status: DiscountStatus.EXPIRED } 
+    const expiredDiscounts = await this.discountRepository.count({
+      where: { ...baseWhere, status: DiscountStatus.EXPIRED }
     });
-    
+
     const amountQueryBuilder = this.discountRepository
       .createQueryBuilder('discount')
       .select('SUM(discount.amount)', 'totalAmount')
       .addSelect('AVG(discount.amount)', 'averageAmount')
       .addSelect('COUNT(DISTINCT discount.studentId)', 'studentsWithDiscounts')
       .where('discount.status = :status', { status: DiscountStatus.ACTIVE });
-    
+
     if (hostelId) {
       amountQueryBuilder.andWhere('discount.hostelId = :hostelId', { hostelId });
     }
-    
+
     const amountResult = await amountQueryBuilder.getRawOne();
 
     // Discount type breakdown
@@ -252,11 +269,11 @@ export class DiscountsService {
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(discount.amount)', 'amount')
       .where('discount.status = :status', { status: DiscountStatus.ACTIVE });
-    
+
     if (hostelId) {
       typeQueryBuilder.andWhere('discount.hostelId = :hostelId', { hostelId });
     }
-    
+
     const typeResult = await typeQueryBuilder
       .groupBy('discountType.name')
       .getRawMany();

@@ -4,6 +4,7 @@ import { DiscountsController } from './discounts.controller';
 import { DiscountsService } from './discounts.service';
 import { Discount } from './entities/discount.entity';
 import { DiscountType } from './entities/discount-type.entity';
+import { Student } from '../students/entities/student.entity';
 import { LedgerModule } from '../ledger/ledger.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
 
@@ -12,6 +13,7 @@ import { Hostel } from '../hostel/entities/hostel.entity';
     TypeOrmModule.forFeature([
       Discount,
       DiscountType,
+      Student,
       Hostel
     ]),
     LedgerModule // Import for ledger integration

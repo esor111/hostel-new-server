@@ -78,8 +78,9 @@ export class StudentsService { // Removed HostelScopedService extension for back
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
     
-    // Order by creation date
-    queryBuilder.orderBy('student.createdAt', 'DESC');
+    // Order by updated date first (for recently configured students), then creation date
+    queryBuilder.orderBy('student.updatedAt', 'DESC')
+                .addOrderBy('student.createdAt', 'DESC');
     
     const [students, total] = await queryBuilder.getManyAndCount();
     
@@ -564,8 +565,9 @@ export class StudentsService { // Removed HostelScopedService extension for back
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
 
-    // Order by relevance (name match first, then creation date)
-    queryBuilder.orderBy('student.createdAt', 'DESC');
+    // Order by relevance (name match first, then updated date, then creation date)
+    queryBuilder.orderBy('student.updatedAt', 'DESC')
+                .addOrderBy('student.createdAt', 'DESC');
 
     const [students, total] = await queryBuilder.getManyAndCount();
 

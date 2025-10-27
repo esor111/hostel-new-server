@@ -136,6 +136,7 @@ export class LedgerService {
 
     const entry = this.ledgerRepository.create({
       studentId: invoice.studentId,
+      hostelId: invoice.hostelId, // Add the hostelId from the invoice
       date: new Date(),
       type: LedgerEntryType.INVOICE,
       description: `Invoice for ${invoice.month} - ${invoice.student?.name}`,
@@ -201,6 +202,7 @@ export class LedgerService {
 
     const entry = this.ledgerRepository.create({
       studentId: discount.studentId,
+      hostelId: discount.hostelId, // Add the hostelId from the discount
       date: discount.date,
       type: LedgerEntryType.DISCOUNT,
       description: `Discount applied - ${discount.reason} - ${discount.student?.name}`,
@@ -236,6 +238,7 @@ export class LedgerService {
 
     const entry = this.ledgerRepository.create({
       studentId,
+      hostelId: student.hostelId, // Add the hostelId from the student
       date: new Date(),
       type: LedgerEntryType.ADJUSTMENT,
       description: `${type.toUpperCase()} Adjustment - ${description} - ${student.name}`,
@@ -279,6 +282,7 @@ export class LedgerService {
 
     const reversalEntry = this.ledgerRepository.create({
       studentId: entry.studentId,
+      hostelId: entry.hostelId, // Add the hostelId from the original entry
       date: new Date(),
       type: entry.type,
       description: `REVERSAL: ${entry.description} - ${reason}`,
