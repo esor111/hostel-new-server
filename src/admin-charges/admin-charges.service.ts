@@ -10,7 +10,6 @@ import { CreateAdminChargeDto } from "./dto/create-admin-charge.dto";
 import { UpdateAdminChargeDto } from "./dto/update-admin-charge.dto";
 import { Student } from "../students/entities/student.entity";
 import { LedgerService } from "../ledger/ledger.service";
-import { LedgerEntryType } from "../ledger/entities/ledger-entry.entity";
 
 @Injectable()
 export class AdminChargesService {

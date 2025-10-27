@@ -238,4 +238,72 @@ export class AdminChargesController {
       };
     }
   }
+
+  @Post('apply-to-students')
+  async applyChargeToStudents(@Body() applyData: { chargeId: string; studentIds: string[]; notes?: string }) {
+    try {
+      // For now, we'll apply individual charges to each student
+      // This could be enhanced to create a single charge and apply to multiple students
+      const results = [];
+      for (const studentId of applyData.studentIds) {
+        const result = await this.adminChargesService.applyCharge(applyData.chargeId);
+        results.push(result);
+      }
+      
+      return {
+        success: true,
+        data: results,
+        message: 'Charges applied to students successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        statusCode: HttpStatus.BAD_REQUEST
+      };
+    }
+  }
+
+  @Patch('bulk-update')
+  async bulkUpdateCharges(@Body() bulkData: { chargeIds: string[]; updateData: UpdateAdminChargeDto }) {
+    try {
+      const results = [];
+      for (const chargeId of bulkData.chargeIds) {
+        const result = await this.adminChargesService.update(chargeId, bulkData.updateData);
+        results.push(result);
+      }
+      
+      return {
+        success: true,
+        data: results,
+        message: 'Charges updated successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        statusCode: HttpStatus.BAD_REQUEST
+      };
+    }
+  }
+
+  @Post('bulk-delete')
+  async bulkDeleteCharges(@Body() bulkData: { chargeIds: string[] }) {
+    try {
+      for (const chargeId of bulkData.chargeIds) {
+        await this.adminChargesService.remove(chargeId);
+      }
+      
+      return {
+        success: true,
+        message: 'Charges deleted successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        statusCode: HttpStatus.BAD_REQUEST
+      };
+    }
+  }
 }

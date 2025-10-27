@@ -139,7 +139,7 @@ export class LedgerService {
       hostelId: invoice.hostelId, // Add the hostelId from the invoice
       date: new Date(),
       type: LedgerEntryType.INVOICE,
-      description: `Invoice for ${invoice.month} - ${invoice.student?.name}`,
+      description: `Invoice for ${invoice.month} - ${student.name}`,
       referenceId: invoice.id,
       debit: invoiceAmount,
       credit: 0,
@@ -172,7 +172,7 @@ export class LedgerService {
       hostelId: payment.hostelId || student.hostelId || 'default-hostel',
       date: payment.paymentDate,
       type: LedgerEntryType.PAYMENT,
-      description: `Payment received - ${payment.paymentMethod} - ${payment.student?.name}`,
+      description: `Payment received - ${payment.paymentMethod} - ${student.name}`,
       referenceId: payment.id,
       debit: 0,
       credit: paymentAmount,
@@ -205,7 +205,7 @@ export class LedgerService {
       hostelId: discount.hostelId, // Add the hostelId from the discount
       date: discount.date,
       type: LedgerEntryType.DISCOUNT,
-      description: `Discount applied - ${discount.reason} - ${discount.student?.name}`,
+      description: `Discount applied - ${discount.reason} - ${student.name}`,
       referenceId: discount.id,
       debit: 0,
       credit: discountAmount,
