@@ -411,6 +411,10 @@ export class SeedService {
         description: "Double occupancy room on first floor",
         buildingId: building?.id,
         roomTypeId: roomType?.id,
+        images: [
+          "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800&h=600&fit=crop"
+        ],
       },
       {
         name: "Room 102",
@@ -423,6 +427,10 @@ export class SeedService {
         description: "Double occupancy room on first floor",
         buildingId: building?.id,
         roomTypeId: roomType?.id,
+        images: [
+          "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop"
+        ],
       },
       {
         name: "Room 201",
@@ -435,6 +443,11 @@ export class SeedService {
         description: "Single occupancy room on second floor",
         buildingId: building?.id,
         roomTypeId: roomType?.id,
+        images: [
+          "https://images.unsplash.com/photo-1540518614846-7eded433c457?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?w=800&h=600&fit=crop"
+        ],
       },
     ];
 
@@ -478,6 +491,10 @@ export class SeedService {
         buildingId: building?.id,
         roomTypeId: roomType?.id,
         hostelId: hostelId,
+        images: [
+          "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800&h=600&fit=crop"
+        ],
       },
       {
         name: "Room 102",
@@ -491,6 +508,10 @@ export class SeedService {
         buildingId: building?.id,
         roomTypeId: roomType?.id,
         hostelId: hostelId,
+        images: [
+          "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop"
+        ],
       },
       {
         name: "Room 201",
@@ -504,6 +525,11 @@ export class SeedService {
         buildingId: building?.id,
         roomTypeId: roomType?.id,
         hostelId: hostelId,
+        images: [
+          "https://images.unsplash.com/photo-1540518614846-7eded433c457?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800&h=600&fit=crop",
+          "https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?w=800&h=600&fit=crop"
+        ],
       },
     ];
 
@@ -2157,5 +2183,63 @@ export class SeedService {
 
     this.logger.log(`${entityType} data cleared successfully`);
     return result;
+  }
+
+  // Add images to existing rooms that don't have any
+  async addImagesToExistingRooms() {
+    this.logger.log('🖼️ Adding images to existing rooms...');
+
+    const sampleImages = [
+      [
+        "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800&h=600&fit=crop"
+      ],
+      [
+        "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop"
+      ],
+      [
+        "https://images.unsplash.com/photo-1540518614846-7eded433c457?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?w=800&h=600&fit=crop"
+      ],
+      [
+        "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&h=600&fit=crop"
+      ],
+      [
+        "https://images.unsplash.com/photo-1571508601891-ca5e7a713859?w=800&h=600&fit=crop",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop"
+      ]
+    ];
+
+    // Find rooms without images (null or empty array)
+    const allRooms = await this.roomRepository.find();
+    const roomsWithoutImages = allRooms.filter(room => 
+      !room.images || room.images.length === 0
+    );
+
+    this.logger.log(`Found ${roomsWithoutImages.length} rooms without images out of ${allRooms.length} total rooms`);
+
+    let updatedCount = 0;
+    for (const room of roomsWithoutImages) {
+      const randomImageSet = sampleImages[updatedCount % sampleImages.length];
+      
+      await this.roomRepository.update(room.id, {
+        images: randomImageSet
+      });
+      
+      this.logger.log(`✅ Added ${randomImageSet.length} images to room ${room.name} (${room.roomNumber})`);
+      updatedCount++;
+    }
+
+    this.logger.log(`✅ Successfully added images to ${updatedCount} rooms`);
+    
+    return { 
+      count: updatedCount, 
+      message: `Added images to ${updatedCount} rooms`,
+      totalRooms: allRooms.length,
+      roomsWithImages: allRooms.length - roomsWithoutImages.length + updatedCount
+    };
   }
 }

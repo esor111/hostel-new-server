@@ -240,6 +240,8 @@ export class RoomsService extends HostelScopedService<Room> {
         .leftJoinAndSelect('room.layout', 'layout')
         .leftJoinAndSelect('room.beds', 'beds');
 
+
+
       // Apply hostel filter
       queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
 
@@ -282,6 +284,8 @@ export class RoomsService extends HostelScopedService<Room> {
           );
         }
       }
+
+
 
       // Transform to API response format (EXACT same as current JSON structure)
       const transformedItems = await Promise.all(rooms.map(room => this.transformToApiResponse(room)));
@@ -500,6 +504,8 @@ export class RoomsService extends HostelScopedService<Room> {
     console.log('🏨 Hostel ID received:', hostelId);
     console.log('📐 Layout check - has layout?', !!createRoomDto.layout);
     console.log('📐 Layout elements count:', createRoomDto.layout?.elements?.length || 0);
+    
+
 
     // If hostelId is not provided, we need to get it from the authenticated user's businessId
     // This is a fallback for when the middleware/interceptor doesn't work

@@ -21,7 +21,9 @@ export class RoomsController {
     private readonly bedService: BedService,
     private readonly bedSyncService: BedSyncService,
     private readonly hostelService: HostelService
-  ) { }
+  ) {
+    console.log('🏠 RoomsController initialized');
+  }
 
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
@@ -43,7 +45,7 @@ export class RoomsController {
     // SIMPLIFIED: Use query.hostelId directly, let the service handle flexible resolution
     // No JWT token required - purely query-parameter based
     const queryHostelId = query.hostelId || null;
-    
+
     console.log('🎯 Using query hostelId for flexible resolution:', queryHostelId);
 
     const result = await this.roomsService.findAll(query, queryHostelId);
@@ -61,10 +63,10 @@ export class RoomsController {
   @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getRoomStats(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
     console.log('📊 getRoomStats - query.hostelId:', query.hostelId);
-    
+
     // SIMPLIFIED: Use query.hostelId directly for flexible resolution
     const queryHostelId = query.hostelId || null;
-    
+
     const stats = await this.roomsService.getStats(queryHostelId);
 
     // Return EXACT same format as current Express API
@@ -80,10 +82,10 @@ export class RoomsController {
   @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getAvailableRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
     console.log('🏠 getAvailableRooms - query.hostelId:', query.hostelId);
-    
+
     // SIMPLIFIED: Use query.hostelId directly for flexible resolution
     const queryHostelId = query.hostelId || null;
-    
+
     const availableRooms = await this.roomsService.getAvailableRooms(queryHostelId);
 
     // Return EXACT same format as current Express API
@@ -102,10 +104,10 @@ export class RoomsController {
   @ApiResponse({ status: 404, description: 'Room not found' })
   async getRoomById(@Param('id') id: string, @Query() query: any, @GetOptionalHostelId() hostelId?: string) {
     console.log('🏠 getRoomById - query.hostelId:', query.hostelId);
-    
+
     // SIMPLIFIED: Use query.hostelId directly for flexible resolution
     const queryHostelId = query.hostelId || null;
-    
+
     const room = await this.roomsService.findOne(id, queryHostelId);
 
     // Return EXACT same format as current Express API
@@ -123,10 +125,18 @@ export class RoomsController {
   @ApiResponse({ status: 401, description: 'Unauthorized - Invalid token' })
   @ApiResponse({ status: 403, description: 'Forbidden - Business token required' })
   async createRoom(@Body() createRoomDto: CreateRoomDto, @CurrentUser() user: JwtPayload) {
-    console.log('🔧 User businessId:', user.businessId);
+    console.log('🚨🚨🚨 ROOM CONTROLLER - CREATE ENDPOINT HIT! 🚨🚨🚨');
+    console.log('📥 Request received at:', new Date().toISOString());
+    console.log('👤 User object:', user);
+    console.log('🔧 User businessId:', user?.businessId);
+
+    // 🖼️ CONTROLLER DEBUG - Check what we received from frontend
+    console.log('🖼️ CONTROLLER DEBUG - Raw DTO:', JSON.stringify(createRoomDto, null, 2));
+    console.log('🖼️ CONTROLLER DEBUG - Raw DTO images:', createRoomDto.images);
+    console.log('🖼️ CONTROLLER DEBUG - DTO images type:', typeof createRoomDto.images);
+    console.log('🖼️ CONTROLLER DEBUG - DTO images length:', createRoomDto.images?.length || 0);
 
     // Get hostel ID from the authenticated user's businessId
-    // The HostelAuthWithContextGuard ensures hostel exists and sets up context
     const hostel = await this.hostelService.ensureHostelExists(user.businessId);
 
     console.log('🏨 Using hostel:', hostel.name, 'ID:', hostel.id);
