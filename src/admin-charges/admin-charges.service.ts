@@ -19,7 +19,7 @@ export class AdminChargesService {
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
     private ledgerService: LedgerService
-  ) {}
+  ) { }
 
   async create(
     createAdminChargeDto: CreateAdminChargeDto
@@ -264,22 +264,22 @@ export class AdminChargesService {
       .createQueryBuilder("charge")
       .select("SUM(CAST(charge.amount AS DECIMAL))", "total")
       .where("charge.status = :status", { status: AdminChargeStatus.PENDING });
-    
+
     if (hostelId) {
       pendingAmountQueryBuilder.andWhere("charge.hostelId = :hostelId", { hostelId });
     }
-    
+
     const pendingAmount = await pendingAmountQueryBuilder.getRawOne();
 
     const appliedAmountQueryBuilder = this.adminChargeRepository
       .createQueryBuilder("charge")
       .select("SUM(CAST(charge.amount AS DECIMAL))", "total")
       .where("charge.status = :status", { status: AdminChargeStatus.APPLIED });
-    
+
     if (hostelId) {
       appliedAmountQueryBuilder.andWhere("charge.hostelId = :hostelId", { hostelId });
     }
-    
+
     const appliedAmount = await appliedAmountQueryBuilder.getRawOne();
 
     return {

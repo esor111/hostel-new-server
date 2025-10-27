@@ -378,5 +378,83 @@ export class LedgerService {
     return (lastEntry?.entryNumber || 0) + 1;
   }
 
+  /**
+   * Fix existing ledger entries that have "undefined" in their descriptions
+   * This method should be called once to clean up existing data
+   */
+  async fixUndefinedDescriptions(): Promise<{ fixed: number; errors: string[] }> {
+    const errors: string[] = [];
+    let fixedCount = 0;
 
+    try {
+      // Find all entries with "undefined" in description
+      const entriesWithUndefined = await this.ledgerRepository
+        .createQueryBuilder('entry')
+        .leftJoinAndSelect('entry.student', 'student')
+        .where('entry.description LIKE :pattern', { pattern: '%undefined%' })
+        .getMany();
+
+      console.log(`Found ${entriesWithUndefined.length} entries with undefined descriptions`);
+
+      for (const entry of entriesWithUndefined) {
+        try {
+          let newDescription = entry.description;
+
+          // Get student if not loaded
+          let student = entry.student;
+          if (!student && entry.studentId) {
+            student = await this.studentRepository.findOne({ 
+              where: { id: entry.studentId } 
+            });
+          }
+
+          if (student) {
+            // Fix payment descriptions
+            if (entry.description.includes('Payment received') && entry.description.includes('undefined')) {
+              const parts = entry.description.split(' - ');
+              if (parts.length >= 3) {
+                newDescription = `Payment received - ${parts[1]} - ${student.name}`;
+              }
+            }
+            
+            // Fix invoice descriptions
+            else if (entry.description.includes('Invoice for') && entry.description.includes('undefined')) {
+              const parts = entry.description.split(' - ');
+              if (parts.length >= 2) {
+                newDescription = `Invoice for ${parts[0].replace('Invoice for ', '')} - ${student.name}`;
+              }
+            }
+            
+            // Fix discount descriptions
+            else if (entry.description.includes('Discount applied') && entry.description.includes('undefined')) {
+              const parts = entry.description.split(' - ');
+              if (parts.length >= 3) {
+                newDescription = `Discount applied - ${parts[1]} - ${student.name}`;
+              }
+            }
+
+            // Update if description changed
+            if (newDescription !== entry.description) {
+              await this.ledgerRepository.update(entry.id, { 
+                description: newDescription 
+              });
+              fixedCount++;
+              console.log(`Fixed entry ${entry.id}: "${entry.description}" -> "${newDescription}"`);
+            }
+          } else {
+            errors.push(`Could not find student for entry ${entry.id} (studentId: ${entry.studentId})`);
+          }
+        } catch (error) {
+          errors.push(`Error fixing entry ${entry.id}: ${error.message}`);
+        }
+      }
+
+      console.log(`Fixed ${fixedCount} entries with ${errors.length} errors`);
+      return { fixed: fixedCount, errors };
+
+    } catch (error) {
+      console.error('Error in fixUndefinedDescriptions:', error);
+      throw error;
+    }
+  }
 }

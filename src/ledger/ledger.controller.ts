@@ -95,4 +95,28 @@ export class LedgerController {
       data: result
     };
   }
+
+  @Post('fix-undefined-descriptions')
+  @ApiOperation({ summary: 'Fix existing ledger entries with undefined descriptions' })
+  @ApiResponse({ status: 200, description: 'Undefined descriptions fixed successfully' })
+  async fixUndefinedDescriptions() {
+    try {
+      const result = await this.ledgerService.fixUndefinedDescriptions();
+      
+      return {
+        status: HttpStatus.OK,
+        message: `Fixed ${result.fixed} entries`,
+        data: {
+          fixed: result.fixed,
+          errors: result.errors
+        }
+      };
+    } catch (error) {
+      return {
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        message: 'Failed to fix undefined descriptions',
+        error: error.message
+      };
+    }
+  }
 }
