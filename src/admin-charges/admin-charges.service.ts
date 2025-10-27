@@ -38,6 +38,7 @@ export class AdminChargesService {
 
     const adminCharge = this.adminChargeRepository.create({
       ...createAdminChargeDto,
+      hostelId: student.hostelId, // 🔧 CRITICAL FIX: Add hostelId from student
       dueDate: createAdminChargeDto.dueDate
         ? new Date(createAdminChargeDto.dueDate)
         : null,
