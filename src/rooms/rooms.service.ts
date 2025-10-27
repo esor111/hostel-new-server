@@ -1144,12 +1144,26 @@ export class RoomsService extends HostelScopedService<Room> {
       }
     }
 
+    // 🔧 FIXED: Calculate bed count using unified rule (bed elements, not sleeping spots)
+    let calculatedBedCount = room.bedCount;
+    let calculatedAvailableBeds = availableBeds;
+
+    if (enhancedLayout?.bedPositions) {
+      // 🎯 KEY FIX: Count bed ELEMENTS (not sleeping spots)
+      const bedElements = enhancedLayout.bedPositions.filter((pos: any) =>
+        pos.type === 'single-bed' || pos.type === 'bunk-bed'
+      );
+      calculatedBedCount = bedElements.length; // Each bed element = 1 bookable unit
+      calculatedAvailableBeds = Math.max(0, calculatedBedCount - actualOccupancy);
+    }
+
     // Return EXACT same structure as current JSON with enhanced bed data
     return {
       id: room.id,
       name: room.name,
       type: room.roomType?.name || 'Private', // Default fallback
-      bedCount: room.bedCount,
+      bedCount: calculatedBedCount, // 🔧 FIXED: Use calculated bed count
+      capacity: calculatedBedCount, // Same as bedCount for consistency
       occupancy: actualOccupancy, // Use bed-based occupancy if available
       gender: room.gender,
       monthlyRate: room.monthlyRate || room.roomType?.baseMonthlyRate || 0,
@@ -1160,7 +1174,7 @@ export class RoomsService extends HostelScopedService<Room> {
       floor: room.building?.name || 'Ground Floor', // Fallback
       roomNumber: room.roomNumber,
       occupants: occupants,
-      availableBeds: availableBeds, // Use bed-based calculation if available
+      availableBeds: calculatedAvailableBeds, // 🔧 FIXED: Use calculated available beds
       lastCleaned: room.lastCleaned,
       maintenanceStatus: room.maintenanceStatus,
       pricingModel: room.roomType?.pricingModel || 'monthly',
@@ -1752,4 +1766,6 @@ export class RoomsService extends HostelScopedService<Room> {
       notes: maintenanceData.notes
     };
   }
+
+
 }
