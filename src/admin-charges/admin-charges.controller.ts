@@ -14,6 +14,7 @@ import { AdminChargesService } from './admin-charges.service';
 import { CreateAdminChargeDto } from './dto/create-admin-charge.dto';
 import { UpdateAdminChargeDto } from './dto/update-admin-charge.dto';
 import { AdminChargeStatus } from './entities/admin-charge.entity';
+import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
 
 @Controller('admin-charges')
 export class AdminChargesController {
@@ -45,6 +46,7 @@ export class AdminChargesController {
     @Query('category') category?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @GetOptionalHostelId() hostelId?: string,
   ) {
     try {
       const filters = {
@@ -61,7 +63,7 @@ export class AdminChargesController {
         filters[key] === undefined && delete filters[key]
       );
       
-      const result = await this.adminChargesService.findAll(filters);
+      const result = await this.adminChargesService.findAll(filters, hostelId);
       return {
         success: true,
         data: result.items,
@@ -78,9 +80,9 @@ export class AdminChargesController {
   }
 
   @Get('stats')
-  async getStats() {
+  async getStats(@GetOptionalHostelId() hostelId?: string) {
     try {
-      const result = await this.adminChargesService.getChargeStats();
+      const result = await this.adminChargesService.getChargeStats(hostelId);
       return {
         success: true,
         data: result,
@@ -114,9 +116,9 @@ export class AdminChargesController {
   }
 
   @Get('today-summary')
-  async getTodaySummary() {
+  async getTodaySummary(@GetOptionalHostelId() hostelId?: string) {
     try {
-      const result = await this.adminChargesService.getTodaySummary();
+      const result = await this.adminChargesService.getTodaySummary(hostelId);
       return {
         success: true,
         data: result,

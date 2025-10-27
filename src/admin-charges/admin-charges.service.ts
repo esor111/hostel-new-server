@@ -44,7 +44,29 @@ export class AdminChargesService {
         : null,
     });
 
-    return await this.adminChargeRepository.save(adminCharge);
+    // Save the charge first
+    const savedCharge = await this.adminChargeRepository.save(adminCharge);
+
+    // 🔧 AUTO-APPLY: Automatically apply charge to ledger upon creation
+    try {
+      // Create ledger entry using the existing createAdjustmentEntry method
+      await this.ledgerService.createAdjustmentEntry(
+        savedCharge.studentId,
+        savedCharge.amount,
+        `Admin Charge: ${savedCharge.title}${savedCharge.description ? " - " + savedCharge.description : ""}`,
+        "debit"
+      );
+
+      // Update charge status to APPLIED
+      savedCharge.status = AdminChargeStatus.APPLIED;
+      savedCharge.appliedDate = new Date();
+
+      return await this.adminChargeRepository.save(savedCharge);
+    } catch (error) {
+      // If ledger application fails, delete the charge to maintain consistency
+      await this.adminChargeRepository.remove(savedCharge);
+      throw new BadRequestException(`Failed to apply charge to ledger: ${error.message}`);
+    }
   }
 
   async findAll(filters?: {
@@ -198,7 +220,16 @@ export class AdminChargesService {
   }
 
   async getChargesByStudent(studentId: string): Promise<AdminCharge[]> {
-    const result = await this.findAll({ studentId });
+    // Get student to extract hostelId for proper filtering
+    const student = await this.studentRepository.findOne({
+      where: { id: studentId },
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${studentId} not found`);
+    }
+
+    const result = await this.findAll({ studentId }, student.hostelId);
     return result.items;
   }
 
@@ -300,7 +331,7 @@ export class AdminChargesService {
     });
   }
 
-  async getTodaySummary(): Promise<{
+  async getTodaySummary(hostelId?: string): Promise<{
     totalCharges: number;
     totalAmount: number;
     studentsCharged: number;
@@ -310,11 +341,17 @@ export class AdminChargesService {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const todayCharges = await this.adminChargeRepository
+    const queryBuilder = this.adminChargeRepository
       .createQueryBuilder('charge')
       .where('charge.createdAt >= :today', { today })
-      .andWhere('charge.createdAt < :tomorrow', { tomorrow })
-      .getMany();
+      .andWhere('charge.createdAt < :tomorrow', { tomorrow });
+
+    // Apply hostel filter if provided
+    if (hostelId) {
+      queryBuilder.andWhere('charge.hostelId = :hostelId', { hostelId });
+    }
+
+    const todayCharges = await queryBuilder.getMany();
 
     const totalCharges = todayCharges.length;
     const totalAmount = todayCharges.reduce((sum, charge) => sum + parseFloat(charge.amount?.toString() || '0'), 0);
