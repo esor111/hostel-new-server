@@ -4,6 +4,7 @@ import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { Payment } from './entities/payment.entity';
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
+import { Student } from '../students/entities/student.entity';
 import { LedgerModule } from '../ledger/ledger.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
 
@@ -12,6 +13,7 @@ import { Hostel } from '../hostel/entities/hostel.entity';
     TypeOrmModule.forFeature([
       Payment,
       PaymentInvoiceAllocation,
+      Student,
       Hostel
     ]),
     LedgerModule // Import LedgerModule for integration

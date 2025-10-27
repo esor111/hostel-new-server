@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentStatus, PaymentMethod } from './entities/payment.entity';
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
+import { Student } from '../students/entities/student.entity';
 import { LedgerService } from '../ledger/ledger.service';
 
 @Injectable()
@@ -12,6 +13,8 @@ export class PaymentsService {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(PaymentInvoiceAllocation)
     private allocationRepository: Repository<PaymentInvoiceAllocation>,
+    @InjectRepository(Student)
+    private studentRepository: Repository<Student>,
     private ledgerService: LedgerService,
   ) {}
 
@@ -121,9 +124,19 @@ export class PaymentsService {
   }
 
   async create(createPaymentDto: any) {
+    // Get student to retrieve hostelId
+    const student = await this.studentRepository.findOne({
+      where: { id: createPaymentDto.studentId }
+    });
+
+    if (!student) {
+      throw new Error(`Student with ID ${createPaymentDto.studentId} not found`);
+    }
+
     // Create payment entity - let TypeORM generate UUID automatically
     const payment = this.paymentRepository.create({
       studentId: createPaymentDto.studentId,
+      hostelId: student.hostelId || 'default-hostel', // Use student's hostelId or default
       amount: createPaymentDto.amount,
       paymentMethod: createPaymentDto.paymentMethod,
       paymentDate: createPaymentDto.paymentDate || new Date(),

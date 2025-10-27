@@ -168,6 +168,7 @@ export class LedgerService {
 
     const entry = this.ledgerRepository.create({
       studentId: payment.studentId,
+      hostelId: payment.hostelId || student.hostelId || 'default-hostel',
       date: payment.paymentDate,
       type: LedgerEntryType.PAYMENT,
       description: `Payment received - ${payment.paymentMethod} - ${payment.student?.name}`,
