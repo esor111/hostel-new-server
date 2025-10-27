@@ -1580,6 +1580,29 @@ export class RoomsService extends HostelScopedService<Room> {
         });
       }
 
+      // 🔧 CRITICAL FIX: Update room's bedCount to match layout
+      // Calculate bed count from layout elements using unified rule
+      let newBedCount = 0;
+      if (layoutData.elements) {
+        const bedElements = layoutData.elements.filter((element: any) =>
+          element.type === 'single-bed' || element.type === 'bunk-bed'
+        );
+        newBedCount = bedElements.length; // Each bed element = 1 bookable unit
+      } else if (deduplicatedBedPositions) {
+        const bedPositions = deduplicatedBedPositions.filter((pos: any) =>
+          pos.type === 'single-bed' || pos.type === 'bunk-bed'
+        );
+        newBedCount = bedPositions.length;
+      }
+
+      // Update room's bedCount if it changed
+      if (newBedCount > 0 && room.bedCount !== newBedCount) {
+        console.log(`🔄 Updating room bedCount: ${room.bedCount} → ${newBedCount}`);
+        await this.roomRepository.update(roomId, {
+          bedCount: newBedCount
+        });
+      }
+
       // Create bed entities directly from layout data (NEW APPROACH)
       // This ensures all beds are created immediately when layout is saved
       console.log('🛏️ Creating bed entities directly from layout data');
@@ -1591,7 +1614,7 @@ export class RoomsService extends HostelScopedService<Room> {
         throw error;
       }
 
-      console.log('✅ Layout updated successfully');
+      console.log('✅ Layout updated successfully with synchronized bedCount');
     } catch (error) {
       console.error('❌ Error updating room layout:', error);
       throw error;
