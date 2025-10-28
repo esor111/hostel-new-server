@@ -24,6 +24,7 @@ import { Payment } from '../payments/entities/payment.entity';
 import { PaymentInvoiceAllocation } from '../payments/entities/payment-invoice-allocation.entity';
 
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
+import { LedgerEntryV2 } from '../ledger-v2/entities/ledger-entry-v2.entity';
 
 import { Discount } from '../discounts/entities/discount.entity';
 import { DiscountType } from '../discounts/entities/discount-type.entity';
@@ -73,6 +74,7 @@ export const dataSourceOptions: DataSourceOptions = {
     Payment,
     PaymentInvoiceAllocation,
     LedgerEntry,
+    LedgerEntryV2,
     
     // Discount entities
     Discount,

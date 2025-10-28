@@ -9,7 +9,7 @@ import { AdminCharge, AdminChargeStatus } from "./entities/admin-charge.entity";
 import { CreateAdminChargeDto } from "./dto/create-admin-charge.dto";
 import { UpdateAdminChargeDto } from "./dto/update-admin-charge.dto";
 import { Student } from "../students/entities/student.entity";
-import { LedgerService } from "../ledger/ledger.service";
+import { LedgerV2Service } from "../ledger-v2/services/ledger-v2.service";
 
 @Injectable()
 export class AdminChargesService {
@@ -18,7 +18,7 @@ export class AdminChargesService {
     private adminChargeRepository: Repository<AdminCharge>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
-    private ledgerService: LedgerService
+    private ledgerService: LedgerV2Service
   ) { }
 
   async create(
@@ -48,13 +48,8 @@ export class AdminChargesService {
 
     // 🔧 AUTO-APPLY: Automatically apply charge to ledger upon creation
     try {
-      // Create ledger entry using the existing createAdjustmentEntry method
-      await this.ledgerService.createAdjustmentEntry(
-        savedCharge.studentId,
-        savedCharge.amount,
-        `Admin Charge: ${savedCharge.title}${savedCharge.description ? " - " + savedCharge.description : ""}`,
-        "debit"
-      );
+      // Create ledger entry using LedgerV2Service
+      await this.ledgerService.createAdminChargeEntry(savedCharge);
 
       // Update charge status to APPLIED
       savedCharge.status = AdminChargeStatus.APPLIED;
@@ -187,12 +182,7 @@ export class AdminChargesService {
 
     try {
       // Create ledger entry using the existing createAdjustmentEntry method
-      await this.ledgerService.createAdjustmentEntry(
-        adminCharge.studentId,
-        adminCharge.amount,
-        `Admin Charge: ${adminCharge.title}${adminCharge.description ? " - " + adminCharge.description : ""}`,
-        "debit"
-      );
+      await this.ledgerService.createAdminChargeEntry(adminCharge);
 
       // Update charge status
       adminCharge.status = AdminChargeStatus.APPLIED;

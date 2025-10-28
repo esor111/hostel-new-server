@@ -5,7 +5,7 @@ import { PaymentsService } from './payments.service';
 import { Payment } from './entities/payment.entity';
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
 import { Student } from '../students/entities/student.entity';
-import { LedgerModule } from '../ledger/ledger.module';
+import { LedgerV2Module } from '../ledger-v2/ledger-v2.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
 
 @Module({
@@ -16,7 +16,7 @@ import { Hostel } from '../hostel/entities/hostel.entity';
       Student,
       Hostel
     ]),
-    LedgerModule // Import LedgerModule for integration
+    LedgerV2Module // Import LedgerV2Module for integration
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService],

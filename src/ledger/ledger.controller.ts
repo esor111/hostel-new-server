@@ -1,13 +1,13 @@
 import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { LedgerService } from './ledger.service';
+import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 import { CreateAdjustmentDto } from './dto/create-ledger-entry.dto';
 import { ReversalDto } from './dto';
 
 @ApiTags('ledger')
 @Controller('ledgers')
 export class LedgerController {
-  constructor(private readonly ledgerService: LedgerService) {}
+  constructor(private readonly ledgerService: LedgerV2Service) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all ledger entries' })
@@ -65,12 +65,12 @@ export class LedgerController {
   @ApiOperation({ summary: 'Create balance adjustment entry' })
   @ApiResponse({ status: 201, description: 'Adjustment entry created successfully' })
   async createAdjustment(@Body() adjustmentDto: CreateAdjustmentDto) {
-    const entry = await this.ledgerService.createAdjustmentEntry(
-      adjustmentDto.studentId,
-      adjustmentDto.amount,
-      adjustmentDto.description,
-      adjustmentDto.type
-    );
+    const entry = await this.ledgerService.createAdjustmentEntry({
+      studentId: adjustmentDto.studentId,
+      amount: adjustmentDto.amount,
+      description: adjustmentDto.description,
+      type: adjustmentDto.type
+    });
     
     // Return EXACT same format as current Express API
     return {
@@ -85,8 +85,8 @@ export class LedgerController {
   async reverseEntry(@Param('entryId') entryId: string, @Body() reversalDto: ReversalDto) {
     const result = await this.ledgerService.reverseEntry(
       entryId,
-      reversalDto.reversedBy,
-      reversalDto.reason
+      reversalDto.reversedBy || 'admin',
+      reversalDto.reason || 'Manual reversal'
     );
     
     // Return EXACT same format as current Express API
@@ -96,27 +96,16 @@ export class LedgerController {
     };
   }
 
-  @Post('fix-undefined-descriptions')
-  @ApiOperation({ summary: 'Fix existing ledger entries with undefined descriptions' })
-  @ApiResponse({ status: 200, description: 'Undefined descriptions fixed successfully' })
-  async fixUndefinedDescriptions() {
-    try {
-      const result = await this.ledgerService.fixUndefinedDescriptions();
-      
-      return {
-        status: HttpStatus.OK,
-        message: `Fixed ${result.fixed} entries`,
-        data: {
-          fixed: result.fixed,
-          errors: result.errors
-        }
-      };
-    } catch (error) {
-      return {
-        status: HttpStatus.INTERNAL_SERVER_ERROR,
-        message: 'Failed to fix undefined descriptions',
-        error: error.message
-      };
-    }
-  }
+  // @Post('fix-undefined-descriptions')
+  // @ApiOperation({ summary: 'Fix existing ledger entries with undefined descriptions' })
+  // @ApiResponse({ status: 200, description: 'Undefined descriptions fixed successfully' })
+  // async fixUndefinedDescriptions() {
+  //   // This method is not available in LedgerV2Service
+  //   // LedgerV2 ensures proper descriptions from the start
+  //   return {
+  //     status: HttpStatus.OK,
+  //     message: 'LedgerV2 ensures proper descriptions - no fix needed',
+  //     data: { fixed: 0, errors: [] }
+  //   };
+  // }
 }

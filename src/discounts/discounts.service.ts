@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { Discount, DiscountStatus } from './entities/discount.entity';
 import { DiscountType, DiscountCategory } from './entities/discount-type.entity';
 import { Student } from '../students/entities/student.entity';
-import { LedgerService } from '../ledger/ledger.service';
+import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 
 @Injectable()
 export class DiscountsService {
@@ -15,7 +15,7 @@ export class DiscountsService {
     private discountTypeRepository: Repository<DiscountType>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
-    private ledgerService: LedgerService,
+    private ledgerService: LedgerV2Service,
   ) { }
 
   async findAll(filters: any = {}, hostelId?: string) {

@@ -1379,6 +1379,7 @@ export class RoomsService extends HostelScopedService<Room> {
 
       // Sync bed entities: update existing, create new
       console.log(`🔄 Syncing ${bedsToSync.length} bed entities`);
+      console.log(`🔍 Beds to sync:`, bedsToSync.map(b => ({ identifier: b.bedIdentifier, number: b.bedNumber })));
       let createdCount = 0;
       let updatedCount = 0;
 
@@ -1388,7 +1389,7 @@ export class RoomsService extends HostelScopedService<Room> {
 
           if (existingBed) {
             // Update existing bed (preserve ID and booking references)
-            console.log(`   🔄 Updating existing bed: ${bedData.bedIdentifier}`);
+            console.log(`   🔄 Updating existing bed: ${bedData.bedIdentifier} (ID: ${existingBed.id})`);
             await this.bedRepository.update(existingBed.id, {
               bedNumber: bedData.bedNumber,
               description: bedData.description,
@@ -1583,24 +1584,43 @@ export class RoomsService extends HostelScopedService<Room> {
       // 🔧 CRITICAL FIX: Update room's bedCount to match layout
       // Calculate bed count from layout elements using unified rule
       let newBedCount = 0;
+      console.log(`🔍 Layout data structure:`, {
+        hasElements: !!layoutData.elements,
+        elementsCount: layoutData.elements?.length || 0,
+        hasBedPositions: !!deduplicatedBedPositions,
+        bedPositionsCount: deduplicatedBedPositions?.length || 0
+      });
+
       if (layoutData.elements) {
         const bedElements = layoutData.elements.filter((element: any) =>
           element.type === 'single-bed' || element.type === 'bunk-bed'
         );
         newBedCount = bedElements.length; // Each bed element = 1 bookable unit
+        console.log(`📊 Calculated bedCount from elements: ${newBedCount} (${bedElements.length} bed elements)`);
+        console.log(`🛏️ Bed elements found:`, bedElements.map(e => ({ id: e.id, type: e.type })));
       } else if (deduplicatedBedPositions) {
         const bedPositions = deduplicatedBedPositions.filter((pos: any) =>
           pos.type === 'single-bed' || pos.type === 'bunk-bed'
         );
         newBedCount = bedPositions.length;
+        console.log(`📊 Calculated bedCount from positions: ${newBedCount} (${bedPositions.length} bed positions)`);
+        console.log(`🛏️ Bed positions found:`, bedPositions.map(p => ({ id: p.id, type: p.type })));
+      } else {
+        // Fallback: count all deduplicated bed positions regardless of type
+        newBedCount = deduplicatedBedPositions?.length || 0;
+        console.log(`📊 Fallback bedCount from all positions: ${newBedCount}`);
       }
 
-      // Update room's bedCount if it changed
-      if (newBedCount > 0 && room.bedCount !== newBedCount) {
-        console.log(`🔄 Updating room bedCount: ${room.bedCount} → ${newBedCount}`);
+      // ALWAYS update room's bedCount to ensure synchronization
+      // Remove the condition that was causing the bug
+      if (newBedCount > 0) {
+        console.log(`🔄 FORCE UPDATING room bedCount: ${room.bedCount} → ${newBedCount}`);
         await this.roomRepository.update(roomId, {
           bedCount: newBedCount
         });
+        console.log(`✅ Room bedCount updated successfully to ${newBedCount}`);
+      } else {
+        console.log(`⚠️ newBedCount is 0, keeping existing bedCount: ${room.bedCount}`);
       }
 
       // Create bed entities directly from layout data (NEW APPROACH)
@@ -1612,6 +1632,17 @@ export class RoomsService extends HostelScopedService<Room> {
       } catch (error) {
         console.error('❌ Direct bed creation failed:', error.message);
         throw error;
+      }
+
+      // VERIFICATION: Double-check that room bedCount was updated correctly
+      const verificationRoom = await this.roomRepository.findOne({ where: { id: roomId } });
+      console.log(`🔍 VERIFICATION: Room ${roomId} bedCount after update: ${verificationRoom?.bedCount}`);
+      console.log(`🔍 VERIFICATION: Expected bedCount: ${newBedCount}`);
+      
+      if (verificationRoom && verificationRoom.bedCount !== newBedCount && newBedCount > 0) {
+        console.log(`⚠️ MISMATCH DETECTED: Forcing bedCount update again`);
+        await this.roomRepository.update(roomId, { bedCount: newBedCount });
+        console.log(`✅ FORCED UPDATE: Room bedCount set to ${newBedCount}`);
       }
 
       console.log('✅ Layout updated successfully with synchronized bedCount');

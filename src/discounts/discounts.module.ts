@@ -5,7 +5,7 @@ import { DiscountsService } from './discounts.service';
 import { Discount } from './entities/discount.entity';
 import { DiscountType } from './entities/discount-type.entity';
 import { Student } from '../students/entities/student.entity';
-import { LedgerModule } from '../ledger/ledger.module';
+import { LedgerV2Module } from '../ledger-v2/ledger-v2.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
 
 @Module({
@@ -16,7 +16,7 @@ import { Hostel } from '../hostel/entities/hostel.entity';
       Student,
       Hostel
     ]),
-    LedgerModule // Import for ledger integration
+    LedgerV2Module // Import for ledger integration
   ],
   controllers: [DiscountsController],
   providers: [DiscountsService],

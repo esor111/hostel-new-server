@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
-import { LedgerService } from '../ledger/ledger.service';
+import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 
 @Injectable()
 export class InvoicesService {
@@ -12,7 +12,7 @@ export class InvoicesService {
     private invoiceRepository: Repository<Invoice>,
     @InjectRepository(InvoiceItem)
     private invoiceItemRepository: Repository<InvoiceItem>,
-    private ledgerService: LedgerService,
+    private ledgerService: LedgerV2Service,
   ) {}
 
   async findAll(filters: any = {}, hostelId?: string) {
