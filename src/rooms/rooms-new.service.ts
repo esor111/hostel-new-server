@@ -5,8 +5,6 @@ import { Room } from './entities/room.entity';
 import { RoomLayout } from './entities/room-layout.entity';
 import { Bed } from './entities/bed.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
-import { RoomAmenity } from './entities/room-amenity.entity';
-import { Amenity, AmenityCategory } from './entities/amenity.entity';
 import { BedSyncService } from './bed-sync.service';
 
 @Injectable()
@@ -22,10 +20,6 @@ export class RoomsNewService {
     private bedRepository: Repository<Bed>,
     @InjectRepository(Hostel)
     private hostelRepository: Repository<Hostel>,
-    @InjectRepository(RoomAmenity)
-    private roomAmenityRepository: Repository<RoomAmenity>,
-    @InjectRepository(Amenity)
-    private amenityRepository: Repository<Amenity>,
     private bedSyncService: BedSyncService,
   ) { }
 
@@ -310,24 +304,11 @@ export class RoomsNewService {
     if (updateRoomDto.gender !== undefined) updateData.gender = updateRoomDto.gender;
     if (updateRoomDto.status !== undefined) updateData.status = updateRoomDto.status;
     if (updateRoomDto.description !== undefined) updateData.description = updateRoomDto.description;
-    if (updateRoomDto.images !== undefined) updateData.images = updateRoomDto.images;
 
     console.log('📝 NEW-ROOMS: Update data to apply:', JSON.stringify(updateData, null, 2));
 
-    // Apply updates to main room entity
+    // Apply updates
     await this.roomRepository.update(id, updateData);
-
-    // Update amenities if provided
-    if (updateRoomDto.amenities !== undefined) {
-      console.log('🔧 NEW-ROOMS: Updating amenities:', updateRoomDto.amenities);
-      await this.updateRoomAmenities(id, updateRoomDto.amenities);
-    }
-
-    // Update layout if provided
-    if (updateRoomDto.layout !== undefined) {
-      console.log('🔧 NEW-ROOMS: Updating layout');
-      await this.updateRoomLayout(id, updateRoomDto.layout);
-    }
 
     // Return updated room
     const updatedRoom = await this.findOne(id, hostelId);
@@ -546,119 +527,5 @@ export class RoomsNewService {
 
     console.log(`✅ Built furniture array with ${furniture.length} items total`);
     return furniture;
-  }
-
-  /**
-   * Update room amenities (junction table)
-   */
-  private async updateRoomAmenities(roomId: string, amenityNames: string[]) {
-    console.log(`🔧 Updating amenities for room ${roomId}:`, amenityNames);
-
-    // Get existing room-amenity relationships
-    const existingRoomAmenities = await this.roomAmenityRepository.find({
-      where: { roomId },
-      relations: ['amenity']
-    });
-
-    console.log(`📋 Found ${existingRoomAmenities.length} existing amenities`);
-
-    // Create a map of existing amenities by name
-    const existingAmenitiesMap = new Map(
-      existingRoomAmenities.map(ra => [ra.amenity.name, ra])
-    );
-
-    // Process each amenity name
-    for (const amenityName of amenityNames) {
-      // Check if this amenity already exists for this room
-      const existingRoomAmenity = existingAmenitiesMap.get(amenityName);
-
-      if (existingRoomAmenity) {
-        // Reactivate existing amenity if it was deactivated
-        if (!existingRoomAmenity.isActive) {
-          await this.roomAmenityRepository.update(
-            { id: existingRoomAmenity.id },
-            { isActive: true }
-          );
-          console.log(`✅ Reactivated amenity: ${amenityName}`);
-        }
-        // Remove from map so we know it's still needed
-        existingAmenitiesMap.delete(amenityName);
-      } else {
-        // Create new amenity relationship
-        let amenity = await this.amenityRepository.findOne({
-          where: { name: amenityName }
-        });
-
-        if (!amenity) {
-          console.log(`➕ Creating new amenity: ${amenityName}`);
-          amenity = await this.amenityRepository.save({
-            name: amenityName,
-            category: AmenityCategory.UTILITIES,
-            isActive: true
-          });
-        }
-
-        await this.roomAmenityRepository.save({
-          roomId,
-          amenityId: amenity.id,
-          isActive: true,
-          installedDate: new Date()
-        });
-        console.log(`✅ Added amenity: ${amenityName}`);
-      }
-    }
-
-    // Deactivate amenities that are no longer selected
-    for (const [amenityName, roomAmenity] of existingAmenitiesMap) {
-      if (roomAmenity.isActive) {
-        await this.roomAmenityRepository.update(
-          { id: roomAmenity.id },
-          { isActive: false }
-        );
-        console.log(`❌ Deactivated amenity: ${amenityName}`);
-      }
-    }
-
-    console.log(`✅ Amenities update completed for room ${roomId}`);
-  }
-
-  /**
-   * Update room layout
-   */
-  private async updateRoomLayout(roomId: string, layoutData: any) {
-    console.log(`🎨 Updating layout for room ${roomId}`);
-
-    const room = await this.roomRepository.findOne({
-      where: { id: roomId },
-      relations: ['layout']
-    });
-
-    if (!room) {
-      throw new NotFoundException('Room not found');
-    }
-
-    if (room.layout) {
-      // Update existing layout
-      console.log(`📝 Updating existing layout ${room.layout.id}`);
-      await this.roomLayoutRepository.update(room.layout.id, {
-        bedPositions: layoutData.bedPositions || layoutData.elements?.filter(e => e.type?.includes('bed')),
-        furnitureLayout: layoutData.furnitureLayout || layoutData.elements?.filter(e => !e.type?.includes('bed')),
-        dimensions: layoutData.dimensions,
-        layoutData: layoutData // Store complete layout data including theme and elements
-      });
-      console.log(`✅ Layout updated successfully`);
-    } else {
-      // Create new layout
-      console.log(`➕ Creating new layout for room ${roomId}`);
-      const newLayout = this.roomLayoutRepository.create({
-        roomId,
-        bedPositions: layoutData.bedPositions || layoutData.elements?.filter(e => e.type?.includes('bed')),
-        furnitureLayout: layoutData.furnitureLayout || layoutData.elements?.filter(e => !e.type?.includes('bed')),
-        dimensions: layoutData.dimensions,
-        layoutData: layoutData // Store complete layout data including theme and elements
-      });
-      await this.roomLayoutRepository.save(newLayout);
-      console.log(`✅ Layout created successfully`);
-    }
   }
 }
