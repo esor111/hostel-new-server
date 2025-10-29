@@ -29,6 +29,9 @@ export class MaintenanceRequest {
   @Column({ name: 'room_id' })
   roomId: string;
 
+  @Column({ name: 'hostel_id' })
+  hostelId: string;
+
   @Column()
   title: string;
 

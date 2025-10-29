@@ -10,7 +10,7 @@ import { Invoice } from '../../invoices/entities/invoice.entity';
 import { LedgerEntryType } from '../../ledger/entities/ledger-entry.entity';
 import { LedgerTransactionService } from './ledger-transaction.service';
 import { LedgerCalculationService } from './ledger-calculation.service';
-import { CreateLedgerEntryV2Dto } from '../dto/create-ledger-entry-v2.dto';
+import { CreateLedgerEntryV2Dto, CreateAdjustmentV2Dto } from '../dto/create-ledger-entry-v2.dto';
 
 @Injectable()
 export class LedgerV2Service {
@@ -94,9 +94,14 @@ export class LedgerV2Service {
   /**
    * ✅ BULLETPROOF: Get student ledger entries
    */
-  async findByStudentId(studentId: string) {
+  async findByStudentId(studentId: string, hostelId?: string) {
+    const whereCondition: any = { studentId, isReversed: false };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
     const entries = await this.ledgerRepository.find({
-      where: { studentId, isReversed: false },
+      where: whereCondition,
       relations: ['student'],
       order: { entrySequence: 'DESC' }
     });
@@ -107,15 +112,20 @@ export class LedgerV2Service {
   /**
    * ✅ BULLETPROOF: Get student balance
    */
-  async getStudentBalance(studentId: string) {
-    const result = await this.ledgerRepository
+  async getStudentBalance(studentId: string, hostelId?: string) {
+    const queryBuilder = this.ledgerRepository
       .createQueryBuilder('ledger')
       .select('SUM(ledger.debit)', 'totalDebits')
       .addSelect('SUM(ledger.credit)', 'totalCredits')
       .addSelect('COUNT(*)', 'totalEntries')
       .where('ledger.studentId = :studentId', { studentId })
-      .andWhere('ledger.isReversed = false')
-      .getRawOne();
+      .andWhere('ledger.isReversed = false');
+
+    if (hostelId) {
+      queryBuilder.andWhere('ledger.hostelId = :hostelId', { hostelId });
+    }
+
+    const result = await queryBuilder.getRawOne();
 
     const totalDebits = parseFloat(result?.totalDebits) || 0;
     const totalCredits = parseFloat(result?.totalCredits) || 0;
@@ -231,13 +241,29 @@ export class LedgerV2Service {
   /**
    * ✅ BULLETPROOF: Create adjustment entry
    */
-  async createAdjustmentEntry(adjustmentData: {
-    studentId: string;
-    amount: number;
-    description: string;
-    type: 'debit' | 'credit';
-  }) {
-    const { studentId, amount, description, type } = adjustmentData;
+  async createAdjustmentEntry(
+    adjustmentData: CreateAdjustmentV2Dto | {
+      studentId: string;
+      amount: number;
+      description: string;
+      type: 'debit' | 'credit';
+    },
+    hostelId?: string
+  ) {
+    // Handle both old and new calling patterns
+    let studentId: string, amount: number, description: string, type: 'debit' | 'credit';
+    
+    if ('studentId' in adjustmentData) {
+      ({ studentId, amount, description, type } = adjustmentData);
+    } else {
+      // This is the old calling pattern from the controller
+      const dto = adjustmentData as CreateAdjustmentV2Dto;
+      studentId = dto.studentId;
+      amount = dto.amount;
+      description = dto.description;
+      type = dto.type;
+    }
+
     const student = await this.studentRepository.findOne({ where: { id: studentId } });
     if (!student) {
       throw new NotFoundException('Student not found');
@@ -245,7 +271,7 @@ export class LedgerV2Service {
 
     const entryData: CreateLedgerEntryV2Dto = {
       studentId,
-      hostelId: student.hostelId,
+      hostelId: hostelId || student.hostelId,
       type: LedgerEntryType.ADJUSTMENT,
       description: `${type.toUpperCase()} Adjustment - ${description} - ${student.name}`,
       referenceId: null,

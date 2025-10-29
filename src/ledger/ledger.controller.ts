@@ -69,12 +69,7 @@ export class LedgerController {
   @ApiOperation({ summary: 'Create balance adjustment entry' })
   @ApiResponse({ status: 201, description: 'Adjustment entry created successfully' })
   async createAdjustment(@GetHostelId() hostelId: string, @Body() adjustmentDto: CreateAdjustmentDto) {
-    const entry = await this.ledgerService.createAdjustmentEntry({
-      studentId: adjustmentDto.studentId,
-      amount: adjustmentDto.amount,
-      description: adjustmentDto.description,
-      type: adjustmentDto.type
-    }, hostelId);
+    const entry = await this.ledgerService.createAdjustmentEntry(adjustmentDto, hostelId);
     
     // Return EXACT same format as current Express API
     return {
@@ -90,8 +85,7 @@ export class LedgerController {
     const result = await this.ledgerService.reverseEntry(
       entryId,
       reversalDto.reversedBy || 'admin',
-      reversalDto.reason || 'Manual reversal',
-      hostelId
+      reversalDto.reason || 'Manual reversal'
     );
     
     // Return EXACT same format as current Express API

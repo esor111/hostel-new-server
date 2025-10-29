@@ -22,7 +22,7 @@ export class BillingService {
     private ledgerRepository: Repository<LedgerEntry>,
   ) {}
 
-  async getMonthlyStats() {
+  async getMonthlyStats(hostelId: string) {
     const currentMonth = new Date();
     const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const lastDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
@@ -32,6 +32,7 @@ export class BillingService {
       .createQueryBuilder('student')
       .innerJoin('student.financialInfo', 'financial')
       .where('student.status = :status', { status: StudentStatus.ACTIVE })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .andWhere('financial.isActive = :isActive', { isActive: true })
       .getCount();
 
@@ -40,12 +41,13 @@ export class BillingService {
       .createQueryBuilder('invoice')
       .where('invoice.createdAt >= :startDate', { startDate: firstDayOfMonth })
       .andWhere('invoice.createdAt <= :endDate', { endDate: lastDayOfMonth })
+      .andWhere('invoice.hostelId = :hostelId', { hostelId })
       .getMany();
 
     const currentMonthAmount = currentMonthInvoices.reduce((sum, invoice) => sum + parseFloat(invoice.total.toString()), 0);
     const paidInvoices = currentMonthInvoices.filter(inv => inv.status === InvoiceStatus.PAID).length;
     const overdueInvoices = await this.invoiceRepository.count({
-      where: { status: InvoiceStatus.OVERDUE }
+      where: { status: InvoiceStatus.OVERDUE, hostelId }
     });
 
     return {
@@ -57,7 +59,7 @@ export class BillingService {
     };
   }
 
-  async generateMonthlyInvoices(month: number, year: number, dueDate?: Date) {
+  async generateMonthlyInvoices(month: number, year: number, dueDate?: Date, hostelId?: string) {
     console.log(`🧾 Generating monthly invoices for ${month + 1}/${year}`);
     
     const activeStudents = await this.studentRepository
@@ -216,7 +218,7 @@ export class BillingService {
     return months[month];
   }
 
-  async getBillingSchedule(months: number = 6) {
+  async getBillingSchedule(months: number = 6, hostelId?: string) {
     const schedule = [];
     const currentDate = new Date();
 
@@ -236,12 +238,13 @@ export class BillingService {
     return schedule;
   }
 
-  async previewMonthlyBilling(month: number, year: number) {
+  async previewMonthlyBilling(month: number, year: number, hostelId: string) {
     const activeStudents = await this.studentRepository
       .createQueryBuilder('student')
       .leftJoinAndSelect('student.financialInfo', 'financial')
       .leftJoinAndSelect('student.room', 'room')
       .where('student.status = :status', { status: StudentStatus.ACTIVE })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .andWhere('financial.isActive = :isActive', { isActive: true })
       .getMany();
 
@@ -271,13 +274,14 @@ export class BillingService {
     };
   }
 
-  async getStudentsReadyForBilling() {
+  async getStudentsReadyForBilling(hostelId: string) {
     const students = await this.studentRepository
       .createQueryBuilder('student')
       .leftJoinAndSelect('student.financialInfo', 'financial')
       .leftJoinAndSelect('student.room', 'room')
       .leftJoin('student.invoices', 'invoice')
       .where('student.status = :status', { status: StudentStatus.ACTIVE })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .andWhere('financial.isActive = :isActive', { isActive: true })
       .getMany();
 
@@ -301,17 +305,22 @@ export class BillingService {
     });
   }
 
-  async getBillingHistory(page: number = 1, limit: number = 20) {
+  async getBillingHistory(page: number = 1, limit: number = 20, hostelId?: string) {
     const offset = (page - 1) * limit;
 
-    const [invoices, total] = await this.invoiceRepository
+    const queryBuilder = this.invoiceRepository
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.student', 'student')
       .leftJoinAndSelect('student.room', 'room')
       .orderBy('invoice.createdAt', 'DESC')
       .skip(offset)
-      .take(limit)
-      .getManyAndCount();
+      .take(limit);
+
+    if (hostelId) {
+      queryBuilder.andWhere('invoice.hostelId = :hostelId', { hostelId });
+    }
+
+    const [invoices, total] = await queryBuilder.getManyAndCount();
 
     const items = invoices.map(invoice => ({
       id: invoice.id,

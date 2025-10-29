@@ -105,9 +105,9 @@ export class DiscountsService {
     return this.transformToApiResponse(discount);
   }
 
-  async findByStudentId(studentId: string) {
+  async findByStudentId(studentId: string, hostelId: string) {
     const discounts = await this.discountRepository.find({
-      where: { studentId },
+      where: { studentId, hostelId },
       relations: ['student', 'student.room', 'discountType'],
       order: { date: 'DESC' }
     });
@@ -115,7 +115,7 @@ export class DiscountsService {
     return discounts.map(discount => this.transformToApiResponse(discount));
   }
 
-  async create(createDiscountDto: any) {
+  async create(createDiscountDto: any, hostelId: string) {
     // First, fetch the student to get the hostelId
     const student = await this.studentRepository.findOne({
       where: { id: createDiscountDto.studentId }
@@ -191,8 +191,8 @@ export class DiscountsService {
     return this.findOne(savedDiscount.id, student.hostelId);
   }
 
-  async update(id: string, updateDiscountDto: any) {
-    const discount = await this.findOne(id);
+  async update(id: string, updateDiscountDto: any, hostelId: string) {
+    const discount = await this.findOne(id, hostelId);
 
     // Update main discount entity
     await this.discountRepository.update(id, {
@@ -204,16 +204,16 @@ export class DiscountsService {
       validTo: updateDiscountDto.validTo
     });
 
-    return this.findOne(id);
+    return this.findOne(id, hostelId);
   }
 
-  async applyDiscount(studentId: string, discountData: any) {
+  async applyDiscount(studentId: string, discountData: any, hostelId: string) {
     // Apply discount and create ledger entry in one transaction
     const discount = await this.create({
       ...discountData,
       studentId,
       appliedTo: 'ledger'
-    });
+    }, hostelId);
 
     return {
       success: true,
@@ -222,7 +222,7 @@ export class DiscountsService {
     };
   }
 
-  async expireDiscount(id: string, expiredBy: string = 'system') {
+  async expireDiscount(id: string, expiredBy: string = 'system', hostelId?: string) {
     await this.discountRepository.update(id, {
       status: DiscountStatus.EXPIRED
     });
