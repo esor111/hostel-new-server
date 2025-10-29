@@ -137,7 +137,7 @@ describe('RoomsService - Hybrid Integration', () => {
       // Mock the repository to return room with beds
       jest.spyOn(roomRepository, 'findOne').mockResolvedValue(mockRoom as any);
 
-      const result = await service.findOne('room-1');
+      const result = await service.findOne('room-1', 'hostel-1');
 
       // Verify that beds are included in the response
       expect(result.beds).toBeDefined();
@@ -149,7 +149,7 @@ describe('RoomsService - Hybrid Integration', () => {
     it('should calculate occupancy from bed data', async () => {
       jest.spyOn(roomRepository, 'findOne').mockResolvedValue(mockRoom as any);
 
-      const result = await service.findOne('room-1');
+      const result = await service.findOne('room-1', 'hostel-1');
 
       // Occupancy should be calculated from bed status (1 occupied bed)
       expect(result.occupancy).toBe(1);
@@ -159,7 +159,7 @@ describe('RoomsService - Hybrid Integration', () => {
     it('should enhance bedPositions with bed entity data', async () => {
       jest.spyOn(roomRepository, 'findOne').mockResolvedValue(mockRoom as any);
 
-      const result = await service.findOne('room-1');
+      const result = await service.findOne('room-1', 'hostel-1');
 
       // Check that bedPositions are enhanced with bed data
       expect(result.layout.bedPositions).toBeDefined();
@@ -180,7 +180,7 @@ describe('RoomsService - Hybrid Integration', () => {
 
   describe('findAll with bed data', () => {
     it('should include bed data in room list response', async () => {
-      const result = await service.findAll();
+      const result = await service.findAll({}, 'hostel-1');
 
       // Verify the query builder includes beds relation
       expect(roomRepository.createQueryBuilder).toHaveBeenCalled();
@@ -196,7 +196,7 @@ describe('RoomsService - Hybrid Integration', () => {
     it('should filter rooms based on bed availability', async () => {
       jest.spyOn(roomRepository, 'find').mockResolvedValue([mockRoom as any]);
 
-      const result = await service.getAvailableRooms();
+      const result = await service.getAvailableRooms('hostel-1');
 
       // Should include the room since it has available beds
       expect(result).toHaveLength(1);

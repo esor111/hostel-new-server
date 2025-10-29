@@ -98,6 +98,7 @@ export class RoomsOptimizedService {
           'room.monthlyRate',
           'room.status',
           'room.maintenanceStatus',
+          'room.images', // Added missing images column
           'room.createdAt',
           'room.updatedAt',
           'roomType.name',
@@ -179,7 +180,7 @@ export class RoomsOptimizedService {
           maintenanceStatus: room.maintenanceStatus,
           pricingModel: 'monthly',
           description: '',
-          images: [],
+          images: room.images || [],
           createdAt: room.createdAt,
           updatedAt: room.updatedAt,
           beds: [], // No beds in lightweight mode for performance

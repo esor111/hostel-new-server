@@ -7,15 +7,21 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoiceItem } from '../invoices/entities/invoice-item.entity';
 import { StudentFinancialInfo } from '../students/entities/student-financial-info.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
+import { AuthModule } from '../auth/auth.module';
+import { HostelModule } from '../hostel/hostel.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    Student,
-    Invoice,
-    InvoiceItem,
-    StudentFinancialInfo,
-    LedgerEntry
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Student,
+      Invoice,
+      InvoiceItem,
+      StudentFinancialInfo,
+      LedgerEntry
+    ]),
+    AuthModule,
+    HostelModule,
+  ],
   controllers: [BillingController],
   providers: [BillingService],
   exports: [BillingService],

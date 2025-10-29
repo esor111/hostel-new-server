@@ -84,17 +84,6 @@ export class ConfigureStudentDto {
   maintenanceFee?: number;
 
   @ApiPropertyOptional({
-    description: 'One-time security deposit',
-    example: 5000,
-    minimum: 0
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Transform(({ value }) => parseFloat(value) || 0)
-  securityDeposit?: number;
-
-  @ApiPropertyOptional({
     description: 'Additional charges and fees',
     type: [AdditionalChargeDto],
     example: [

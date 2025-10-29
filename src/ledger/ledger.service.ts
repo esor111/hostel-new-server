@@ -89,9 +89,9 @@ export class LedgerService {
     };
   }
 
-  async findByStudentId(studentId: string) {
+  async findByStudentId(studentId: string, hostelId: string) {
     const entries = await this.ledgerRepository.find({
-      where: { studentId },
+      where: { studentId, hostelId },
       relations: ['student'],
       order: { date: 'DESC', entryNumber: 'DESC' }
     });
@@ -99,13 +99,14 @@ export class LedgerService {
     return entries.map(entry => this.transformToApiResponse(entry));
   }
 
-  async getStudentBalance(studentId: string) {
+  async getStudentBalance(studentId: string, hostelId: string) {
     const result = await this.ledgerRepository
       .createQueryBuilder('ledger')
       .select('SUM(ledger.debit)', 'totalDebits')
       .addSelect('SUM(ledger.credit)', 'totalCredits')
       .addSelect('COUNT(*)', 'totalEntries')
       .where('ledger.studentId = :studentId', { studentId })
+      .andWhere('ledger.hostelId = :hostelId', { hostelId })
       .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
       .getRawOne();
 
@@ -130,7 +131,7 @@ export class LedgerService {
     }
 
     // Get current balance
-    const currentBalance = await this.getStudentBalance(invoice.studentId);
+    const currentBalance = await this.getStudentBalance(invoice.studentId, invoice.hostelId);
     const invoiceAmount = parseFloat(invoice.total?.toString() || '0');
     const newBalance = currentBalance.currentBalance + invoiceAmount;
 
@@ -151,7 +152,7 @@ export class LedgerService {
     const savedEntry = await this.ledgerRepository.save(entry);
 
     // Update student's current balance
-    await this.updateStudentBalance(invoice.studentId);
+    await this.updateStudentBalance(invoice.studentId, invoice.hostelId);
 
     return this.transformToApiResponse(savedEntry);
   }
@@ -163,7 +164,7 @@ export class LedgerService {
     }
 
     // Get current balance
-    const currentBalance = await this.getStudentBalance(payment.studentId);
+    const currentBalance = await this.getStudentBalance(payment.studentId, payment.hostelId || student.hostelId || 'default-hostel');
     const paymentAmount = parseFloat(payment.amount?.toString() || '0');
     const newBalance = currentBalance.currentBalance - paymentAmount;
 
@@ -184,7 +185,7 @@ export class LedgerService {
     const savedEntry = await this.ledgerRepository.save(entry);
 
     // Update student's current balance
-    await this.updateStudentBalance(payment.studentId);
+    await this.updateStudentBalance(payment.studentId, payment.hostelId || student.hostelId);
 
     return this.transformToApiResponse(savedEntry);
   }
@@ -196,7 +197,7 @@ export class LedgerService {
     }
 
     // Get current balance
-    const currentBalance = await this.getStudentBalance(discount.studentId);
+    const currentBalance = await this.getStudentBalance(discount.studentId, discount.hostelId);
     const discountAmount = parseFloat(discount.amount?.toString() || '0');
     const newBalance = currentBalance.currentBalance - discountAmount;
 
@@ -218,19 +219,19 @@ export class LedgerService {
     const savedEntry = await this.ledgerRepository.save(entry);
 
     // Update student's current balance
-    await this.updateStudentBalance(discount.studentId);
+    await this.updateStudentBalance(discount.studentId, discount.hostelId);
 
     return this.transformToApiResponse(savedEntry);
   }
 
-  async createAdjustmentEntry(studentId: string, amount: number, description: string, type: 'debit' | 'credit') {
+  async createAdjustmentEntry(studentId: string, amount: number, description: string, type: 'debit' | 'credit', hostelId: string) {
     const student = await this.studentRepository.findOne({ where: { id: studentId } });
     if (!student) {
       throw new NotFoundException('Student not found');
     }
 
     // Get current balance
-    const currentBalance = await this.getStudentBalance(studentId);
+    const currentBalance = await this.getStudentBalance(studentId, hostelId);
     const adjustmentAmount = parseFloat(amount?.toString() || '0');
     const newBalance = type === 'debit'
       ? currentBalance.currentBalance + adjustmentAmount
@@ -253,7 +254,7 @@ export class LedgerService {
     const savedEntry = await this.ledgerRepository.save(entry);
 
     // Update student's current balance
-    await this.updateStudentBalance(studentId);
+    await this.updateStudentBalance(studentId, hostelId);
 
     return this.transformToApiResponse(savedEntry);
   }
@@ -276,7 +277,7 @@ export class LedgerService {
     });
 
     // Create reversal entry
-    const currentBalance = await this.getStudentBalance(entry.studentId);
+    const currentBalance = await this.getStudentBalance(entry.studentId, entry.hostelId);
     const reversalAmount = entry.debit - entry.credit;
     const newBalance = currentBalance.currentBalance - reversalAmount;
 
@@ -364,10 +365,18 @@ export class LedgerService {
     };
   }
 
-  private async updateStudentBalance(studentId: string) {
-    const balance = await this.getStudentBalance(studentId);
-    // This would update a balance field on the student if it existed
-    // For now, we'll skip this as the student entity doesn't have a currentBalance field
+  private async updateStudentBalance(studentId: string, hostelId?: string) {
+    // Get student to extract hostelId if not provided
+    if (!hostelId) {
+      const student = await this.studentRepository.findOne({ where: { id: studentId } });
+      hostelId = student?.hostelId;
+    }
+    
+    if (hostelId) {
+      const balance = await this.getStudentBalance(studentId, hostelId);
+      // This would update a balance field on the student if it existed
+      // For now, we'll skip this as the student entity doesn't have a currentBalance field
+    }
   }
 
   private async getNextEntryNumber(): Promise<number> {

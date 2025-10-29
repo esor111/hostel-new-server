@@ -1,7 +1,6 @@
 import { Controller, Get, Param, Query, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { RoomsNewService } from './rooms-new.service';
-import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { HostelService } from '../hostel/hostel.service';
 
@@ -22,17 +21,11 @@ export class RoomsNewController {
   @ApiQuery({ name: 'gender', required: false, description: 'Filter by gender' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
+  async getAllRooms(@Query() query: any) {
     console.log('🆕 NEW-ROOMS API - query.hostelId:', query.hostelId);
-    console.log('🆕 NEW-ROOMS API - JWT hostelId (optional):', hostelId);
 
-    // SIMPLIFIED: Use query.hostelId directly, let the service handle flexible resolution
-    // No JWT token required - purely query-parameter based
-    const queryHostelId = query.hostelId || null;
-    
-    console.log('🎯 NEW-ROOMS: Using query hostelId for flexible resolution:', queryHostelId);
-
-    const result = await this.roomsNewService.findAllLightweight(query, queryHostelId);
+    // Use query.hostelId for now (temporary until frontend is updated)
+    const result = await this.roomsNewService.findAllLightweight(query, query.hostelId);
 
     return {
       status: HttpStatus.OK,

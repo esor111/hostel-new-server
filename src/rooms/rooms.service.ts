@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Room, RoomStatus, MaintenanceStatus } from './entities/room.entity';
@@ -201,104 +201,36 @@ export class RoomsService extends HostelScopedService<Room> {
     };
   }
 
-  async findAll(filters: any = {}, hostelId?: string) {
+  async findAll(filters: any = {}, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const { status = 'all', type = 'all', search = '', page = 1, limit = 20 } = filters;
 
     console.log('🔍 RoomsService.findAll - hostelId:', hostelId);
     console.log('🔍 RoomsService.findAll - filters:', filters);
 
-    // CRITICAL FIX: Distinguish between "no filter" vs "hostel not found"
-    // If hostelId was provided but not found, return empty results
-    if (hostelId !== undefined && hostelId !== null && hostelId !== '') {
-      // hostelId was provided, try to resolve it
-      const effectiveHostelId = await this.resolveHostelId(hostelId);
+    // Resolve hostelId
+    const effectiveHostelId = await this.resolveHostelId(hostelId);
 
-      if (!effectiveHostelId) {
-        // Hostel not found - return empty results
-        console.log('❌ Hostel not found for hostelId:', hostelId, '- returning empty results');
-        return {
-          items: [],
-          pagination: {
-            page,
-            limit,
-            total: 0,
-            totalPages: 0
-          }
-        };
-      }
-
-      // Hostel found - filter by it
-      console.log('✅ Filtering by resolved hostelId:', effectiveHostelId);
-
-      const queryBuilder = this.roomRepository.createQueryBuilder('room')
-        .leftJoinAndSelect('room.building', 'building')
-        .leftJoinAndSelect('room.roomType', 'roomType')
-        .leftJoinAndSelect('room.occupants', 'occupants', 'occupants.status = :occupantStatus', { occupantStatus: 'Active' })
-        .leftJoinAndSelect('occupants.student', 'student')
-        .leftJoinAndSelect('room.amenities', 'roomAmenities')
-        .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
-        .leftJoinAndSelect('room.layout', 'layout')
-        .leftJoinAndSelect('room.beds', 'beds');
-
-      // Apply hostel filter
-      queryBuilder.andWhere('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
-
-      // Apply status filter
-      if (status !== 'all') {
-        queryBuilder.andWhere('room.status = :status', { status });
-      }
-
-      // Apply type filter
-      if (type !== 'all') {
-        queryBuilder.andWhere('roomType.name = :type', { type });
-      }
-
-      // Apply search filter
-      if (search) {
-        queryBuilder.andWhere(
-          '(room.name ILIKE :search OR room.roomNumber ILIKE :search)',
-          { search: `%${search}%` }
-        );
-      }
-
-      // Apply pagination
-      const offset = (page - 1) * limit;
-      queryBuilder.skip(offset).take(limit);
-
-      // Order by creation date
-      queryBuilder.orderBy('room.createdAt', 'DESC');
-
-      const [rooms, total] = await queryBuilder.getManyAndCount();
-
-      // Ensure occupancy is accurate for all rooms
-      await this.syncRoomOccupancy(rooms);
-
-      // Merge Bed entity data into bedPositions for all rooms (hybrid integration)
-      for (const room of rooms) {
-        if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
-          room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
-            room.layout.layoutData.bedPositions,
-            room.beds
-          );
-        }
-      }
-
-      // Transform to API response format (EXACT same as current JSON structure)
-      const transformedItems = await Promise.all(rooms.map(room => this.transformToApiResponse(room)));
-
+    if (!effectiveHostelId) {
+      // Hostel not found - return empty results
+      console.log('❌ Hostel not found for hostelId:', hostelId, '- returning empty results');
       return {
-        items: transformedItems,
+        items: [],
         pagination: {
           page,
           limit,
-          total,
-          totalPages: Math.ceil(total / limit)
+          total: 0,
+          totalPages: 0
         }
       };
     }
 
-    // No hostelId provided - return ALL rooms
-    console.log('⚠️ No hostelId provided - returning ALL rooms');
+    // Hostel found - filter by it
+    console.log('✅ Filtering by resolved hostelId:', effectiveHostelId);
 
     const queryBuilder = this.roomRepository.createQueryBuilder('room')
       .leftJoinAndSelect('room.building', 'building')
@@ -309,6 +241,9 @@ export class RoomsService extends HostelScopedService<Room> {
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
       .leftJoinAndSelect('room.layout', 'layout')
       .leftJoinAndSelect('room.beds', 'beds');
+
+    // Apply hostel filter
+    queryBuilder.where('room.hostelId = :hostelId', { hostelId: effectiveHostelId });
 
     // Apply status filter
     if (status !== 'all') {
@@ -454,12 +389,14 @@ export class RoomsService extends HostelScopedService<Room> {
     };
   }
 
-  async findOne(id: string, hostelId?: string) {
-    // Build where condition conditionally
-    const whereCondition: any = { id };
-    if (hostelId) {
-      whereCondition.hostelId = hostelId;
+  async findOne(id: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
     }
+
+    // Build where condition
+    const whereCondition: any = { id, hostelId };
 
     const room = await this.roomRepository.findOne({
       where: whereCondition,
@@ -493,20 +430,18 @@ export class RoomsService extends HostelScopedService<Room> {
     return await this.transformToApiResponse(room);
   }
 
-  async create(createRoomDto: any, hostelId?: string) {
+  async create(createRoomDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     console.log('🚨🚨🚨 ROOM CREATE METHOD CALLED 🚨🚨🚨');
     console.log('🏠 Creating new room');
     console.log('📤 Create data received:', JSON.stringify(createRoomDto, null, 2));
     console.log('🏨 Hostel ID received:', hostelId);
     console.log('📐 Layout check - has layout?', !!createRoomDto.layout);
     console.log('📐 Layout elements count:', createRoomDto.layout?.elements?.length || 0);
-
-    // If hostelId is not provided, we need to get it from the authenticated user's businessId
-    // This is a fallback for when the middleware/interceptor doesn't work
-    if (!hostelId) {
-      console.log('⚠️ No hostelId provided, this should not happen with proper authentication');
-      throw new Error('Hostel context is required for room creation. Please ensure you are authenticated with a Business Token.');
-    }
 
     // Find or create room type
     let roomType = null;
@@ -745,7 +680,12 @@ export class RoomsService extends HostelScopedService<Room> {
     };
   }
 
-  async update(id: string, updateRoomDto: any, hostelId?: string) {
+  async update(id: string, updateRoomDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     console.log('🏠 Updating room:', id);
     console.log('📤 Update data received:', JSON.stringify(updateRoomDto, null, 2));
 
@@ -837,12 +777,14 @@ export class RoomsService extends HostelScopedService<Room> {
     return this.findOne(id, hostelId);
   }
 
-  async getStats(hostelId?: string) {
-    // Build where conditions conditionally
-    const baseWhere: any = {};
-    if (hostelId) {
-      baseWhere.hostelId = hostelId;
+  async getStats(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
     }
+
+    // Build where conditions
+    const baseWhere: any = { hostelId };
 
     const totalRooms = await this.roomRepository.count({
       where: baseWhere
@@ -897,12 +839,14 @@ export class RoomsService extends HostelScopedService<Room> {
     };
   }
 
-  async getAvailableRooms(hostelId?: string) {
-    // Build where condition conditionally
-    const whereCondition: any = { status: 'ACTIVE' };
-    if (hostelId) {
-      whereCondition.hostelId = hostelId;
+  async getAvailableRooms(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
     }
+
+    // Build where condition
+    const whereCondition: any = { status: 'ACTIVE', hostelId };
 
     const availableRooms = await this.roomRepository.find({
       where: whereCondition,
@@ -1138,12 +1082,26 @@ export class RoomsService extends HostelScopedService<Room> {
       }
     }
 
+    // 🔧 FIXED: Calculate bed count using unified rule (bed elements, not sleeping spots)
+    let calculatedBedCount = room.bedCount;
+    let calculatedAvailableBeds = availableBeds;
+
+    if (enhancedLayout?.bedPositions) {
+      // 🎯 KEY FIX: Count bed ELEMENTS (not sleeping spots)
+      const bedElements = enhancedLayout.bedPositions.filter((pos: any) =>
+        pos.type === 'single-bed' || pos.type === 'bunk-bed'
+      );
+      calculatedBedCount = bedElements.length; // Each bed element = 1 bookable unit
+      calculatedAvailableBeds = Math.max(0, calculatedBedCount - actualOccupancy);
+    }
+
     // Return EXACT same structure as current JSON with enhanced bed data
     return {
       id: room.id,
       name: room.name,
       type: room.roomType?.name || 'Private', // Default fallback
-      bedCount: room.bedCount,
+      bedCount: calculatedBedCount, // 🔧 FIXED: Use calculated bed count
+      capacity: calculatedBedCount, // Same as bedCount for consistency
       occupancy: actualOccupancy, // Use bed-based occupancy if available
       gender: room.gender,
       monthlyRate: room.monthlyRate || room.roomType?.baseMonthlyRate || 0,
@@ -1154,7 +1112,7 @@ export class RoomsService extends HostelScopedService<Room> {
       floor: room.building?.name || 'Ground Floor', // Fallback
       roomNumber: room.roomNumber,
       occupants: occupants,
-      availableBeds: availableBeds, // Use bed-based calculation if available
+      availableBeds: calculatedAvailableBeds, // 🔧 FIXED: Use calculated available beds
       lastCleaned: room.lastCleaned,
       maintenanceStatus: room.maintenanceStatus,
       pricingModel: room.roomType?.pricingModel || 'monthly',
@@ -1359,6 +1317,7 @@ export class RoomsService extends HostelScopedService<Room> {
 
       // Sync bed entities: update existing, create new
       console.log(`🔄 Syncing ${bedsToSync.length} bed entities`);
+      console.log(`🔍 Beds to sync:`, bedsToSync.map(b => ({ identifier: b.bedIdentifier, number: b.bedNumber })));
       let createdCount = 0;
       let updatedCount = 0;
 
@@ -1368,7 +1327,7 @@ export class RoomsService extends HostelScopedService<Room> {
 
           if (existingBed) {
             // Update existing bed (preserve ID and booking references)
-            console.log(`   🔄 Updating existing bed: ${bedData.bedIdentifier}`);
+            console.log(`   🔄 Updating existing bed: ${bedData.bedIdentifier} (ID: ${existingBed.id})`);
             await this.bedRepository.update(existingBed.id, {
               bedNumber: bedData.bedNumber,
               description: bedData.description,
@@ -1560,6 +1519,48 @@ export class RoomsService extends HostelScopedService<Room> {
         });
       }
 
+      // 🔧 CRITICAL FIX: Update room's bedCount to match layout
+      // Calculate bed count from layout elements using unified rule
+      let newBedCount = 0;
+      console.log(`🔍 Layout data structure:`, {
+        hasElements: !!layoutData.elements,
+        elementsCount: layoutData.elements?.length || 0,
+        hasBedPositions: !!deduplicatedBedPositions,
+        bedPositionsCount: deduplicatedBedPositions?.length || 0
+      });
+
+      if (layoutData.elements) {
+        const bedElements = layoutData.elements.filter((element: any) =>
+          element.type === 'single-bed' || element.type === 'bunk-bed'
+        );
+        newBedCount = bedElements.length; // Each bed element = 1 bookable unit
+        console.log(`📊 Calculated bedCount from elements: ${newBedCount} (${bedElements.length} bed elements)`);
+        console.log(`🛏️ Bed elements found:`, bedElements.map(e => ({ id: e.id, type: e.type })));
+      } else if (deduplicatedBedPositions) {
+        const bedPositions = deduplicatedBedPositions.filter((pos: any) =>
+          pos.type === 'single-bed' || pos.type === 'bunk-bed'
+        );
+        newBedCount = bedPositions.length;
+        console.log(`📊 Calculated bedCount from positions: ${newBedCount} (${bedPositions.length} bed positions)`);
+        console.log(`🛏️ Bed positions found:`, bedPositions.map(p => ({ id: p.id, type: p.type })));
+      } else {
+        // Fallback: count all deduplicated bed positions regardless of type
+        newBedCount = deduplicatedBedPositions?.length || 0;
+        console.log(`📊 Fallback bedCount from all positions: ${newBedCount}`);
+      }
+
+      // ALWAYS update room's bedCount to ensure synchronization
+      // Remove the condition that was causing the bug
+      if (newBedCount > 0) {
+        console.log(`🔄 FORCE UPDATING room bedCount: ${room.bedCount} → ${newBedCount}`);
+        await this.roomRepository.update(roomId, {
+          bedCount: newBedCount
+        });
+        console.log(`✅ Room bedCount updated successfully to ${newBedCount}`);
+      } else {
+        console.log(`⚠️ newBedCount is 0, keeping existing bedCount: ${room.bedCount}`);
+      }
+
       // Create bed entities directly from layout data (NEW APPROACH)
       // This ensures all beds are created immediately when layout is saved
       console.log('🛏️ Creating bed entities directly from layout data');
@@ -1571,7 +1572,18 @@ export class RoomsService extends HostelScopedService<Room> {
         throw error;
       }
 
-      console.log('✅ Layout updated successfully');
+      // VERIFICATION: Double-check that room bedCount was updated correctly
+      const verificationRoom = await this.roomRepository.findOne({ where: { id: roomId } });
+      console.log(`🔍 VERIFICATION: Room ${roomId} bedCount after update: ${verificationRoom?.bedCount}`);
+      console.log(`🔍 VERIFICATION: Expected bedCount: ${newBedCount}`);
+      
+      if (verificationRoom && verificationRoom.bedCount !== newBedCount && newBedCount > 0) {
+        console.log(`⚠️ MISMATCH DETECTED: Forcing bedCount update again`);
+        await this.roomRepository.update(roomId, { bedCount: newBedCount });
+        console.log(`✅ FORCED UPDATE: Room bedCount set to ${newBedCount}`);
+      }
+
+      console.log('✅ Layout updated successfully with synchronized bedCount');
     } catch (error) {
       console.error('❌ Error updating room layout:', error);
       throw error;
@@ -1746,4 +1758,6 @@ export class RoomsService extends HostelScopedService<Room> {
       notes: maintenanceData.notes
     };
   }
+
+
 }

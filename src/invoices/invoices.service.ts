@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
-import { LedgerService } from '../ledger/ledger.service';
+import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 
 @Injectable()
 export class InvoicesService {
@@ -12,56 +12,57 @@ export class InvoicesService {
     private invoiceRepository: Repository<Invoice>,
     @InjectRepository(InvoiceItem)
     private invoiceItemRepository: Repository<InvoiceItem>,
-    private ledgerService: LedgerService,
-  ) {}
+    private ledgerService: LedgerV2Service,
+  ) { }
 
-  async findAll(filters: any = {}, hostelId?: string) {
+  async findAll(filters: any = {}, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const { page = 1, limit = 50, status, studentId, month, search } = filters;
-    
+
     const queryBuilder = this.invoiceRepository.createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.student', 'student')
       .leftJoinAndSelect('student.room', 'room')
       .leftJoinAndSelect('invoice.items', 'items')
       .leftJoinAndSelect('invoice.paymentAllocations', 'paymentAllocations')
-      .leftJoinAndSelect('paymentAllocations.payment', 'payment');
+      .leftJoinAndSelect('paymentAllocations.payment', 'payment')
+      .where('invoice.hostelId = :hostelId', { hostelId });
 
-    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
-    if (hostelId) {
-      queryBuilder.andWhere('invoice.hostelId = :hostelId', { hostelId });
-    }
-    
     // Apply filters
     if (status) {
       queryBuilder.andWhere('invoice.status = :status', { status });
     }
-    
+
     if (studentId) {
       queryBuilder.andWhere('invoice.studentId = :studentId', { studentId });
     }
-    
+
     if (month) {
       queryBuilder.andWhere('invoice.month = :month', { month });
     }
-    
+
     if (search) {
       queryBuilder.andWhere(
         '(student.name ILIKE :search OR invoice.invoiceNumber ILIKE :search)',
         { search: `%${search}%` }
       );
     }
-    
+
     // Apply pagination
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
-    
+
     // Order by creation date
     queryBuilder.orderBy('invoice.createdAt', 'DESC');
-    
+
     const [invoices, total] = await queryBuilder.getManyAndCount();
-    
+
     // Transform to API response format
     const transformedItems = invoices.map(invoice => this.transformToApiResponse(invoice));
-    
+
     return {
       items: transformedItems,
       pagination: {
@@ -73,15 +74,14 @@ export class InvoicesService {
     };
   }
 
-  async findOne(id: string, hostelId?: string) {
-    // Build where condition conditionally
-    const whereCondition: any = { id };
-    if (hostelId) {
-      whereCondition.hostelId = hostelId;
+  async findOne(id: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
     }
 
     const invoice = await this.invoiceRepository.findOne({
-      where: whereCondition,
+      where: { id, hostelId },
       relations: [
         'student',
         'student.room',
@@ -90,19 +90,25 @@ export class InvoicesService {
         'paymentAllocations.payment'
       ]
     });
-    
+
     if (!invoice) {
       throw new NotFoundException('Invoice not found');
     }
-    
+
     return this.transformToApiResponse(invoice);
   }
 
-  async create(createInvoiceDto: any) {
+  async create(createInvoiceDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     // Create invoice entity
     const invoice = this.invoiceRepository.create({
       id: createInvoiceDto.id || this.generateInvoiceId(),
       studentId: createInvoiceDto.studentId,
+      hostelId: hostelId,
       month: createInvoiceDto.month,
       total: createInvoiceDto.total || 0,
       status: createInvoiceDto.status || InvoiceStatus.UNPAID,
@@ -130,12 +136,17 @@ export class InvoicesService {
       // Don't fail the invoice creation if ledger entry fails
     }
 
-    return this.findOne(savedInvoice.id);
+    return this.findOne(savedInvoice.id, hostelId);
   }
 
-  async update(id: string, updateInvoiceDto: any) {
-    const invoice = await this.findOne(id);
-    
+  async update(id: string, updateInvoiceDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    const invoice = await this.findOne(id, hostelId);
+
     // Update main invoice entity
     await this.invoiceRepository.update(id, {
       total: updateInvoiceDto.total,
@@ -152,42 +163,37 @@ export class InvoicesService {
       await this.updateInvoiceItems(id, updateInvoiceDto.items);
     }
 
-    return this.findOne(id);
+    return this.findOne(id, hostelId);
   }
 
-  async getStats(hostelId?: string) {
-    // Build where conditions conditionally
-    const baseWhere: any = {};
-    if (hostelId) {
-      baseWhere.hostelId = hostelId;
+  async getStats(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
     }
 
-    const totalInvoices = await this.invoiceRepository.count({ where: baseWhere });
-    const paidInvoices = await this.invoiceRepository.count({ 
-      where: { ...baseWhere, status: InvoiceStatus.PAID } 
+    const totalInvoices = await this.invoiceRepository.count({ where: { hostelId } });
+    const paidInvoices = await this.invoiceRepository.count({
+      where: { hostelId, status: InvoiceStatus.PAID }
     });
-    const unpaidInvoices = await this.invoiceRepository.count({ 
-      where: { ...baseWhere, status: InvoiceStatus.UNPAID } 
+    const unpaidInvoices = await this.invoiceRepository.count({
+      where: { hostelId, status: InvoiceStatus.UNPAID }
     });
-    const partiallyPaidInvoices = await this.invoiceRepository.count({ 
-      where: { ...baseWhere, status: InvoiceStatus.PARTIALLY_PAID } 
+    const partiallyPaidInvoices = await this.invoiceRepository.count({
+      where: { hostelId, status: InvoiceStatus.PARTIALLY_PAID }
     });
-    const overdueInvoices = await this.invoiceRepository.count({ 
-      where: { ...baseWhere, status: InvoiceStatus.OVERDUE } 
+    const overdueInvoices = await this.invoiceRepository.count({
+      where: { hostelId, status: InvoiceStatus.OVERDUE }
     });
-    
-    const amountQueryBuilder = this.invoiceRepository
+
+    const amountResult = await this.invoiceRepository
       .createQueryBuilder('invoice')
       .select('SUM(invoice.total)', 'totalAmount')
       .addSelect('SUM(invoice.paymentTotal)', 'totalPaid')
       .addSelect('SUM(invoice.total - invoice.paymentTotal)', 'totalOutstanding')
-      .addSelect('AVG(invoice.total)', 'averageAmount');
-    
-    if (hostelId) {
-      amountQueryBuilder.andWhere('invoice.hostelId = :hostelId', { hostelId });
-    }
-    
-    const amountResult = await amountQueryBuilder.getRawOne();
+      .addSelect('AVG(invoice.total)', 'averageAmount')
+      .where('invoice.hostelId = :hostelId', { hostelId })
+      .getRawOne();
 
     return {
       totalInvoices,
@@ -210,7 +216,7 @@ export class InvoicesService {
     // 2. Calculate their monthly fees
     // 3. Create invoices with appropriate items
     // 4. Return summary of generated invoices
-    
+
     return {
       generated: 0,
       failed: 0,
@@ -304,9 +310,14 @@ export class InvoicesService {
     return `ITEM${Date.now()}${Math.floor(Math.random() * 100)}`;
   }
 
-  async findByStudentId(studentId: string) {
+  async findByStudentId(studentId: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const invoices = await this.invoiceRepository.find({
-      where: { studentId },
+      where: { studentId, hostelId },
       relations: [
         'student',
         'student.room',
@@ -316,11 +327,16 @@ export class InvoicesService {
       ],
       order: { createdAt: 'DESC' }
     });
-    
+
     return invoices.map(invoice => this.transformToApiResponse(invoice));
   }
 
-  async createBulk(bulkInvoiceDto: any) {
+  async createBulk(bulkInvoiceDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const results = {
       successful: 0,
       failed: 0,
@@ -329,7 +345,7 @@ export class InvoicesService {
 
     for (const invoiceData of bulkInvoiceDto.invoices) {
       try {
-        await this.create(invoiceData);
+        await this.create(invoiceData, hostelId);
         results.successful++;
       } catch (error) {
         results.failed++;
@@ -343,9 +359,14 @@ export class InvoicesService {
     return results;
   }
 
-  async remove(id: string) {
-    const invoice = await this.findOne(id);
-    
+  async remove(id: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    const invoice = await this.findOne(id, hostelId);
+
     // Soft delete - mark as cancelled
     await this.invoiceRepository.update(id, {
       status: InvoiceStatus.CANCELLED
@@ -358,9 +379,14 @@ export class InvoicesService {
     };
   }
 
-  async updateStatus(id: string, status: InvoiceStatus, notes?: string) {
-    const invoice = await this.findOne(id);
-    
+  async updateStatus(id: string, status: InvoiceStatus, notes?: string, hostelId?: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    const invoice = await this.findOne(id, hostelId);
+
     await this.invoiceRepository.update(id, {
       status,
       notes: notes || invoice.notes
@@ -374,9 +400,14 @@ export class InvoicesService {
     };
   }
 
-  async sendInvoice(id: string) {
-    const invoice = await this.findOne(id);
-    
+  async sendInvoice(id: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    const invoice = await this.findOne(id, hostelId);
+
     // Mark as sent
     await this.invoiceRepository.update(id, {
       status: InvoiceStatus.SENT
@@ -391,17 +422,23 @@ export class InvoicesService {
     };
   }
 
-  async getOverdueInvoices() {
+  async getOverdueInvoices(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const currentDate = new Date();
-    
+
     const overdueInvoices = await this.invoiceRepository
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.student', 'student')
       .leftJoinAndSelect('student.room', 'room')
       .where('invoice.dueDate < :currentDate', { currentDate })
-      .andWhere('invoice.status IN (:...statuses)', { 
-        statuses: [InvoiceStatus.UNPAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.SENT] 
+      .andWhere('invoice.status IN (:...statuses)', {
+        statuses: [InvoiceStatus.UNPAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.SENT]
       })
+      .andWhere('invoice.hostelId = :hostelId', { hostelId })
       .orderBy('invoice.dueDate', 'ASC')
       .getMany();
 
@@ -411,7 +448,12 @@ export class InvoicesService {
     }));
   }
 
-  async getMonthlyInvoiceSummary(months: number = 12) {
+  async getMonthlyInvoiceSummary(months: number = 12, hostelId?: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const endDate = new Date();
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
@@ -428,6 +470,7 @@ export class InvoicesService {
       ])
       .where('invoice.createdAt >= :startDate', { startDate })
       .andWhere('invoice.createdAt <= :endDate', { endDate })
+      .andWhere('invoice.hostelId = :hostelId', { hostelId })
       .setParameter('paidStatus', InvoiceStatus.PAID)
       .groupBy('EXTRACT(YEAR FROM invoice.createdAt), EXTRACT(MONTH FROM invoice.createdAt)')
       .orderBy('year, month')

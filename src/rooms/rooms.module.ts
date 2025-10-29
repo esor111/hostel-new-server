@@ -19,7 +19,7 @@ import { Student } from '../students/entities/student.entity';
 import { Bed } from './entities/bed.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
 import { HostelModule } from '../hostel/hostel.module';
-import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -35,10 +35,11 @@ import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-cont
       Bed,
       Hostel
     ]),
-    HostelModule
+    HostelModule,
+    AuthModule,
   ],
   controllers: [RoomsController, RoomsNewController, RoomsOptimizedController],
-  providers: [RoomsService, RoomsNewService, RoomsOptimizedService, BedSyncService, BedService, HostelAuthWithContextGuard],
+  providers: [RoomsService, RoomsNewService, RoomsOptimizedService, BedSyncService, BedService],
   exports: [RoomsService, RoomsNewService, RoomsOptimizedService, BedSyncService, BedService],
 })
 export class RoomsModule {}

@@ -465,4 +465,28 @@ export class SeedController {
       );
     }
   }
+
+  @Post('add-room-images')
+  @ApiOperation({ summary: 'Add sample images to existing rooms that don\'t have any' })
+  @ApiResponse({ status: 200, description: 'Room images added successfully' })
+  async addRoomImages() {
+    try {
+      const result = await this.seedService.addImagesToExistingRooms();
+      
+      return {
+        status: 200,
+        message: 'Room images added successfully',
+        result
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: 500,
+          message: 'Failed to add room images',
+          error: error.message
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
 }

@@ -9,7 +9,7 @@ import { AdminCharge, AdminChargeStatus } from "./entities/admin-charge.entity";
 import { CreateAdminChargeDto } from "./dto/create-admin-charge.dto";
 import { UpdateAdminChargeDto } from "./dto/update-admin-charge.dto";
 import { Student } from "../students/entities/student.entity";
-import { LedgerService } from "../ledger/ledger.service";
+import { LedgerV2Service } from "../ledger-v2/services/ledger-v2.service";
 
 @Injectable()
 export class AdminChargesService {
@@ -18,11 +18,12 @@ export class AdminChargesService {
     private adminChargeRepository: Repository<AdminCharge>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
-    private ledgerService: LedgerService
+    private ledgerService: LedgerV2Service
   ) { }
 
   async create(
-    createAdminChargeDto: CreateAdminChargeDto
+    createAdminChargeDto: CreateAdminChargeDto,
+    hostelId: string
   ): Promise<AdminCharge> {
     // Verify student exists
     const student = await this.studentRepository.findOne({
@@ -48,13 +49,8 @@ export class AdminChargesService {
 
     // 🔧 AUTO-APPLY: Automatically apply charge to ledger upon creation
     try {
-      // Create ledger entry using the existing createAdjustmentEntry method
-      await this.ledgerService.createAdjustmentEntry(
-        savedCharge.studentId,
-        savedCharge.amount,
-        `Admin Charge: ${savedCharge.title}${savedCharge.description ? " - " + savedCharge.description : ""}`,
-        "debit"
-      );
+      // Create ledger entry using LedgerV2Service
+      await this.ledgerService.createAdminChargeEntry(savedCharge);
 
       // Update charge status to APPLIED
       savedCharge.status = AdminChargeStatus.APPLIED;
@@ -129,9 +125,9 @@ export class AdminChargesService {
     };
   }
 
-  async findOne(id: string): Promise<AdminCharge> {
+  async findOne(id: string, hostelId: string): Promise<AdminCharge> {
     const adminCharge = await this.adminChargeRepository.findOne({
-      where: { id },
+      where: { id, hostelId },
       relations: ["student"],
     });
 
@@ -144,9 +140,10 @@ export class AdminChargesService {
 
   async update(
     id: string,
-    updateAdminChargeDto: UpdateAdminChargeDto
+    updateAdminChargeDto: UpdateAdminChargeDto,
+    hostelId: string
   ): Promise<AdminCharge> {
-    const adminCharge = await this.findOne(id);
+    const adminCharge = await this.findOne(id, hostelId);
 
     // If updating due date, convert to Date object
     if (updateAdminChargeDto.dueDate) {
@@ -166,8 +163,8 @@ export class AdminChargesService {
     return await this.adminChargeRepository.save(adminCharge);
   }
 
-  async remove(id: string): Promise<void> {
-    const adminCharge = await this.findOne(id);
+  async remove(id: string, hostelId: string): Promise<void> {
+    const adminCharge = await this.findOne(id, hostelId);
 
     if (adminCharge.status === AdminChargeStatus.APPLIED) {
       throw new BadRequestException(
@@ -178,8 +175,8 @@ export class AdminChargesService {
     await this.adminChargeRepository.remove(adminCharge);
   }
 
-  async applyCharge(id: string): Promise<AdminCharge> {
-    const adminCharge = await this.findOne(id);
+  async applyCharge(id: string, hostelId: string): Promise<AdminCharge> {
+    const adminCharge = await this.findOne(id, hostelId);
 
     if (adminCharge.status !== AdminChargeStatus.PENDING) {
       throw new BadRequestException("Only pending charges can be applied");
@@ -187,12 +184,7 @@ export class AdminChargesService {
 
     try {
       // Create ledger entry using the existing createAdjustmentEntry method
-      await this.ledgerService.createAdjustmentEntry(
-        adminCharge.studentId,
-        adminCharge.amount,
-        `Admin Charge: ${adminCharge.title}${adminCharge.description ? " - " + adminCharge.description : ""}`,
-        "debit"
-      );
+      await this.ledgerService.createAdminChargeEntry(adminCharge);
 
       // Update charge status
       adminCharge.status = AdminChargeStatus.APPLIED;
@@ -205,8 +197,8 @@ export class AdminChargesService {
     }
   }
 
-  async cancelCharge(id: string): Promise<AdminCharge> {
-    const adminCharge = await this.findOne(id);
+  async cancelCharge(id: string, hostelId: string): Promise<AdminCharge> {
+    const adminCharge = await this.findOne(id, hostelId);
 
     if (adminCharge.status === AdminChargeStatus.APPLIED) {
       throw new BadRequestException(
@@ -218,7 +210,7 @@ export class AdminChargesService {
     return await this.adminChargeRepository.save(adminCharge);
   }
 
-  async getChargesByStudent(studentId: string): Promise<AdminCharge[]> {
+  async getChargesByStudent(studentId: string, hostelId: string): Promise<AdminCharge[]> {
     // Get student to extract hostelId for proper filtering
     const student = await this.studentRepository.findOne({
       where: { id: studentId },
@@ -228,7 +220,7 @@ export class AdminChargesService {
       throw new NotFoundException(`Student with ID ${studentId} not found`);
     }
 
-    const result = await this.findAll({ studentId }, student.hostelId);
+    const result = await this.findAll({ studentId }, hostelId);
     return result.items;
   }
 
@@ -292,7 +284,7 @@ export class AdminChargesService {
     };
   }
 
-  async getOverdueStudents(): Promise<any[]> {
+  async getOverdueStudents(hostelId: string): Promise<any[]> {
     // Get students with overdue balances from ledger
     const overdueStudents = await this.studentRepository
       .createQueryBuilder('student')
@@ -307,6 +299,7 @@ export class AdminChargesService {
         'SUM(ledger.debit - ledger.credit) as currentBalance'
       ])
       .where('student.status = :status', { status: 'Active' })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
       .groupBy('student.id, room.roomNumber')
       .having('SUM(ledger.debit - ledger.credit) > 0')

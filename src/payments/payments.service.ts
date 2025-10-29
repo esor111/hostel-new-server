@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentStatus, PaymentMethod } from './entities/payment.entity';
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
 import { Student } from '../students/entities/student.entity';
-import { LedgerService } from '../ledger/ledger.service';
+import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 
 @Injectable()
 export class PaymentsService {
@@ -15,10 +15,15 @@ export class PaymentsService {
     private allocationRepository: Repository<PaymentInvoiceAllocation>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
-    private ledgerService: LedgerService,
+    private ledgerService: LedgerV2Service,
   ) {}
 
-  async findAll(filters: any = {}, hostelId?: string) {
+  async findAll(filters: any = {}, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const { 
       page = 1, 
       limit = 50, 
@@ -32,12 +37,8 @@ export class PaymentsService {
     const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
       .leftJoinAndSelect('payment.student', 'student')
       .leftJoinAndSelect('payment.invoiceAllocations', 'allocations')
-      .leftJoinAndSelect('allocations.invoice', 'invoice');
-
-    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
-    if (hostelId) {
-      queryBuilder.andWhere('payment.hostelId = :hostelId', { hostelId });
-    }
+      .leftJoinAndSelect('allocations.invoice', 'invoice')
+      .where('payment.hostelId = :hostelId', { hostelId });
     
     // Apply filters
     if (studentId) {
@@ -67,8 +68,8 @@ export class PaymentsService {
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
     
-    // Order by payment date
-    queryBuilder.orderBy('payment.paymentDate', 'DESC');
+    // Order by creation date (most recent first)
+    queryBuilder.orderBy('payment.createdAt', 'DESC');
     
     const [payments, total] = await queryBuilder.getManyAndCount();
     
@@ -86,15 +87,14 @@ export class PaymentsService {
     };
   }
 
-  async findOne(id: string, hostelId?: string) {
-    // Build where condition conditionally
-    const whereCondition: any = { id };
-    if (hostelId) {
-      whereCondition.hostelId = hostelId;
+  async findOne(id: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
     }
 
     const payment = await this.paymentRepository.findOne({
-      where: whereCondition,
+      where: { id, hostelId },
       relations: [
         'student',
         'invoiceAllocations',
@@ -109,34 +109,44 @@ export class PaymentsService {
     return this.transformToApiResponse(payment);
   }
 
-  async findByStudentId(studentId: string) {
+  async findByStudentId(studentId: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const payments = await this.paymentRepository.find({
-      where: { studentId },
+      where: { studentId, hostelId },
       relations: [
         'student',
         'invoiceAllocations',
         'invoiceAllocations.invoice'
       ],
-      order: { paymentDate: 'DESC' }
+      order: { createdAt: 'DESC' }
     });
     
     return payments.map(payment => this.transformToApiResponse(payment));
   }
 
-  async create(createPaymentDto: any) {
-    // Get student to retrieve hostelId
+  async create(createPaymentDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    // Get student to verify it belongs to the same hostel
     const student = await this.studentRepository.findOne({
-      where: { id: createPaymentDto.studentId }
+      where: { id: createPaymentDto.studentId, hostelId }
     });
 
     if (!student) {
-      throw new Error(`Student with ID ${createPaymentDto.studentId} not found`);
+      throw new NotFoundException(`Student with ID ${createPaymentDto.studentId} not found in this hostel`);
     }
 
     // Create payment entity - let TypeORM generate UUID automatically
     const payment = this.paymentRepository.create({
       studentId: createPaymentDto.studentId,
-      hostelId: student.hostelId || 'default-hostel', // Use student's hostelId or default
+      hostelId: hostelId,
       amount: createPaymentDto.amount,
       paymentMethod: createPaymentDto.paymentMethod,
       paymentDate: createPaymentDto.paymentDate || new Date(),
@@ -163,11 +173,16 @@ export class PaymentsService {
       await this.allocatePaymentToInvoices(savedPayment.id, createPaymentDto.invoiceIds);
     }
 
-    return this.findOne(savedPayment.id);
+    return this.findOne(savedPayment.id, hostelId);
   }
 
-  async update(id: string, updatePaymentDto: any) {
-    const payment = await this.findOne(id);
+  async update(id: string, updatePaymentDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    const payment = await this.findOne(id, hostelId);
     
     // Update main payment entity
     await this.paymentRepository.update(id, {
@@ -183,52 +198,42 @@ export class PaymentsService {
       chequeDate: updatePaymentDto.chequeDate
     });
 
-    return this.findOne(id);
+    return this.findOne(id, hostelId);
   }
 
-  async getStats(hostelId?: string) {
-    // Build where conditions conditionally
-    const baseWhere: any = {};
-    if (hostelId) {
-      baseWhere.hostelId = hostelId;
+  async getStats(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
     }
 
-    const totalPayments = await this.paymentRepository.count({ where: baseWhere });
+    const totalPayments = await this.paymentRepository.count({ where: { hostelId } });
     const completedPayments = await this.paymentRepository.count({ 
-      where: { ...baseWhere, status: PaymentStatus.COMPLETED } 
+      where: { hostelId, status: PaymentStatus.COMPLETED } 
     });
     const pendingPayments = await this.paymentRepository.count({ 
-      where: { ...baseWhere, status: PaymentStatus.PENDING } 
+      where: { hostelId, status: PaymentStatus.PENDING } 
     });
     const failedPayments = await this.paymentRepository.count({ 
-      where: { ...baseWhere, status: PaymentStatus.FAILED } 
+      where: { hostelId, status: PaymentStatus.FAILED } 
     });
     
-    const amountQueryBuilder = this.paymentRepository
+    const amountResult = await this.paymentRepository
       .createQueryBuilder('payment')
       .select('SUM(payment.amount)', 'totalAmount')
       .addSelect('AVG(payment.amount)', 'averageAmount')
-      .where('payment.status = :status', { status: PaymentStatus.COMPLETED });
-    
-    if (hostelId) {
-      amountQueryBuilder.andWhere('payment.hostelId = :hostelId', { hostelId });
-    }
-    
-    const amountResult = await amountQueryBuilder.getRawOne();
+      .where('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('payment.hostelId = :hostelId', { hostelId })
+      .getRawOne();
 
     // Payment method breakdown
-    const methodQueryBuilder = this.paymentRepository
+    const methodResult = await this.paymentRepository
       .createQueryBuilder('payment')
       .select('payment.paymentMethod', 'method')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(payment.amount)', 'amount')
-      .where('payment.status = :status', { status: PaymentStatus.COMPLETED });
-    
-    if (hostelId) {
-      methodQueryBuilder.andWhere('payment.hostelId = :hostelId', { hostelId });
-    }
-    
-    const methodResult = await methodQueryBuilder
+      .where('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('payment.hostelId = :hostelId', { hostelId })
       .groupBy('payment.paymentMethod')
       .getRawMany();
 
@@ -252,7 +257,12 @@ export class PaymentsService {
     };
   }
 
-  async processBulkPayments(payments: any[]) {
+  async processBulkPayments(payments: any[], hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const results = {
       successful: 0,
       failed: 0,
@@ -261,7 +271,7 @@ export class PaymentsService {
 
     for (const paymentData of payments) {
       try {
-        await this.create(paymentData);
+        await this.create(paymentData, hostelId);
         results.successful++;
       } catch (error) {
         results.failed++;
@@ -341,12 +351,22 @@ export class PaymentsService {
     ];
   }
 
-  async createBulk(bulkPaymentDto: any) {
-    return await this.processBulkPayments(bulkPaymentDto.payments);
+  async createBulk(bulkPaymentDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    return await this.processBulkPayments(bulkPaymentDto.payments, hostelId);
   }
 
-  async remove(id: string) {
-    const payment = await this.findOne(id);
+  async remove(id: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
+    const payment = await this.findOne(id, hostelId);
     
     // Soft delete - mark as cancelled
     await this.paymentRepository.update(id, {
@@ -360,7 +380,12 @@ export class PaymentsService {
     };
   }
 
-  async getMonthlyPaymentSummary(months: number = 12) {
+  async getMonthlyPaymentSummary(months: number = 12, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required');
+    }
+
     const endDate = new Date();
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
@@ -376,6 +401,7 @@ export class PaymentsService {
       .where('payment.paymentDate >= :startDate', { startDate })
       .andWhere('payment.paymentDate <= :endDate', { endDate })
       .andWhere('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('payment.hostelId = :hostelId', { hostelId })
       .groupBy('EXTRACT(YEAR FROM payment.paymentDate), EXTRACT(MONTH FROM payment.paymentDate)')
       .orderBy('year, month')
       .getRawMany();

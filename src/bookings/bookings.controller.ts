@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, Headers, BadRequestException, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiHeader, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, BadRequestException, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 // Removed: import { BookingsService } from './bookings.service';
 import { MultiGuestBookingService } from './multi-guest-booking.service';
 // Removed: import { BookingTransformationService } from './booking-transformation.service';
@@ -28,6 +30,8 @@ export class BookingsController {
   ) { }
 
   @Get('requirements')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get all IDs required for booking request',
     description: 'Returns available beds with their IDs, room info, and hostel info - everything needed to create a booking request in one call'
@@ -109,13 +113,15 @@ export class BookingsController {
   }
 
   @Get()
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all booking requests' })
   @ApiResponse({ status: 200, description: 'List of booking requests retrieved successfully' })
-  async getAllBookingRequests(@Query() query: any) {
-    this.logger.log('Getting all booking requests via unified multi-guest system');
+  async getAllBookingRequests(@Query() query: any, @GetHostelId() hostelId: string) {
+    this.logger.log(`Getting all booking requests for hostelId: ${hostelId}`);
 
-    // Use MultiGuestBookingService directly (no transformation needed)
-    const result = await this.multiGuestBookingService.getAllBookings(query);
+    // Use MultiGuestBookingService with hostel context filtering
+    const result = await this.multiGuestBookingService.getAllBookings(query, hostelId);
 
     // Return direct response in the expected format
     return {
@@ -125,13 +131,15 @@ export class BookingsController {
   }
 
   @Get('stats')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get booking statistics' })
   @ApiResponse({ status: 200, description: 'Booking statistics retrieved successfully' })
-  async getBookingStats() {
-    this.logger.log('Getting booking statistics via unified multi-guest system');
+  async getBookingStats(@GetHostelId() hostelId: string) {
+    this.logger.log(`Getting booking statistics for hostelId: ${hostelId}`);
 
-    // Use enhanced stats from MultiGuestBookingService directly
-    const stats = await this.multiGuestBookingService.getEnhancedBookingStats();
+    // Use enhanced stats from MultiGuestBookingService with hostel context
+    const stats = await this.multiGuestBookingService.getEnhancedBookingStats(hostelId);
 
     // Return direct response
     return {
@@ -141,13 +149,15 @@ export class BookingsController {
   }
 
   @Get('pending')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get pending booking requests' })
   @ApiResponse({ status: 200, description: 'Pending bookings retrieved successfully' })
-  async getPendingBookings() {
-    this.logger.log('Getting pending bookings via unified multi-guest system');
+  async getPendingBookings(@GetHostelId() hostelId: string) {
+    this.logger.log(`Getting pending bookings for hostelId: ${hostelId}`);
 
-    // Use MultiGuestBookingService directly
-    const pendingBookings = await this.multiGuestBookingService.getPendingBookings();
+    // Use MultiGuestBookingService with hostel context filtering
+    const pendingBookings = await this.multiGuestBookingService.getPendingBookings(hostelId);
 
     // Return direct response
     return {
@@ -178,10 +188,12 @@ export class BookingsController {
   }
 
   @Get('multi-guest/stats')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get multi-guest booking statistics' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking statistics retrieved successfully' })
-  async getMultiGuestBookingStats() {
-    const stats = await this.multiGuestBookingService.getBookingStats();
+  async getMultiGuestBookingStats(@GetHostelId() hostelId: string) {
+    const stats = await this.multiGuestBookingService.getBookingStats(hostelId);
 
     return {
       status: HttpStatus.OK,
@@ -190,10 +202,12 @@ export class BookingsController {
   }
 
   @Get('multi-guest')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all multi-guest bookings' })
   @ApiResponse({ status: 200, description: 'Multi-guest bookings retrieved successfully' })
-  async getAllMultiGuestBookings(@Query() query: any) {
-    const result = await this.multiGuestBookingService.getAllBookings(query);
+  async getAllMultiGuestBookings(@Query() query: any, @GetHostelId() hostelId: string) {
+    const result = await this.multiGuestBookingService.getAllBookings(query, hostelId);
 
     return {
       status: HttpStatus.OK,
@@ -202,6 +216,8 @@ export class BookingsController {
   }
 
   @Get('multi-guest/:id')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get multi-guest booking by ID' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking retrieved successfully' })
   async getMultiGuestBookingById(@Param('id') id: string) {
@@ -214,6 +230,8 @@ export class BookingsController {
   }
 
   @Post('multi-guest/:id/confirm')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Confirm multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking confirmed successfully' })
   async confirmMultiGuestBooking(@Param('id') id: string, @Body() confirmDto: ConfirmBookingDto) {
@@ -226,6 +244,8 @@ export class BookingsController {
   }
 
   @Post('multi-guest/:id/cancel')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking cancelled successfully' })
   async cancelMultiGuestBooking(@Param('id') id: string, @Body() cancelDto: CancelBookingDto) {
@@ -239,6 +259,8 @@ export class BookingsController {
 
   // User booking endpoints (MUST come before parameterized routes)
   @Get('debug/all-bookings')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Debug: Get all bookings in system',
     description: 'Debug endpoint to view all bookings in the system. For development and troubleshooting only.'
@@ -321,6 +343,8 @@ export class BookingsController {
   }
 
   @Get(':id')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get booking request by ID' })
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Booking not found' })
@@ -340,6 +364,8 @@ export class BookingsController {
 
 
   @Put(':id')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update booking request' })
   @ApiResponse({ status: 200, description: 'Booking updated successfully' })
   async updateBookingRequest(@Param('id') id: string, @Body() updateBookingDto: UpdateBookingDto) {
@@ -356,6 +382,8 @@ export class BookingsController {
   }
 
   @Post(':id/approve')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve booking request' })
   @ApiResponse({ status: 200, description: 'Booking approved successfully' })
   async approveBookingRequest(@Param('id') id: string, @Body() approvalDto: ApproveBookingDto) {
@@ -372,6 +400,8 @@ export class BookingsController {
   }
 
   @Post(':id/reject')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject booking request' })
   @ApiResponse({ status: 200, description: 'Booking rejected successfully' })
   async rejectBookingRequest(@Param('id') id: string, @Body() rejectionDto: RejectBookingDto) {

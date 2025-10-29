@@ -1,4 +1,4 @@
-import { Injectable, ExecutionContext, ForbiddenException, Inject } from '@nestjs/common';
+import { Injectable, ExecutionContext, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { HostelService } from '../../hostel/hostel.service';
@@ -10,7 +10,7 @@ import { HostelService } from '../../hostel/hostel.service';
 @Injectable()
 export class HostelAuthWithContextGuard extends JwtAuthGuard {
   constructor(
-    @Inject(HostelService) private readonly hostelService: HostelService
+    @Inject(forwardRef(() => HostelService)) private readonly hostelService: HostelService
   ) {
     super();
   }
@@ -37,7 +37,7 @@ export class HostelAuthWithContextGuard extends JwtAuthGuard {
     try {
       // Set up hostel context
       const hostel = await this.hostelService.ensureHostelExists(user.businessId);
-      
+
       if (!hostel || !hostel.isActive) {
         throw new ForbiddenException(
           `Invalid or inactive hostel for businessId: ${user.businessId}`,
@@ -53,7 +53,7 @@ export class HostelAuthWithContextGuard extends JwtAuthGuard {
       };
 
       console.log(`✅ Hostel context established in guard: hostelId=${hostel.id}, businessId=${user.businessId}, hostelName=${hostel.name}`);
-      
+
       return true;
     } catch (error) {
       console.error('❌ Error setting up hostel context in guard:', error);

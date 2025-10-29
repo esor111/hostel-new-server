@@ -12,4 +12,4 @@ import { dataSourceOptions } from './data-source';
     }),
   ],
 })
-export class DatabaseModule {}
+export class DatabaseModule { }

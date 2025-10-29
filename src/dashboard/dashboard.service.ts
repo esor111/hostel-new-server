@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Student, StudentStatus } from '../students/entities/student.entity';
@@ -8,6 +8,7 @@ import { Invoice, InvoiceStatus } from '../invoices/entities/invoice.entity';
 import { MultiGuestBooking, MultiGuestBookingStatus } from '../bookings/entities/multi-guest-booking.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
+import { PaginationDto, PaginationResponse } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class DashboardService {
@@ -28,16 +29,23 @@ export class DashboardService {
     private roomOccupantRepository: Repository<RoomOccupant>,
   ) {}
 
-  async getDashboardStats() {
+  async getDashboardStats(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     // Get active students count
     const totalStudents = await this.studentRepository.count({
-      where: { status: StudentStatus.ACTIVE }
+      where: { status: StudentStatus.ACTIVE, hostelId }
     });
 
     // Get real room statistics
-    const totalRooms = await this.roomRepository.count();
+    const totalRooms = await this.roomRepository.count({
+      where: { hostelId }
+    });
     const activeRooms = await this.roomRepository.count({
-      where: { status: 'ACTIVE' }
+      where: { status: 'ACTIVE', hostelId }
     });
 
     // Get accurate bed counts and occupancy
@@ -45,6 +53,7 @@ export class DashboardService {
       .createQueryBuilder('room')
       .select('SUM(room.bedCount)', 'totalBeds')
       .where('room.status = :status', { status: 'ACTIVE' })
+      .andWhere('room.hostelId = :hostelId', { hostelId })
       .getRawOne();
 
     const totalBeds = parseInt(bedCountResult?.totalBeds) || 0;
@@ -56,6 +65,7 @@ export class DashboardService {
       .select('COUNT(occupant.id)', 'occupiedBeds')
       .where('occupant.status = :status', { status: 'Active' })
       .andWhere('room.status = :roomStatus', { roomStatus: 'ACTIVE' })
+      .andWhere('room.hostelId = :hostelId', { hostelId })
       .getRawOne();
 
     const occupiedBeds = parseInt(occupiedBedsResult?.occupiedBeds) || 0;
@@ -69,6 +79,7 @@ export class DashboardService {
       .addSelect('room.bedCount')
       .addSelect('COUNT(occupant.id)', 'currentOccupancy')
       .where('room.status = :status', { status: 'ACTIVE' })
+      .andWhere('room.hostelId = :hostelId', { hostelId })
       .groupBy('room.id, room.bedCount')
       .having('room.bedCount > COUNT(occupant.id)')
       .getRawMany();
@@ -81,20 +92,22 @@ export class DashboardService {
     
     const thisMonthRevenueResult = await this.paymentRepository
       .createQueryBuilder('payment')
+      .innerJoin('payment.student', 'student')
       .select('SUM(payment.amount)', 'total')
       .where('payment.paymentDate >= :startDate', { startDate: firstDayOfMonth })
       .andWhere('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .getRawOne();
 
     const thisMonthRevenue = parseFloat(thisMonthRevenueResult?.total) || 0;
 
     // Get pending payments count (failed + pending)
-    const pendingPayments = await this.paymentRepository.count({
-      where: [
-        { status: PaymentStatus.PENDING },
-        { status: PaymentStatus.FAILED }
-      ]
-    });
+    const pendingPayments = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .innerJoin('payment.student', 'student')
+      .where('payment.status IN (:...statuses)', { statuses: [PaymentStatus.PENDING, PaymentStatus.FAILED] })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
+      .getCount();
 
     // Calculate occupancy percentage based on beds, not rooms
     const occupancyPercentage = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
@@ -116,7 +129,42 @@ export class DashboardService {
     };
   }
 
-  async getRecentActivity(limit: number = 10) {
+  async getRecentActivityPaginated(paginationDto: PaginationDto, hostelId: string): Promise<PaginationResponse<any>> {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const { page = 1, limit = 10 } = paginationDto;
+    
+    // Get all activities first (we'll optimize this later if needed)
+    const allActivities = await this.getRecentActivity(100, hostelId); // Get more activities for pagination
+    
+    // Calculate pagination
+    const total = allActivities.length;
+    const totalPages = Math.ceil(total / limit);
+    const skip = (page - 1) * limit;
+    const data = allActivities.slice(skip, skip + limit);
+    
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: skip + limit < total,
+        hasPrev: page > 1
+      }
+    };
+  }
+
+  async getRecentActivity(limit: number = 10, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const activities = [];
 
     // Get recent payments
@@ -124,6 +172,7 @@ export class DashboardService {
       .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.student', 'student')
       .where('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .orderBy('payment.createdAt', 'DESC')
       .limit(5)
       .getMany();
@@ -146,6 +195,7 @@ export class DashboardService {
       .leftJoinAndSelect('ledger.student', 'student')
       .where('ledger.type IN (:...types)', { types: ['Adjustment', 'Discount'] })
       .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .orderBy('ledger.createdAt', 'DESC')
       .limit(5)
       .getMany();
@@ -171,6 +221,7 @@ export class DashboardService {
       .createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
       .where('student.status = :status', { status: StudentStatus.ACTIVE })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .orderBy('student.updatedAt', 'DESC')
       .addOrderBy('student.createdAt', 'DESC')
       .limit(3)
@@ -193,6 +244,7 @@ export class DashboardService {
       .createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
       .where('student.status = :status', { status: StudentStatus.INACTIVE })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .orderBy('student.updatedAt', 'DESC')
       .limit(3)
       .getMany();
@@ -213,6 +265,7 @@ export class DashboardService {
     const recentBookings = await this.bookingRepository
       .createQueryBuilder('booking')
       .where('booking.status = :status', { status: MultiGuestBookingStatus.PENDING })
+      .andWhere('booking.hostelId = :hostelId', { hostelId })
       .orderBy('booking.createdAt', 'DESC')
       .limit(2)
       .getMany();
@@ -234,6 +287,7 @@ export class DashboardService {
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.student', 'student')
       .where('invoice.status = :status', { status: InvoiceStatus.OVERDUE })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .orderBy('invoice.dueDate', 'ASC')
       .limit(2)
       .getMany();
@@ -265,7 +319,12 @@ export class DashboardService {
     });
   }
 
-  async getCheckedOutWithDues() {
+  async getCheckedOutWithDues(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const studentsWithDues = await this.studentRepository
       .createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
@@ -279,6 +338,7 @@ export class DashboardService {
         'SUM(CASE WHEN ledger.balanceType = \'Dr\' THEN ledger.balance ELSE -ledger.balance END) as outstandingDues'
       ])
       .where('student.status = :status', { status: StudentStatus.INACTIVE })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .groupBy('student.id, room.roomNumber')
       .having('SUM(CASE WHEN ledger.balanceType = \'Dr\' THEN ledger.balance ELSE -ledger.balance END) > 0')
       .getRawMany();
@@ -295,13 +355,19 @@ export class DashboardService {
     }));
   }
 
-  async getMonthlyRevenue(months: number = 12) {
+  async getMonthlyRevenue(months: number = 12, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const endDate = new Date();
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
 
     const monthlyData = await this.paymentRepository
       .createQueryBuilder('payment')
+      .innerJoin('payment.student', 'student')
       .select([
         'EXTRACT(YEAR FROM payment.paymentDate) as year',
         'EXTRACT(MONTH FROM payment.paymentDate) as month',
@@ -310,6 +376,7 @@ export class DashboardService {
       .where('payment.paymentDate >= :startDate', { startDate })
       .andWhere('payment.paymentDate <= :endDate', { endDate })
       .andWhere('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .groupBy('EXTRACT(YEAR FROM payment.paymentDate), EXTRACT(MONTH FROM payment.paymentDate)')
       .orderBy('year, month')
       .getRawMany();
@@ -321,7 +388,12 @@ export class DashboardService {
     }));
   }
 
-  async getOverdueInvoices() {
+  async getOverdueInvoices(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     // Get invoices that are past due date and not paid
     const overdueInvoices = await this.invoiceRepository
       .createQueryBuilder('invoice')
@@ -329,6 +401,7 @@ export class DashboardService {
       .leftJoinAndSelect('student.room', 'room')
       .where('invoice.dueDate < :currentDate', { currentDate: new Date() })
       .andWhere('invoice.status IN (:...statuses)', { statuses: [InvoiceStatus.UNPAID, InvoiceStatus.OVERDUE] })
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .orderBy('invoice.dueDate', 'ASC')
       .getMany();
 
@@ -344,7 +417,12 @@ export class DashboardService {
     }));
   }
 
-  async getDashboardSummary() {
+  async getDashboardSummary(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const [
       stats,
       recentActivity,
@@ -352,11 +430,11 @@ export class DashboardService {
       monthlyRevenue,
       overdueInvoices
     ] = await Promise.all([
-      this.getDashboardStats(),
-      this.getRecentActivity(6),
-      this.getCheckedOutWithDues(),
-      this.getMonthlyRevenue(12),
-      this.getOverdueInvoices()
+      this.getDashboardStats(hostelId),
+      this.getRecentActivity(6, hostelId),
+      this.getCheckedOutWithDues(hostelId),
+      this.getMonthlyRevenue(12, hostelId),
+      this.getOverdueInvoices(hostelId)
     ]);
 
     return {

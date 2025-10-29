@@ -25,7 +25,13 @@
     "db:reset": "npm run schema:drop && npm run seed:run",
     "test:api": "node test-api.js",
     "test:api:full": "node test-api-comprehensive.js",
-    "test:seed": "node test-seed-api.js"
+    "test:seed": "node test-seed-api.js",
+    "migration:remove-security-deposit": "ts-node scripts/remove-security-deposit-data.ts",
+    "fix:enum-schema": "ts-node scripts/fix-enum-schema.ts",
+    "complete:enum-fix": "ts-node scripts/complete-enum-fix.ts",
+    "final:cleanup": "ts-node scripts/final-cleanup.ts",
+    "fix:bed-identifiers": "ts-node scripts/fix-bed-identifiers.ts",
+    "cleanup:duplicate-beds": "ts-node scripts/cleanup-duplicate-beds.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

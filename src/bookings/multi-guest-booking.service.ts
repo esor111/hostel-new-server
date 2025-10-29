@@ -1422,10 +1422,13 @@ export class MultiGuestBookingService {
   /**
    * Get booking statistics (enhanced to include single guest bookings)
    */
-  async getEnhancedBookingStats(): Promise<any> {
-    this.logger.log('Generating enhanced booking statistics');
+  async getEnhancedBookingStats(hostelId?: string): Promise<any> {
+    this.logger.log(`Generating enhanced booking statistics${hostelId ? ` for hostelId: ${hostelId}` : ''}`);
 
     try {
+      // Build where conditions with optional hostel filtering
+      const baseWhere = hostelId ? { hostelId } : {};
+      
       const [
         totalBookings,
         pendingBookings,
@@ -1439,36 +1442,51 @@ export class MultiGuestBookingService {
         sourceBreakdown,
         monthlyTrend
       ] = await Promise.all([
-        this.multiGuestBookingRepository.count(),
+        this.multiGuestBookingRepository.count({ where: baseWhere }),
         this.multiGuestBookingRepository.count({
-          where: { status: MultiGuestBookingStatus.PENDING }
+          where: { ...baseWhere, status: MultiGuestBookingStatus.PENDING }
         }),
         this.multiGuestBookingRepository.count({
           where: [
-            { status: MultiGuestBookingStatus.CONFIRMED },
-            { status: MultiGuestBookingStatus.PARTIALLY_CONFIRMED }
+            { ...baseWhere, status: MultiGuestBookingStatus.CONFIRMED },
+            { ...baseWhere, status: MultiGuestBookingStatus.PARTIALLY_CONFIRMED }
           ]
         }),
         this.multiGuestBookingRepository.count({
-          where: { status: MultiGuestBookingStatus.REJECTED }
+          where: { ...baseWhere, status: MultiGuestBookingStatus.REJECTED }
         }),
         this.multiGuestBookingRepository.count({
-          where: { status: MultiGuestBookingStatus.CANCELLED }
+          where: { ...baseWhere, status: MultiGuestBookingStatus.CANCELLED }
         }),
         this.multiGuestBookingRepository.count({
-          where: { totalGuests: 1 }
+          where: { ...baseWhere, totalGuests: 1 }
         }),
         this.multiGuestBookingRepository.count({
-          where: { totalGuests: MoreThan(1) }
+          where: { ...baseWhere, totalGuests: MoreThan(1) }
         }),
-        this.bookingGuestRepository.count(),
-        this.bookingGuestRepository.count({
-          where: { status: GuestStatus.CONFIRMED }
-        }),
+        // For guest counts, we need to join with bookings to filter by hostelId
+        hostelId 
+          ? this.bookingGuestRepository
+              .createQueryBuilder('guest')
+              .innerJoin('guest.booking', 'booking')
+              .where('booking.hostelId = :hostelId', { hostelId })
+              .getCount()
+          : this.bookingGuestRepository.count(),
+        hostelId
+          ? this.bookingGuestRepository
+              .createQueryBuilder('guest')
+              .innerJoin('guest.booking', 'booking')
+              .where('booking.hostelId = :hostelId', { hostelId })
+              .andWhere('guest.status = :status', { status: GuestStatus.CONFIRMED })
+              .getCount()
+          : this.bookingGuestRepository.count({
+              where: { status: GuestStatus.CONFIRMED }
+            }),
         this.multiGuestBookingRepository
           .createQueryBuilder('booking')
           .select('booking.source', 'source')
           .addSelect('COUNT(*)', 'count')
+          .where(hostelId ? 'booking.hostelId = :hostelId' : '1=1', hostelId ? { hostelId } : {})
           .groupBy('booking.source')
           .getRawMany(),
         this.multiGuestBookingRepository
@@ -1478,6 +1496,7 @@ export class MultiGuestBookingService {
           .where('booking.requestDate >= :sixMonthsAgo', {
             sixMonthsAgo: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000)
           })
+          .andWhere(hostelId ? 'booking.hostelId = :hostelId' : '1=1', hostelId ? { hostelId } : {})
           .groupBy('DATE_TRUNC(\'month\', booking.requestDate)')
           .orderBy('month', 'ASC')
           .getRawMany()

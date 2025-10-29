@@ -9,6 +9,7 @@ import { RoomsModule } from './rooms/rooms.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { PaymentsModule } from './payments/payments.module';
 import { LedgerModule } from './ledger/ledger.module';
+import { LedgerV2Module } from './ledger-v2/ledger-v2.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { DiscountsModule } from './discounts/discounts.module';
 import { ReportsModule } from './reports/reports.module';
@@ -42,6 +43,7 @@ import { HostelContextMiddleware } from './hostel/middleware/hostel-context.midd
     InvoicesModule,
     PaymentsModule,
     LedgerModule,
+    LedgerV2Module,
     BookingsModule,
     DiscountsModule,
     ReportsModule,
@@ -65,17 +67,21 @@ export class AppModule implements NestModule {
       .apply(HostelContextMiddleware)
       .forRoutes(
         'students',
-        'rooms', 
+        'rooms',
+        'new-rooms',    // Added for rooms-new controller
         'invoices',
         'payments',
         'ledger',
+        'ledger-v2',
         'bookings',
         'discounts',
         'reports',
         'maintenance',
         'admin-charges',
         'billing',
-        'meal-plans'
+        'meal-plans',
+        'dashboard',    // Added for hostel context isolation
+        'analytics'     // Added for hostel context isolation
       );
   }
 }
