@@ -10,18 +10,24 @@ import { Payment } from '../payments/entities/payment.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { Discount } from '../discounts/entities/discount.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
+import { AuthModule } from '../auth/auth.module';
+import { HostelModule } from '../hostel/hostel.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    Report,
-    Student,
-    Room,
-    Invoice,
-    Payment,
-    LedgerEntry,
-    Discount,
-    Hostel
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Report,
+      Student,
+      Room,
+      Invoice,
+      Payment,
+      LedgerEntry,
+      Discount,
+      Hostel
+    ]),
+    AuthModule,
+    HostelModule,
+  ],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

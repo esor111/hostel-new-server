@@ -9,21 +9,27 @@ import {
   Query,
   HttpStatus,
   ValidationPipe,
+  UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminChargesService } from './admin-charges.service';
 import { CreateAdminChargeDto } from './dto/create-admin-charge.dto';
 import { UpdateAdminChargeDto } from './dto/update-admin-charge.dto';
 import { AdminChargeStatus } from './entities/admin-charge.entity';
-import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 
+@ApiTags('admin-charges')
 @Controller('admin-charges')
+@UseGuards(HostelAuthWithContextGuard)
+@ApiBearerAuth()
 export class AdminChargesController {
   constructor(private readonly adminChargesService: AdminChargesService) {}
 
   @Post()
-  async create(@Body(ValidationPipe) createAdminChargeDto: CreateAdminChargeDto) {
+  async create(@GetHostelId() hostelId: string, @Body(ValidationPipe) createAdminChargeDto: CreateAdminChargeDto) {
     try {
-      const result = await this.adminChargesService.create(createAdminChargeDto);
+      const result = await this.adminChargesService.create(createAdminChargeDto, hostelId);
       return {
         success: true,
         data: result,
@@ -40,13 +46,13 @@ export class AdminChargesController {
 
   @Get()
   async findAll(
+    @GetHostelId() hostelId: string,
     @Query('studentId') studentId?: string,
     @Query('status') status?: AdminChargeStatus,
     @Query('chargeType') chargeType?: string,
     @Query('category') category?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-    @GetOptionalHostelId() hostelId?: string,
   ) {
     try {
       const filters = {
@@ -80,7 +86,7 @@ export class AdminChargesController {
   }
 
   @Get('stats')
-  async getStats(@GetOptionalHostelId() hostelId?: string) {
+  async getStats(@GetHostelId() hostelId: string) {
     try {
       const result = await this.adminChargesService.getChargeStats(hostelId);
       return {
@@ -98,9 +104,9 @@ export class AdminChargesController {
   }
 
   @Get('overdue-students')
-  async getOverdueStudents() {
+  async getOverdueStudents(@GetHostelId() hostelId: string) {
     try {
-      const result = await this.adminChargesService.getOverdueStudents();
+      const result = await this.adminChargesService.getOverdueStudents(hostelId);
       return {
         success: true,
         data: result,
@@ -116,7 +122,7 @@ export class AdminChargesController {
   }
 
   @Get('today-summary')
-  async getTodaySummary(@GetOptionalHostelId() hostelId?: string) {
+  async getTodaySummary(@GetHostelId() hostelId: string) {
     try {
       const result = await this.adminChargesService.getTodaySummary(hostelId);
       return {
@@ -134,9 +140,9 @@ export class AdminChargesController {
   }
 
   @Get('student/:studentId')
-  async getChargesByStudent(@Param('studentId') studentId: string) {
+  async getChargesByStudent(@GetHostelId() hostelId: string, @Param('studentId') studentId: string) {
     try {
-      const result = await this.adminChargesService.getChargesByStudent(studentId);
+      const result = await this.adminChargesService.getChargesByStudent(studentId, hostelId);
       return {
         success: true,
         data: result,
@@ -152,9 +158,9 @@ export class AdminChargesController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@GetHostelId() hostelId: string, @Param('id') id: string) {
     try {
-      const result = await this.adminChargesService.findOne(id);
+      const result = await this.adminChargesService.findOne(id, hostelId);
       return {
         success: true,
         data: result,
@@ -171,11 +177,12 @@ export class AdminChargesController {
 
   @Patch(':id')
   async update(
+    @GetHostelId() hostelId: string,
     @Param('id') id: string, 
     @Body(ValidationPipe) updateAdminChargeDto: UpdateAdminChargeDto
   ) {
     try {
-      const result = await this.adminChargesService.update(id, updateAdminChargeDto);
+      const result = await this.adminChargesService.update(id, updateAdminChargeDto, hostelId);
       return {
         success: true,
         data: result,
@@ -191,9 +198,9 @@ export class AdminChargesController {
   }
 
   @Post(':id/apply')
-  async applyCharge(@Param('id') id: string) {
+  async applyCharge(@GetHostelId() hostelId: string, @Param('id') id: string) {
     try {
-      const result = await this.adminChargesService.applyCharge(id);
+      const result = await this.adminChargesService.applyCharge(id, hostelId);
       return {
         success: true,
         data: result,
@@ -205,9 +212,9 @@ export class AdminChargesController {
   }
 
   @Post(':id/cancel')
-  async cancelCharge(@Param('id') id: string) {
+  async cancelCharge(@GetHostelId() hostelId: string, @Param('id') id: string) {
     try {
-      const result = await this.adminChargesService.cancelCharge(id);
+      const result = await this.adminChargesService.cancelCharge(id, hostelId);
       return {
         success: true,
         data: result,
@@ -223,9 +230,9 @@ export class AdminChargesController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@GetHostelId() hostelId: string, @Param('id') id: string) {
     try {
-      await this.adminChargesService.remove(id);
+      await this.adminChargesService.remove(id, hostelId);
       return {
         success: true,
         message: 'Admin charge deleted successfully'
@@ -240,13 +247,13 @@ export class AdminChargesController {
   }
 
   @Post('apply-to-students')
-  async applyChargeToStudents(@Body() applyData: { chargeId: string; studentIds: string[]; notes?: string }) {
+  async applyChargeToStudents(@GetHostelId() hostelId: string, @Body() applyData: { chargeId: string; studentIds: string[]; notes?: string }) {
     try {
       // For now, we'll apply individual charges to each student
       // This could be enhanced to create a single charge and apply to multiple students
       const results = [];
       for (const studentId of applyData.studentIds) {
-        const result = await this.adminChargesService.applyCharge(applyData.chargeId);
+        const result = await this.adminChargesService.applyCharge(applyData.chargeId, hostelId);
         results.push(result);
       }
       
@@ -265,11 +272,11 @@ export class AdminChargesController {
   }
 
   @Patch('bulk-update')
-  async bulkUpdateCharges(@Body() bulkData: { chargeIds: string[]; updateData: UpdateAdminChargeDto }) {
+  async bulkUpdateCharges(@GetHostelId() hostelId: string, @Body() bulkData: { chargeIds: string[]; updateData: UpdateAdminChargeDto }) {
     try {
       const results = [];
       for (const chargeId of bulkData.chargeIds) {
-        const result = await this.adminChargesService.update(chargeId, bulkData.updateData);
+        const result = await this.adminChargesService.update(chargeId, bulkData.updateData, hostelId);
         results.push(result);
       }
       
@@ -288,10 +295,10 @@ export class AdminChargesController {
   }
 
   @Post('bulk-delete')
-  async bulkDeleteCharges(@Body() bulkData: { chargeIds: string[] }) {
+  async bulkDeleteCharges(@GetHostelId() hostelId: string, @Body() bulkData: { chargeIds: string[] }) {
     try {
       for (const chargeId of bulkData.chargeIds) {
-        await this.adminChargesService.remove(chargeId);
+        await this.adminChargesService.remove(chargeId, hostelId);
       }
       
       return {

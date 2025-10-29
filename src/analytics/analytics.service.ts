@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Student } from "../students/entities/student.entity";
@@ -19,12 +19,17 @@ export class AnalyticsService {
     private roomRepository: Repository<Room>
   ) {}
 
-  async getDashboardData() {
+  async getDashboardData(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     // Get summary statistics
-    const summary = await this.getSummaryStats();
+    const summary = await this.getSummaryStats(hostelId);
 
     // Get monthly data for the last 6 months
-    const monthlyData = await this.getMonthlyData();
+    const monthlyData = await this.getMonthlyData(hostelId);
 
     // Get guest type data (mock for now)
     const guestTypeData = [
@@ -34,7 +39,7 @@ export class AnalyticsService {
     ];
 
     // Get performance metrics
-    const performanceMetrics = await this.getPerformanceMetrics();
+    const performanceMetrics = await this.getPerformanceMetrics(hostelId);
 
     return {
       summary,
@@ -44,24 +49,37 @@ export class AnalyticsService {
     };
   }
 
-  async getSummaryStats() {
-    const totalStudents = await this.studentRepository.count();
-    const totalRooms = await this.roomRepository.count();
+  async getSummaryStats(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const totalStudents = await this.studentRepository.count({
+      where: { hostelId }
+    });
+    const totalRooms = await this.roomRepository.count({
+      where: { hostelId }
+    });
     const occupiedRooms = await this.roomRepository.count({
-      where: { occupancy: 1 },
+      where: { occupancy: 1, hostelId },
     });
 
     const totalRevenue = await this.paymentRepository
       .createQueryBuilder("payment")
+      .innerJoin("payment.student", "student")
       .select("SUM(payment.amount)", "total")
+      .where("student.hostelId = :hostelId", { hostelId })
       .getRawOne();
 
     const monthlyRevenue = await this.paymentRepository
       .createQueryBuilder("payment")
+      .innerJoin("payment.student", "student")
       .select("SUM(payment.amount)", "total")
       .where("payment.paymentDate >= :startDate", {
         startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       })
+      .andWhere("student.hostelId = :hostelId", { hostelId })
       .getRawOne();
 
     const occupancyRate =
@@ -80,7 +98,12 @@ export class AnalyticsService {
     };
   }
 
-  async getMonthlyData() {
+  async getMonthlyData(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const monthlyData = [];
     const currentDate = new Date();
 
@@ -98,6 +121,7 @@ export class AnalyticsService {
 
       const revenue = await this.paymentRepository
         .createQueryBuilder("payment")
+        .innerJoin("payment.student", "student")
         .select("SUM(payment.amount)", "total")
         .where(
           "payment.paymentDate >= :startDate AND payment.paymentDate < :endDate",
@@ -106,6 +130,7 @@ export class AnalyticsService {
             endDate: nextDate,
           }
         )
+        .andWhere("student.hostelId = :hostelId", { hostelId })
         .getRawOne();
 
       const bookings = await this.studentRepository
@@ -117,6 +142,7 @@ export class AnalyticsService {
             endDate: nextDate,
           }
         )
+        .andWhere("student.hostelId = :hostelId", { hostelId })
         .getCount();
 
       monthlyData.push({
@@ -133,15 +159,32 @@ export class AnalyticsService {
     return monthlyData;
   }
 
-  async getMonthlyRevenue() {
-    return this.getMonthlyData();
+  async getMonthlyRevenue(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    return this.getMonthlyData(hostelId);
   }
 
-  async getPerformanceMetrics() {
-    const totalInvoices = await this.invoiceRepository.count();
-    const paidInvoices = await this.invoiceRepository.count({
-      where: { status: InvoiceStatus.PAID },
-    });
+  async getPerformanceMetrics(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const totalInvoices = await this.invoiceRepository
+      .createQueryBuilder("invoice")
+      .innerJoin("invoice.student", "student")
+      .where("student.hostelId = :hostelId", { hostelId })
+      .getCount();
+    const paidInvoices = await this.invoiceRepository
+      .createQueryBuilder("invoice")
+      .innerJoin("invoice.student", "student")
+      .where("invoice.status = :status", { status: InvoiceStatus.PAID })
+      .andWhere("student.hostelId = :hostelId", { hostelId })
+      .getCount();
     const collectionRate =
       totalInvoices > 0 ? Math.round((paidInvoices / totalInvoices) * 100) : 0;
 
@@ -150,6 +193,7 @@ export class AnalyticsService {
       .createQueryBuilder('student')
       .select('AVG(EXTRACT(DAY FROM (COALESCE(student.updatedAt, NOW()) - student.enrollmentDate)))', 'avgDays')
       .where('student.enrollmentDate IS NOT NULL')
+      .andWhere('student.hostelId = :hostelId', { hostelId })
       .getRawOne();
 
     const averageStayDuration = Math.round(parseFloat(avgStayResult?.avgDays) || 0);

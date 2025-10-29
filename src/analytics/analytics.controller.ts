@@ -1,17 +1,21 @@
-import { Controller, Get, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, HttpStatus, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 
 @ApiTags('analytics')
 @Controller('analytics')
+@UseGuards(HostelAuthWithContextGuard)
+@ApiBearerAuth()
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Get dashboard analytics data' })
   @ApiResponse({ status: 200, description: 'Dashboard analytics retrieved successfully' })
-  async getDashboardData() {
-    const data = await this.analyticsService.getDashboardData();
+  async getDashboardData(@GetHostelId() hostelId: string) {
+    const data = await this.analyticsService.getDashboardData(hostelId);
     
     return {
       status: HttpStatus.OK,
@@ -22,8 +26,8 @@ export class AnalyticsController {
   @Get('monthly-revenue')
   @ApiOperation({ summary: 'Get monthly revenue data' })
   @ApiResponse({ status: 200, description: 'Monthly revenue data retrieved successfully' })
-  async getMonthlyRevenue() {
-    const data = await this.analyticsService.getMonthlyRevenue();
+  async getMonthlyRevenue(@GetHostelId() hostelId: string) {
+    const data = await this.analyticsService.getMonthlyRevenue(hostelId);
     
     return {
       status: HttpStatus.OK,
@@ -34,8 +38,8 @@ export class AnalyticsController {
   @Get('performance-metrics')
   @ApiOperation({ summary: 'Get performance metrics' })
   @ApiResponse({ status: 200, description: 'Performance metrics retrieved successfully' })
-  async getPerformanceMetrics() {
-    const data = await this.analyticsService.getPerformanceMetrics();
+  async getPerformanceMetrics(@GetHostelId() hostelId: string) {
+    const data = await this.analyticsService.getPerformanceMetrics(hostelId);
     
     return {
       status: HttpStatus.OK,

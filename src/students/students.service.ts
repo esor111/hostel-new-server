@@ -30,7 +30,12 @@ export class StudentsService { // Removed HostelScopedService extension for back
     // super(studentRepository, 'Student'); // Commented out for backward compatibility
   }
 
-  async findAll(filters: any = {}, hostelId?: string) {
+  async findAll(filters: any = {}, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const { status = 'all', search = '', page = 1, limit = 50 } = filters;
     
     const queryBuilder = this.studentRepository.createQueryBuilder('student')
@@ -39,39 +44,20 @@ export class StudentsService { // Removed HostelScopedService extension for back
       .leftJoinAndSelect('student.academicInfo', 'academic')
       .leftJoinAndSelect('student.financialInfo', 'financial');
     
-    // Start with a base condition to avoid andWhere issues
-    let hasWhere = false;
-
-    // Apply hostel filter only if hostelId is provided (backward compatible)
-    if (hostelId) {
-      queryBuilder.where('student.hostelId = :hostelId', { hostelId });
-      hasWhere = true;
-    }
+    // Apply hostel filter (required)
+    queryBuilder.where('student.hostelId = :hostelId', { hostelId });
     
     // Apply status filter
     if (status !== 'all') {
-      if (hasWhere) {
-        queryBuilder.andWhere('student.status = :status', { status });
-      } else {
-        queryBuilder.where('student.status = :status', { status });
-        hasWhere = true;
-      }
+      queryBuilder.andWhere('student.status = :status', { status });
     }
     
     // Apply search filter
     if (search) {
-      if (hasWhere) {
-        queryBuilder.andWhere(
-          '(student.name ILIKE :search OR student.phone ILIKE :search OR student.email ILIKE :search)',
-          { search: `%${search}%` }
-        );
-      } else {
-        queryBuilder.where(
-          '(student.name ILIKE :search OR student.phone ILIKE :search OR student.email ILIKE :search)',
-          { search: `%${search}%` }
-        );
-        hasWhere = true;
-      }
+      queryBuilder.andWhere(
+        '(student.name ILIKE :search OR student.phone ILIKE :search OR student.email ILIKE :search)',
+        { search: `%${search}%` }
+      );
     }
     
     // Apply pagination
@@ -100,12 +86,13 @@ export class StudentsService { // Removed HostelScopedService extension for back
     };
   }
 
-  async findOne(id: string, hostelId?: string) {
-    const whereCondition: any = { id };
-    // Apply hostel filter only if hostelId is provided (backward compatible)
-    if (hostelId) {
-      whereCondition.hostelId = hostelId;
+  async findOne(id: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
     }
+
+    const whereCondition: any = { id, hostelId };
     
     const student = await this.studentRepository.findOne({
       where: whereCondition,
@@ -119,10 +106,10 @@ export class StudentsService { // Removed HostelScopedService extension for back
     return this.transformToApiResponse(student);
   }
 
-  async create(createStudentDto: any, hostelId?: string) {
-    // Validate hostelId requirement
+  async create(createStudentDto: any, hostelId: string) {
+    // Validate hostelId is present
     if (!hostelId) {
-      throw new Error('Hostel context is required for student creation. Please ensure you are authenticated with a Business Token.');
+      throw new BadRequestException('Hostel context required for this operation.');
     }
 
     // Create student entity with hostelId
@@ -149,7 +136,12 @@ export class StudentsService { // Removed HostelScopedService extension for back
     return this.findOne(savedStudent.id, hostelId);
   }
 
-  async update(id: string, updateStudentDto: any, hostelId?: string) {
+  async update(id: string, updateStudentDto: any, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const student = await this.findOne(id, hostelId);
     
     // Update main student entity
@@ -169,16 +161,17 @@ export class StudentsService { // Removed HostelScopedService extension for back
     return this.findOne(id, hostelId);
   }
 
-  async getPendingConfigurationStudents(hostelId?: string) {
+  async getPendingConfigurationStudents(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const whereCondition: any = { 
       status: StudentStatus.PENDING_CONFIGURATION,
-      isConfigured: false 
+      isConfigured: false,
+      hostelId
     };
-    
-    // Apply hostel filter only if hostelId is provided (backward compatible)
-    if (hostelId) {
-      whereCondition.hostelId = hostelId;
-    }
     
     const students = await this.studentRepository.find({
       where: whereCondition,
@@ -200,24 +193,23 @@ export class StudentsService { // Removed HostelScopedService extension for back
     };
   }
 
-  async getStats(hostelId?: string) {
-    const whereCondition: any = {};
-    // Apply hostel filter only if hostelId is provided (backward compatible)
-    if (hostelId) {
-      whereCondition.hostelId = hostelId;
+  async getStats(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
     }
-    
+
     const totalStudents = await this.studentRepository.count({
-      where: whereCondition
+      where: { hostelId }
     });
     const activeStudents = await this.studentRepository.count({ 
-      where: { ...whereCondition, status: StudentStatus.ACTIVE } 
+      where: { hostelId, status: StudentStatus.ACTIVE } 
     });
     const inactiveStudents = await this.studentRepository.count({ 
-      where: { ...whereCondition, status: StudentStatus.INACTIVE } 
+      where: { hostelId, status: StudentStatus.INACTIVE } 
     });
     const pendingConfigurationStudents = await this.studentRepository.count({ 
-      where: { ...whereCondition, status: StudentStatus.PENDING_CONFIGURATION } 
+      where: { hostelId, status: StudentStatus.PENDING_CONFIGURATION } 
     });
     
     // Calculate financial totals from ledger entries (will implement when ledger is ready)
@@ -642,18 +634,19 @@ export class StudentsService { // Removed HostelScopedService extension for back
    * Find student by userId from JWT token
    * This solves the core problem: userId (from JWT) → studentId (for ledger/discounts/charges)
    */
-  async findByUserId(userId: string, hostelId?: string): Promise<any> {
+  async findByUserId(userId: string, hostelId: string): Promise<any> {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     const queryBuilder = this.studentRepository.createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
       .leftJoinAndSelect('student.contacts', 'contacts')
       .leftJoinAndSelect('student.academicInfo', 'academicInfo')
       .leftJoinAndSelect('student.financialInfo', 'financialInfo')
-      .where('student.userId = :userId', { userId });
-
-    // Apply hostel filter if provided
-    if (hostelId) {
-      queryBuilder.andWhere('student.hostelId = :hostelId', { hostelId });
-    }
+      .where('student.userId = :userId', { userId })
+      .andWhere('student.hostelId = :hostelId', { hostelId });
 
     const student = await queryBuilder.getOne();
     
@@ -695,7 +688,12 @@ export class StudentsService { // Removed HostelScopedService extension for back
    * Get user's financial data (ledger, discounts, charges)
    * This is the main method that solves the problem
    */
-  async getUserFinancialData(userId: string, hostelId?: string) {
+  async getUserFinancialData(userId: string, hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
     // First, find the student record for this user
     const student = await this.findByUserId(userId, hostelId);
     

@@ -67,7 +67,8 @@ export class AppModule implements NestModule {
       .apply(HostelContextMiddleware)
       .forRoutes(
         'students',
-        'rooms', 
+        'rooms',
+        'new-rooms',    // Added for rooms-new controller
         'invoices',
         'payments',
         'ledger',
@@ -78,7 +79,9 @@ export class AppModule implements NestModule {
         'maintenance',
         'admin-charges',
         'billing',
-        'meal-plans'
+        'meal-plans',
+        'dashboard',    // Added for hostel context isolation
+        'analytics'     // Added for hostel context isolation
       );
   }
 }

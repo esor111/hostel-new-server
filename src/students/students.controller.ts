@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, NotFoundException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, NotFoundException, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import { 
   CreateStudentDto, 
@@ -8,19 +8,22 @@ import {
   CheckoutStudentDto, 
   BulkUpdateStudentDto 
 } from './dto';
-import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 
 @ApiTags('students')
 @Controller('students')
+@UseGuards(HostelAuthWithContextGuard)
+@ApiBearerAuth()
 export class StudentsController {
   constructor(private readonly studentsService: StudentsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all students' })
   @ApiResponse({ status: 200, description: 'List of students retrieved successfully' })
-  async getAllStudents(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
+  async getAllStudents(@Query() query: any, @GetHostelId() hostelId: string) {
     const result = await this.studentsService.findAll(query, hostelId);
     
     // Return EXACT same format as current Express API
@@ -33,7 +36,7 @@ export class StudentsController {
   @Get('pending-configuration')
   @ApiOperation({ summary: 'Get students pending configuration' })
   @ApiResponse({ status: 200, description: 'Pending configuration students retrieved successfully' })
-  async getPendingConfigurationStudents(@GetOptionalHostelId() hostelId?: string) {
+  async getPendingConfigurationStudents(@GetHostelId() hostelId: string) {
     const result = await this.studentsService.getPendingConfigurationStudents(hostelId);
     
     // Return EXACT same format as current Express API
@@ -46,7 +49,7 @@ export class StudentsController {
   @Get('stats')
   @ApiOperation({ summary: 'Get student statistics' })
   @ApiResponse({ status: 200, description: 'Student statistics retrieved successfully' })
-  async getStudentStats(@GetOptionalHostelId() hostelId?: string) {
+  async getStudentStats(@GetHostelId() hostelId: string) {
     const stats = await this.studentsService.getStats(hostelId);
     
     // Return EXACT same format as current Express API
@@ -60,7 +63,7 @@ export class StudentsController {
   @ApiOperation({ summary: 'Get student by ID' })
   @ApiResponse({ status: 200, description: 'Student retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Student not found' })
-  async getStudentById(@Param('id') id: string, @GetOptionalHostelId() hostelId?: string) {
+  async getStudentById(@Param('id') id: string, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.findOne(id, hostelId);
     
     // Return EXACT same format as current Express API
@@ -73,7 +76,7 @@ export class StudentsController {
   @Post()
   @ApiOperation({ summary: 'Create new student' })
   @ApiResponse({ status: 201, description: 'Student created successfully' })
-  async createStudent(@Body(ValidationPipe) createStudentDto: CreateStudentDto, @GetOptionalHostelId() hostelId?: string) {
+  async createStudent(@Body(ValidationPipe) createStudentDto: CreateStudentDto, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.create(createStudentDto, hostelId);
     
     // Return EXACT same format as current Express API
@@ -86,7 +89,7 @@ export class StudentsController {
   @Put(':id')
   @ApiOperation({ summary: 'Update student' })
   @ApiResponse({ status: 200, description: 'Student updated successfully' })
-  async updateStudent(@Param('id') id: string, @Body(ValidationPipe) updateStudentDto: UpdateStudentDto, @GetOptionalHostelId() hostelId?: string) {
+  async updateStudent(@Param('id') id: string, @Body(ValidationPipe) updateStudentDto: UpdateStudentDto, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.update(id, updateStudentDto, hostelId);
     
     // Return EXACT same format as current Express API
@@ -203,7 +206,7 @@ export class StudentsController {
   @Get('my-profile')
   @ApiOperation({ summary: 'Get current user\'s student profile and financial data' })
   @ApiResponse({ status: 200, description: 'User profile retrieved successfully' })
-  async getMyProfile(@CurrentUser() user: JwtPayload, @GetOptionalHostelId() hostelId?: string) {
+  async getMyProfile(@CurrentUser() user: JwtPayload, @GetHostelId() hostelId: string) {
     try {
       const financialData = await this.studentsService.getUserFinancialData(user.id, hostelId);
       
@@ -240,7 +243,7 @@ export class StudentsController {
   @Get('by-user/:userId')
   @ApiOperation({ summary: 'Get student profile by user ID (admin use)' })
   @ApiResponse({ status: 200, description: 'Student profile retrieved successfully' })
-  async getStudentByUserId(@Param('userId') userId: string, @GetOptionalHostelId() hostelId?: string) {
+  async getStudentByUserId(@Param('userId') userId: string, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.findByUserId(userId, hostelId);
     
     if (!student) {

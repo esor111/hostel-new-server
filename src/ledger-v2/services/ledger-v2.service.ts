@@ -348,6 +348,44 @@ export class LedgerV2Service {
   }
 
   /**
+   * ✅ BULLETPROOF: Get charge counts for multiple students (bulk operation)
+   */
+  async getStudentChargeCounts(studentIds: string[], hostelId?: string): Promise<Record<string, number>> {
+    if (!studentIds || studentIds.length === 0) {
+      return {};
+    }
+
+    const queryBuilder = this.ledgerRepository
+      .createQueryBuilder('ledger')
+      .select('ledger.studentId', 'studentId')
+      .addSelect('COUNT(*)', 'count')
+      .where('ledger.studentId IN (:...studentIds)', { studentIds })
+      .andWhere('ledger.isReversed = false')
+      .groupBy('ledger.studentId');
+
+    if (hostelId) {
+      queryBuilder.andWhere('ledger.hostelId = :hostelId', { hostelId });
+    }
+
+    const results = await queryBuilder.getRawMany();
+
+    // Convert array to object map
+    const chargeCounts: Record<string, number> = {};
+    results.forEach(result => {
+      chargeCounts[result.studentId] = parseInt(result.count) || 0;
+    });
+
+    // Ensure all requested students have an entry (even if 0)
+    studentIds.forEach(studentId => {
+      if (!(studentId in chargeCounts)) {
+        chargeCounts[studentId] = 0;
+      }
+    });
+
+    return chargeCounts;
+  }
+
+  /**
    * Transform entity to API response (same format as existing)
    */
   private transformToApiResponse(entry: LedgerEntryV2): any {

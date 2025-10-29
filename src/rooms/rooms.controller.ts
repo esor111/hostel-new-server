@@ -5,9 +5,7 @@ import { BedService } from './bed.service';
 import { BedSyncService } from './bed-sync.service';
 import { CreateRoomDto, UpdateRoomDto, AssignStudentDto, VacateStudentDto, MaintenanceDto } from './dto';
 import { BedStatus } from './entities/bed.entity';
-import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
-import { HostelAuthGuard } from '../auth/guards/hostel-auth.guard';
-import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -15,6 +13,8 @@ import { HostelService } from '../hostel/hostel.service';
 
 @ApiTags('rooms')
 @Controller('rooms')
+@UseGuards(HostelAuthWithContextGuard)
+@ApiBearerAuth()
 export class RoomsController {
   constructor(
     private readonly roomsService: RoomsService,
@@ -26,10 +26,8 @@ export class RoomsController {
   }
 
   @Get()
-  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get all rooms' })
   @ApiResponse({ status: 200, description: 'List of rooms retrieved successfully' })
-  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   @ApiQuery({ name: 'status', required: false, description: 'Filter by room status (Active, Maintenance, Inactive)' })
   @ApiQuery({ name: 'gender', required: false, description: 'Filter by gender (Male, Female, Mixed, Any)' })
   @ApiQuery({ name: 'floor', required: false, description: 'Filter by floor number' })
@@ -38,17 +36,10 @@ export class RoomsController {
   @ApiQuery({ name: 'search', required: false, description: 'Search by room name or number' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number for pagination', type: Number })
   @ApiQuery({ name: 'limit', required: false, description: 'Number of items per page', type: Number })
-  async getAllRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    console.log('🔍 getAllRooms - query.hostelId:', query.hostelId);
-    console.log('🔍 getAllRooms - JWT hostelId (optional):', hostelId);
+  async getAllRooms(@Query() query: any, @GetHostelId() hostelId: string) {
+    console.log('🔍 getAllRooms - JWT hostelId:', hostelId);
 
-    // SIMPLIFIED: Use query.hostelId directly, let the service handle flexible resolution
-    // No JWT token required - purely query-parameter based
-    const queryHostelId = query.hostelId || null;
-
-    console.log('🎯 Using query hostelId for flexible resolution:', queryHostelId);
-
-    const result = await this.roomsService.findAll(query, queryHostelId);
+    const result = await this.roomsService.findAll(query, hostelId);
 
     // Return EXACT same format as current Express API
     return {
@@ -60,14 +51,10 @@ export class RoomsController {
   @Get('stats')
   @ApiOperation({ summary: 'Get room statistics' })
   @ApiResponse({ status: 200, description: 'Room statistics retrieved successfully' })
-  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
-  async getRoomStats(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    console.log('📊 getRoomStats - query.hostelId:', query.hostelId);
+  async getRoomStats(@GetHostelId() hostelId: string) {
+    console.log('📊 getRoomStats - JWT hostelId:', hostelId);
 
-    // SIMPLIFIED: Use query.hostelId directly for flexible resolution
-    const queryHostelId = query.hostelId || null;
-
-    const stats = await this.roomsService.getStats(queryHostelId);
+    const stats = await this.roomsService.getStats(hostelId);
 
     // Return EXACT same format as current Express API
     return {
@@ -79,14 +66,10 @@ export class RoomsController {
   @Get('available')
   @ApiOperation({ summary: 'Get available rooms' })
   @ApiResponse({ status: 200, description: 'Available rooms retrieved successfully' })
-  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
-  async getAvailableRooms(@Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    console.log('🏠 getAvailableRooms - query.hostelId:', query.hostelId);
+  async getAvailableRooms(@GetHostelId() hostelId: string) {
+    console.log('🏠 getAvailableRooms - JWT hostelId:', hostelId);
 
-    // SIMPLIFIED: Use query.hostelId directly for flexible resolution
-    const queryHostelId = query.hostelId || null;
-
-    const availableRooms = await this.roomsService.getAvailableRooms(queryHostelId);
+    const availableRooms = await this.roomsService.getAvailableRooms(hostelId);
 
     // Return EXACT same format as current Express API
     return {
@@ -102,13 +85,10 @@ export class RoomsController {
   @ApiOperation({ summary: 'Get room by ID' })
   @ApiResponse({ status: 200, description: 'Room retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Room not found' })
-  async getRoomById(@Param('id') id: string, @Query() query: any, @GetOptionalHostelId() hostelId?: string) {
-    console.log('🏠 getRoomById - query.hostelId:', query.hostelId);
+  async getRoomById(@Param('id') id: string, @GetHostelId() hostelId: string) {
+    console.log('🏠 getRoomById - JWT hostelId:', hostelId);
 
-    // SIMPLIFIED: Use query.hostelId directly for flexible resolution
-    const queryHostelId = query.hostelId || null;
-
-    const room = await this.roomsService.findOne(id, queryHostelId);
+    const room = await this.roomsService.findOne(id, hostelId);
 
     // Return EXACT same format as current Express API
     return {
@@ -152,7 +132,7 @@ export class RoomsController {
   @Put(':id')
   @ApiOperation({ summary: 'Update room' })
   @ApiResponse({ status: 200, description: 'Room updated successfully' })
-  async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetOptionalHostelId() hostelId?: string) {
+  async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetHostelId() hostelId: string) {
     const room = await this.roomsService.update(id, updateRoomDto, hostelId);
 
     // Return EXACT same format as current Express API
@@ -241,30 +221,17 @@ export class RoomsController {
   @ApiQuery({ name: 'roomId', required: false, description: 'Filter by room ID' })
   @ApiQuery({ name: 'gender', required: false, description: 'Filter by gender (Male, Female, Any)' })
   @ApiQuery({ name: 'limit', required: false, description: 'Limit number of results', type: Number })
-  @ApiQuery({ name: 'hostelId', required: false, description: 'Filter by hostel ID (businessId)' })
   async getAvailableBeds(
     @Query('roomId') roomId?: string,
     @Query('gender') gender?: string,
     @Query('limit') limit?: string,
-    @Query('hostelId') queryHostelId?: string,
-    @GetOptionalHostelId() hostelId?: string
+    @GetHostelId() hostelId?: string
   ) {
-    // Handle optional hostelId from query params (frontend sends hostelId, we need to find by businessId)
-    let effectiveHostelId = hostelId; // From JWT token context
-
-    if (queryHostelId && !effectiveHostelId) {
-      // Frontend sent hostelId in query params, need to find the actual hostel record
-      const hostel = await this.hostelService.findByBusinessId(queryHostelId);
-      if (hostel) {
-        effectiveHostelId = hostel.id; // Use the actual hostel.id for database queries
-      }
-    }
-
     const beds = await this.bedService.findAvailableBedsForBooking(
       roomId,
       gender,
       limit ? parseInt(limit) : undefined,
-      effectiveHostelId // Pass hostelId to filter beds by hostel
+      hostelId
     );
 
     return {

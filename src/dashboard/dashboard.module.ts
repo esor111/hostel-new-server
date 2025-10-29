@@ -9,17 +9,23 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { MultiGuestBooking } from '../bookings/entities/multi-guest-booking.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
+import { AuthModule } from '../auth/auth.module';
+import { HostelModule } from '../hostel/hostel.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    Student,
-    LedgerEntry,
-    Payment,
-    Invoice,
-    MultiGuestBooking,
-    Room,
-    RoomOccupant
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Student,
+      LedgerEntry,
+      Payment,
+      Invoice,
+      MultiGuestBooking,
+      Room,
+      RoomOccupant
+    ]),
+    AuthModule,
+    HostelModule,
+  ],
   controllers: [DashboardController],
   providers: [DashboardService],
   exports: [DashboardService],

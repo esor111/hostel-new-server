@@ -21,7 +21,7 @@ import {
 import { MealPlansService } from './meal-plans.service';
 import { CreateMealPlanDto, UpdateMealPlanDto } from './dto';
 import { DayOfWeek } from './entities/meal-plan.entity';
-import { GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { HostelAuthGuard } from '../auth/guards/hostel-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 
@@ -34,7 +34,7 @@ export class MealPlansController {
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get all meal plans' })
   @ApiResponse({ status: 200, description: 'List of meal plans retrieved successfully' })
-  async getAllMealPlans(@GetOptionalHostelId() hostelId?: string) {
+  async getAllMealPlans(@GetHostelId() hostelId: string) {
     const result = await this.mealPlansService.findAll(hostelId);
 
     return {
@@ -47,7 +47,7 @@ export class MealPlansController {
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get weekly meal plan (all 7 days)' })
   @ApiResponse({ status: 200, description: 'Weekly meal plan retrieved successfully' })
-  async getWeeklyMealPlan(@GetOptionalHostelId() hostelId?: string) {
+  async getWeeklyMealPlan(@GetHostelId() hostelId: string) {
     const result = await this.mealPlansService.getWeeklyMealPlan(hostelId);
 
     return {
@@ -63,8 +63,8 @@ export class MealPlansController {
   @ApiResponse({ status: 200, description: 'Meal plan for the day retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Meal plan not found for the specified day' })
   async getMealPlanByDay(
-    @Param('day') day: DayOfWeek,
-    @GetOptionalHostelId() hostelId?: string
+    @GetHostelId() hostelId: string,
+    @Param('day') day: DayOfWeek
   ) {
     const result = await this.mealPlansService.findByDay(day, hostelId);
 
@@ -81,8 +81,8 @@ export class MealPlansController {
   @ApiResponse({ status: 200, description: 'Meal plan retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Meal plan not found' })
   async getMealPlan(
-    @Param('id') id: string,
-    @GetOptionalHostelId() hostelId?: string
+    @GetHostelId() hostelId: string,
+    @Param('id') id: string
   ) {
     const result = await this.mealPlansService.findOne(id, hostelId);
 
@@ -101,8 +101,8 @@ export class MealPlansController {
   @ApiResponse({ status: 409, description: 'Meal plan for this day already exists' })
   @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async createMealPlan(
-    @Body() createMealPlanDto: CreateMealPlanDto,
-    @GetOptionalHostelId() hostelId?: string
+    @GetHostelId() hostelId: string,
+    @Body() createMealPlanDto: CreateMealPlanDto
   ) {
     const result = await this.mealPlansService.create(createMealPlanDto, hostelId);
 
@@ -121,8 +121,8 @@ export class MealPlansController {
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async createWeeklyMealPlan(
-    @Body() weeklyPlanData: CreateMealPlanDto[],
-    @GetOptionalHostelId() hostelId?: string
+    @GetHostelId() hostelId: string,
+    @Body() weeklyPlanData: CreateMealPlanDto[]
   ) {
     const result = await this.mealPlansService.bulkCreateWeeklyPlan(weeklyPlanData, hostelId);
 
@@ -143,9 +143,9 @@ export class MealPlansController {
   @ApiResponse({ status: 409, description: 'Meal plan for this day already exists' })
   @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async updateMealPlan(
+    @GetHostelId() hostelId: string,
     @Param('id') id: string,
-    @Body() updateMealPlanDto: UpdateMealPlanDto,
-    @GetOptionalHostelId() hostelId?: string
+    @Body() updateMealPlanDto: UpdateMealPlanDto
   ) {
     const result = await this.mealPlansService.update(id, updateMealPlanDto, hostelId);
 
@@ -165,8 +165,8 @@ export class MealPlansController {
   @ApiResponse({ status: 404, description: 'Meal plan not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async deleteMealPlan(
-    @Param('id') id: string,
-    @GetOptionalHostelId() hostelId?: string
+    @GetHostelId() hostelId: string,
+    @Param('id') id: string
   ) {
     const result = await this.mealPlansService.remove(id, hostelId);
 

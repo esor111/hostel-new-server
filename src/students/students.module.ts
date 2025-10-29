@@ -9,6 +9,8 @@ import { StudentFinancialInfo } from './entities/student-financial-info.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { RoomsModule } from '../rooms/rooms.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
+import { AuthModule } from '../auth/auth.module';
+import { HostelModule } from '../hostel/hostel.module';
 
 @Module({
   imports: [
@@ -20,7 +22,9 @@ import { Hostel } from '../hostel/entities/hostel.entity';
       LedgerEntry,
       Hostel
     ]),
-    RoomsModule
+    RoomsModule,
+    AuthModule,
+    HostelModule,
   ],
   controllers: [StudentsController],
   providers: [StudentsService],
