@@ -18,7 +18,7 @@ import { HostelService } from '../hostel/hostel.service';
 
 @ApiTags('bookings')
 @Controller('booking-requests')
-// @UseGuards(HostelAuthWithContextGuard)
+@UseGuards(HostelAuthWithContextGuard)
 @ApiBearerAuth()
 export class BookingsController {
   private readonly logger = new Logger(BookingsController.name);
