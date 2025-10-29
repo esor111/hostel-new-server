@@ -25,7 +25,7 @@ async processCheckout(studentId: string, checkoutDetails: CheckoutStudentDto) {
     await this.ledgerV2Service.createAdjustmentEntry({
       studentId,
       amount: refundAmount,
-      description: `Checkout refund - ${checkoutDetails.notes || 'Security deposit'}`,
+      description: `Checkout refund - ${checkoutDetails.notes || 'Final settlement'}`,
       type: 'debit'
     });
   }

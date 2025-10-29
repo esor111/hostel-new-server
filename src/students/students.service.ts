@@ -894,15 +894,7 @@ export class StudentsService { // Removed HostelScopedService extension for back
       });
     }
 
-    if (configData.securityDeposit) {
-      financialEntries.push({
-        studentId,
-        feeType: FeeType.SECURITY_DEPOSIT,
-        amount: configData.securityDeposit,
-        effectiveFrom: new Date(),
-        isActive: true
-      });
-    }
+
 
     // Save financial entries
     if (financialEntries.length > 0) {
