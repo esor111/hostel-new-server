@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, Headers, BadRequestException, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiHeader, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query, HttpStatus, Logger, BadRequestException, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 // Removed: import { BookingsService } from './bookings.service';
 import { MultiGuestBookingService } from './multi-guest-booking.service';
 // Removed: import { BookingTransformationService } from './booking-transformation.service';
@@ -16,6 +18,8 @@ import { HostelService } from '../hostel/hostel.service';
 
 @ApiTags('bookings')
 @Controller('booking-requests')
+@UseGuards(HostelAuthWithContextGuard)
+@ApiBearerAuth()
 export class BookingsController {
   private readonly logger = new Logger(BookingsController.name);
 
@@ -111,11 +115,11 @@ export class BookingsController {
   @Get()
   @ApiOperation({ summary: 'Get all booking requests' })
   @ApiResponse({ status: 200, description: 'List of booking requests retrieved successfully' })
-  async getAllBookingRequests(@Query() query: any) {
-    this.logger.log('Getting all booking requests via unified multi-guest system');
+  async getAllBookingRequests(@Query() query: any, @GetHostelId() hostelId: string) {
+    this.logger.log(`Getting all booking requests for hostelId: ${hostelId}`);
 
-    // Use MultiGuestBookingService directly (no transformation needed)
-    const result = await this.multiGuestBookingService.getAllBookings(query);
+    // Use MultiGuestBookingService with hostel context filtering
+    const result = await this.multiGuestBookingService.getAllBookings(query, hostelId);
 
     // Return direct response in the expected format
     return {
@@ -127,11 +131,11 @@ export class BookingsController {
   @Get('stats')
   @ApiOperation({ summary: 'Get booking statistics' })
   @ApiResponse({ status: 200, description: 'Booking statistics retrieved successfully' })
-  async getBookingStats() {
-    this.logger.log('Getting booking statistics via unified multi-guest system');
+  async getBookingStats(@GetHostelId() hostelId: string) {
+    this.logger.log(`Getting booking statistics for hostelId: ${hostelId}`);
 
-    // Use enhanced stats from MultiGuestBookingService directly
-    const stats = await this.multiGuestBookingService.getEnhancedBookingStats();
+    // Use enhanced stats from MultiGuestBookingService with hostel context
+    const stats = await this.multiGuestBookingService.getEnhancedBookingStats(hostelId);
 
     // Return direct response
     return {
@@ -143,11 +147,11 @@ export class BookingsController {
   @Get('pending')
   @ApiOperation({ summary: 'Get pending booking requests' })
   @ApiResponse({ status: 200, description: 'Pending bookings retrieved successfully' })
-  async getPendingBookings() {
-    this.logger.log('Getting pending bookings via unified multi-guest system');
+  async getPendingBookings(@GetHostelId() hostelId: string) {
+    this.logger.log(`Getting pending bookings for hostelId: ${hostelId}`);
 
-    // Use MultiGuestBookingService directly
-    const pendingBookings = await this.multiGuestBookingService.getPendingBookings();
+    // Use MultiGuestBookingService with hostel context filtering
+    const pendingBookings = await this.multiGuestBookingService.getPendingBookings(hostelId);
 
     // Return direct response
     return {
@@ -180,8 +184,8 @@ export class BookingsController {
   @Get('multi-guest/stats')
   @ApiOperation({ summary: 'Get multi-guest booking statistics' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking statistics retrieved successfully' })
-  async getMultiGuestBookingStats() {
-    const stats = await this.multiGuestBookingService.getBookingStats();
+  async getMultiGuestBookingStats(@GetHostelId() hostelId: string) {
+    const stats = await this.multiGuestBookingService.getBookingStats(hostelId);
 
     return {
       status: HttpStatus.OK,
@@ -192,8 +196,8 @@ export class BookingsController {
   @Get('multi-guest')
   @ApiOperation({ summary: 'Get all multi-guest bookings' })
   @ApiResponse({ status: 200, description: 'Multi-guest bookings retrieved successfully' })
-  async getAllMultiGuestBookings(@Query() query: any) {
-    const result = await this.multiGuestBookingService.getAllBookings(query);
+  async getAllMultiGuestBookings(@Query() query: any, @GetHostelId() hostelId: string) {
+    const result = await this.multiGuestBookingService.getAllBookings(query, hostelId);
 
     return {
       status: HttpStatus.OK,

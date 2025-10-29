@@ -16,12 +16,12 @@ export interface AuthenticatedRequest extends Request {
 export class HostelContextMiddleware implements NestMiddleware {
   private readonly logger = new Logger(HostelContextMiddleware.name);
 
-  constructor(private readonly hostelService: HostelService) {}
+  constructor(private readonly hostelService: HostelService) { }
 
   async use(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       this.logger.log(`🔧 Middleware called for ${req.method} ${req.url}`);
-      
+
       // Skip hostel context for non-authenticated requests
       if (!req.user) {
         this.logger.debug('No user in request, skipping hostel context');
@@ -41,7 +41,7 @@ export class HostelContextMiddleware implements NestMiddleware {
 
       // Validate and ensure hostel exists
       const hostel = await this.hostelService.ensureHostelExists(businessId);
-      
+
       // STRICT ENFORCEMENT: Reject invalid or inactive hostels
       if (!hostel || !hostel.isActive) {
         this.logger.error(`❌ Hostel context failed: Invalid or inactive hostel for businessId: ${businessId}`);
@@ -57,16 +57,16 @@ export class HostelContextMiddleware implements NestMiddleware {
       };
 
       this.logger.log(`✅ Hostel context established: hostelId=${hostel.id}, businessId=${businessId}, userId=${userId}`);
-      
+
       next();
     } catch (error) {
       this.logger.error(`❌ Error in hostel context middleware: ${error.message}`, error.stack);
-      
+
       // Re-throw ForbiddenException and BadRequestException to client
       if (error instanceof ForbiddenException || error instanceof BadRequestException) {
         throw error;
       }
-      
+
       // For unexpected errors, throw a generic error
       throw new BadRequestException('Failed to establish hostel context. Please try again.');
     }
