@@ -1,6 +1,7 @@
 import { Controller, Get, Query, HttpStatus } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { DashboardService } from "./dashboard.service";
+import { PaginationDto } from "../common/dto/pagination.dto";
 
 @ApiTags("dashboard")
 @Controller("dashboard")
@@ -18,12 +19,53 @@ export class DashboardController {
   }
 
   @Get("recent-activity")
-  @ApiOperation({ summary: "Get recent activities" })
+  @ApiOperation({ summary: "Get recent activities with pagination" })
   @ApiResponse({
     status: 200,
-    description: "Recent activities retrieved successfully",
+    description: "Recent activities retrieved successfully with pagination",
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              type: { type: 'string' },
+              message: { type: 'string' },
+              time: { type: 'string' },
+              timestamp: { type: 'string' },
+              icon: { type: 'string' },
+              color: { type: 'string' }
+            }
+          }
+        },
+        pagination: {
+          type: 'object',
+          properties: {
+            page: { type: 'number' },
+            limit: { type: 'number' },
+            total: { type: 'number' },
+            totalPages: { type: 'number' },
+            hasNext: { type: 'boolean' },
+            hasPrev: { type: 'boolean' }
+          }
+        }
+      }
+    }
   })
-  async getRecentActivity(@Query("limit") limit: string) {
+  async getRecentActivity(@Query() paginationDto: PaginationDto) {
+    return await this.dashboardService.getRecentActivityPaginated(paginationDto);
+  }
+
+  @Get("recent-activity/legacy")
+  @ApiOperation({ summary: "Get recent activities (legacy endpoint)" })
+  @ApiResponse({
+    status: 200,
+    description: "Recent activities retrieved successfully (legacy format)",
+  })
+  async getRecentActivityLegacy(@Query("limit") limit: string) {
     const limitNum = limit ? parseInt(limit) : 10;
     return await this.dashboardService.getRecentActivity(limitNum);
   }

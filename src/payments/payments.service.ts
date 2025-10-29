@@ -67,8 +67,8 @@ export class PaymentsService {
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
     
-    // Order by payment date
-    queryBuilder.orderBy('payment.paymentDate', 'DESC');
+    // Order by creation date (most recent first)
+    queryBuilder.orderBy('payment.createdAt', 'DESC');
     
     const [payments, total] = await queryBuilder.getManyAndCount();
     
@@ -117,7 +117,7 @@ export class PaymentsService {
         'invoiceAllocations',
         'invoiceAllocations.invoice'
       ],
-      order: { paymentDate: 'DESC' }
+      order: { createdAt: 'DESC' }
     });
     
     return payments.map(payment => this.transformToApiResponse(payment));

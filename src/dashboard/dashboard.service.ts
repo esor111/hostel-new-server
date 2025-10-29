@@ -8,6 +8,7 @@ import { Invoice, InvoiceStatus } from '../invoices/entities/invoice.entity';
 import { MultiGuestBooking, MultiGuestBookingStatus } from '../bookings/entities/multi-guest-booking.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
+import { PaginationDto, PaginationResponse } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class DashboardService {
@@ -113,6 +114,31 @@ export class DashboardService {
       },
       pendingPayments,
       occupancyPercentage
+    };
+  }
+
+  async getRecentActivityPaginated(paginationDto: PaginationDto): Promise<PaginationResponse<any>> {
+    const { page = 1, limit = 10 } = paginationDto;
+    
+    // Get all activities first (we'll optimize this later if needed)
+    const allActivities = await this.getRecentActivity(100); // Get more activities for pagination
+    
+    // Calculate pagination
+    const total = allActivities.length;
+    const totalPages = Math.ceil(total / limit);
+    const skip = (page - 1) * limit;
+    const data = allActivities.slice(skip, skip + limit);
+    
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: skip + limit < total,
+        hasPrev: page > 1
+      }
     };
   }
 
