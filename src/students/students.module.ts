@@ -7,6 +7,7 @@ import { StudentContact } from './entities/student-contact.entity';
 import { StudentAcademicInfo } from './entities/student-academic-info.entity';
 import { StudentFinancialInfo } from './entities/student-financial-info.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
+import { Room } from '../rooms/entities/room.entity';
 import { RoomsModule } from '../rooms/rooms.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
 import { AuthModule } from '../auth/auth.module';
@@ -20,6 +21,7 @@ import { HostelModule } from '../hostel/hostel.module';
       StudentAcademicInfo,
       StudentFinancialInfo,
       LedgerEntry,
+      Room,
       Hostel
     ]),
     RoomsModule,

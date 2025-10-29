@@ -1,12 +1,12 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, NotFoundException, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
-import { 
-  CreateStudentDto, 
-  UpdateStudentDto, 
-  SearchStudentDto, 
-  CheckoutStudentDto, 
-  BulkUpdateStudentDto 
+import {
+  CreateStudentDto,
+  UpdateStudentDto,
+  SearchStudentDto,
+  CheckoutStudentDto,
+  BulkUpdateStudentDto
 } from './dto';
 import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -18,14 +18,14 @@ import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-cont
 @UseGuards(HostelAuthWithContextGuard)
 @ApiBearerAuth()
 export class StudentsController {
-  constructor(private readonly studentsService: StudentsService) {}
+  constructor(private readonly studentsService: StudentsService) { }
 
   @Get()
   @ApiOperation({ summary: 'Get all students' })
   @ApiResponse({ status: 200, description: 'List of students retrieved successfully' })
   async getAllStudents(@Query() query: any, @GetHostelId() hostelId: string) {
     const result = await this.studentsService.findAll(query, hostelId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -38,7 +38,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Pending configuration students retrieved successfully' })
   async getPendingConfigurationStudents(@GetHostelId() hostelId: string) {
     const result = await this.studentsService.getPendingConfigurationStudents(hostelId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -51,7 +51,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Student statistics retrieved successfully' })
   async getStudentStats(@GetHostelId() hostelId: string) {
     const stats = await this.studentsService.getStats(hostelId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -65,7 +65,7 @@ export class StudentsController {
   @ApiResponse({ status: 404, description: 'Student not found' })
   async getStudentById(@Param('id') id: string, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.findOne(id, hostelId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -78,7 +78,7 @@ export class StudentsController {
   @ApiResponse({ status: 201, description: 'Student created successfully' })
   async createStudent(@Body(ValidationPipe) createStudentDto: CreateStudentDto, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.create(createStudentDto, hostelId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.CREATED,
@@ -91,7 +91,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Student updated successfully' })
   async updateStudent(@Param('id') id: string, @Body(ValidationPipe) updateStudentDto: UpdateStudentDto, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.update(id, updateStudentDto, hostelId);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -104,7 +104,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Student balance retrieved successfully' })
   async getStudentBalance(@Param('id') id: string) {
     const balance = await this.studentsService.getStudentBalance(id);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -117,7 +117,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Student ledger retrieved successfully' })
   async getStudentLedger(@Param('id') id: string) {
     const ledger = await this.studentsService.getStudentLedger(id);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -130,7 +130,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Student payments retrieved successfully' })
   async getStudentPayments(@Param('id') id: string) {
     const payments = await this.studentsService.getStudentPayments(id);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -143,7 +143,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Student invoices retrieved successfully' })
   async getStudentInvoices(@Param('id') id: string) {
     const invoices = await this.studentsService.getStudentInvoices(id);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -154,9 +154,9 @@ export class StudentsController {
   @Post(':id/checkout')
   @ApiOperation({ summary: 'Process student checkout' })
   @ApiResponse({ status: 200, description: 'Checkout processed successfully' })
-  async processCheckout(@Param('id') id: string, @Body(ValidationPipe) checkoutDetails: CheckoutStudentDto) {
-    const result = await this.studentsService.processCheckout(id, checkoutDetails);
-    
+  async processCheckout(@Param('id') id: string, @Body(ValidationPipe) checkoutDetails: CheckoutStudentDto, @GetHostelId() hostelId: string) {
+    const result = await this.studentsService.processCheckout(id, checkoutDetails, hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -169,7 +169,7 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Search results retrieved successfully' })
   async searchStudents(@Body(ValidationPipe) searchDto: SearchStudentDto) {
     const result = await this.studentsService.advancedSearch(searchDto);
-    
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -180,9 +180,9 @@ export class StudentsController {
   @Put('bulk')
   @ApiOperation({ summary: 'Bulk update students' })
   @ApiResponse({ status: 200, description: 'Students updated successfully' })
-  async bulkUpdateStudents(@Body(ValidationPipe) bulkUpdateDto: BulkUpdateStudentDto) {
-    const result = await this.studentsService.bulkUpdate(bulkUpdateDto);
-    
+  async bulkUpdateStudents(@Body(ValidationPipe) bulkUpdateDto: BulkUpdateStudentDto, @GetHostelId() hostelId: string) {
+    const result = await this.studentsService.bulkUpdate(bulkUpdateDto, hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -193,9 +193,9 @@ export class StudentsController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete student' })
   @ApiResponse({ status: 200, description: 'Student deleted successfully' })
-  async deleteStudent(@Param('id') id: string) {
-    const result = await this.studentsService.remove(id);
-    
+  async deleteStudent(@Param('id') id: string, @GetHostelId() hostelId: string) {
+    const result = await this.studentsService.remove(id, hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,
@@ -209,7 +209,7 @@ export class StudentsController {
   async getMyProfile(@CurrentUser() user: JwtPayload, @GetHostelId() hostelId: string) {
     try {
       const financialData = await this.studentsService.getUserFinancialData(user.id, hostelId);
-      
+
       return {
         status: HttpStatus.OK,
         data: financialData
@@ -222,9 +222,9 @@ export class StudentsController {
           email: `${user.id}@temp.com`,
           phone: `+977${Math.random().toString().substr(2, 10)}`
         };
-        
+
         const newStudent = await this.studentsService.createOrLinkStudentForUser(user.id, userData, hostelId);
-        
+
         return {
           status: HttpStatus.CREATED,
           data: {
@@ -245,11 +245,11 @@ export class StudentsController {
   @ApiResponse({ status: 200, description: 'Student profile retrieved successfully' })
   async getStudentByUserId(@Param('userId') userId: string, @GetHostelId() hostelId: string) {
     const student = await this.studentsService.findByUserId(userId, hostelId);
-    
+
     if (!student) {
       throw new NotFoundException(`No student record found for user ${userId}`);
     }
-    
+
     return {
       status: HttpStatus.OK,
       data: student
@@ -259,9 +259,9 @@ export class StudentsController {
   @Post(':id/configure')
   @ApiOperation({ summary: 'Configure student charges' })
   @ApiResponse({ status: 200, description: 'Student configured successfully' })
-  async configureStudent(@Param('id') id: string, @Body(ValidationPipe) configData: any) {
-    const result = await this.studentsService.configureStudent(id, configData);
-    
+  async configureStudent(@Param('id') id: string, @Body(ValidationPipe) configData: any, @GetHostelId() hostelId: string) {
+    const result = await this.studentsService.configureStudent(id, configData, hostelId);
+
     // Return EXACT same format as current Express API
     return {
       status: HttpStatus.OK,

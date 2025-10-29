@@ -401,11 +401,11 @@ export class RoomsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Sync bed entities from bedPositions' })
   @ApiResponse({ status: 200, description: 'Bed entities synced successfully' })
-  async syncBedsFromPositions(@Param('roomId') roomId: string) {
+  async syncBedsFromPositions(@Param('roomId') roomId: string, @GetHostelId() hostelId: string) {
     console.log(`🔧 Manual bed sync requested for room: ${roomId}`);
 
     // Get room with layout
-    const room = await this.roomsService.findOne(roomId);
+    const room = await this.roomsService.findOne(roomId, hostelId);
     console.log(`🏠 Room found: ${room.name}`);
     console.log(`📐 Layout data:`, JSON.stringify(room.layout, null, 2));
 
