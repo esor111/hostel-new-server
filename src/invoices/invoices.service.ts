@@ -478,6 +478,7 @@ export class InvoicesService {
 
     // Format the data
     return monthlyData.map(data => ({
+      monthKey: `${data.year}-${String(data.month).padStart(2, '0')}`, // 🔧 FIX: Add monthKey for frontend
       month: new Date(data.year, data.month - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
       count: parseInt(data.count),
       totalAmount: parseFloat(data.totalAmount) || 0,
