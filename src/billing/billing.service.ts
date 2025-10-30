@@ -6,6 +6,10 @@ import { Invoice, InvoiceStatus } from '../invoices/entities/invoice.entity';
 import { InvoiceItem, InvoiceItemCategory } from '../invoices/entities/invoice-item.entity';
 import { StudentFinancialInfo, FeeType } from '../students/entities/student-financial-info.entity';
 import { LedgerEntry, BalanceType, LedgerEntryType } from '../ledger/entities/ledger-entry.entity';
+import { Payment } from '../payments/entities/payment.entity';
+import { LedgerEntryV2 } from '../ledger-v2/entities/ledger-entry-v2.entity';
+import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
+import { AdvancePaymentService } from '../students/services/advance-payment.service';
 
 @Injectable()
 export class BillingService {
@@ -20,6 +24,12 @@ export class BillingService {
     private financialInfoRepository: Repository<StudentFinancialInfo>,
     @InjectRepository(LedgerEntry)
     private ledgerRepository: Repository<LedgerEntry>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
+    @InjectRepository(LedgerEntryV2)
+    private ledgerV2Repository: Repository<LedgerEntryV2>,
+    private ledgerV2Service: LedgerV2Service,
+    private advancePaymentService: AdvancePaymentService,
   ) {}
 
   async getMonthlyStats(hostelId: string) {
@@ -345,5 +355,83 @@ export class BillingService {
         totalPages: Math.ceil(total / limit)
       }
     };
+  }
+
+  // 🏨 NEW: Get invoices by specific month for student-wise breakdown
+  async getInvoicesByMonth(monthKey: string, hostelId?: string) {
+    try {
+      console.log(`📋 Getting invoices for month: ${monthKey}, hostelId: ${hostelId}`);
+      
+      const queryBuilder = this.invoiceRepository
+        .createQueryBuilder('invoice')
+        .leftJoinAndSelect('invoice.student', 'student')
+        .leftJoinAndSelect('student.room', 'room')
+        .where('invoice.month = :monthKey', { monthKey })
+        .orderBy('invoice.createdAt', 'DESC');
+
+      if (hostelId) {
+        queryBuilder.andWhere('invoice.hostelId = :hostelId', { hostelId });
+      }
+
+      const invoices = await queryBuilder.getMany();
+      console.log(`📊 Found ${invoices.length} invoices for month ${monthKey}`);
+
+      return invoices.map(invoice => ({
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        studentId: invoice.studentId,
+        studentName: invoice.student?.name || 'Unknown',
+        roomNumber: invoice.student?.room?.roomNumber || 'N/A',
+        month: invoice.month,
+        totalAmount: parseFloat(invoice.total.toString()),
+        status: invoice.status,
+        date: invoice.createdAt.toISOString().split('T')[0],
+        dueDate: invoice.dueDate?.toISOString().split('T')[0] || null,
+        referenceId: invoice.invoiceNumber
+      }));
+    } catch (error) {
+      console.error('Error in getInvoicesByMonth:', error);
+      throw error;
+    }
+  }
+
+  // 🏨 NEW: Nepalese billing system method
+  async generateNepalesesMonthlyInvoices(month: number, year: number, dueDate?: Date, hostelId?: string) {
+    // Import and properly instantiate the NepalesesBillingService with all required dependencies
+    const { NepalesesBillingService } = await import('./services/nepalese-billing.service');
+    
+    // Create properly injected NepalesesBillingService using injected services
+    const nepalesesBillingService = new NepalesesBillingService(
+      this.studentRepository,
+      this.invoiceRepository,
+      this.invoiceItemRepository,
+      this.paymentRepository,
+      this.financialInfoRepository,
+      this.ledgerV2Service,
+      this.advancePaymentService
+    );
+
+    // Generate invoices using Nepalese billing logic
+    return await nepalesesBillingService.generateMonthlyInvoices(month, year, dueDate, hostelId);
+  }
+
+  // 🏨 NEW: Get payment due students using Nepalese billing system
+  async getPaymentDueStudents(hostelId: string) {
+    // Import and properly instantiate the NepalesesBillingService with all required dependencies
+    const { NepalesesBillingService } = await import('./services/nepalese-billing.service');
+    
+    // Create properly injected NepalesesBillingService using injected services
+    const nepalesesBillingService = new NepalesesBillingService(
+      this.studentRepository,
+      this.invoiceRepository,
+      this.invoiceItemRepository,
+      this.paymentRepository,
+      this.financialInfoRepository,
+      this.ledgerV2Service,
+      this.advancePaymentService
+    );
+
+    // Get payment due students using Nepalese billing logic
+    return await nepalesesBillingService.getPaymentDueStudents(hostelId);
   }
 }

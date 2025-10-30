@@ -1,6 +1,6 @@
 import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentMethod, PaymentStatus } from '../entities/payment.entity';
+import { PaymentMethod, PaymentStatus, PaymentType } from '../entities/payment.entity';
 
 export class CreatePaymentDto {
   @ApiProperty({ description: 'Student ID' })
@@ -69,6 +69,16 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsArray()
   invoiceIds?: string[];
+
+  @ApiProperty({ description: 'Payment type for Nepalese billing system', enum: PaymentType, required: false })
+  @IsOptional()
+  @IsEnum(PaymentType)
+  paymentType?: PaymentType;
+
+  @ApiProperty({ description: 'Month covered by payment (for advance payments)', required: false })
+  @IsOptional()
+  @IsString()
+  monthCovered?: string;
 }
 
 export class InvoiceAllocationDto {

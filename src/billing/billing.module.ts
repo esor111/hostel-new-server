@@ -7,6 +7,7 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoiceItem } from '../invoices/entities/invoice-item.entity';
 import { StudentFinancialInfo } from '../students/entities/student-financial-info.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
+import { LedgerEntryV2 } from '../ledger-v2/entities/ledger-entry-v2.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { AuthModule } from '../auth/auth.module';
 import { HostelModule } from '../hostel/hostel.module';
@@ -22,6 +23,7 @@ import { NepalesesBillingService } from './services/nepalese-billing.service';
       InvoiceItem,
       StudentFinancialInfo,
       LedgerEntry,
+      LedgerEntryV2,
       Payment
     ]),
     AuthModule,

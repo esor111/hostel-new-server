@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Payment, PaymentStatus, PaymentMethod } from './entities/payment.entity';
+import { Payment, PaymentStatus, PaymentMethod, PaymentType } from './entities/payment.entity';
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
 import { Student } from '../students/entities/student.entity';
 import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
@@ -16,7 +16,7 @@ export class PaymentsService {
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
     private ledgerService: LedgerV2Service,
-  ) {}
+  ) { }
 
   async findAll(filters: any = {}, hostelId: string) {
     // Validate hostelId is present
@@ -24,58 +24,58 @@ export class PaymentsService {
       throw new BadRequestException('Hostel context required');
     }
 
-    const { 
-      page = 1, 
-      limit = 50, 
-      studentId, 
+    const {
+      page = 1,
+      limit = 50,
+      studentId,
       paymentMethod,
       dateFrom,
       dateTo,
-      search 
+      search
     } = filters;
-    
+
     const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
       .leftJoinAndSelect('payment.student', 'student')
       .leftJoinAndSelect('payment.invoiceAllocations', 'allocations')
       .leftJoinAndSelect('allocations.invoice', 'invoice')
       .where('payment.hostelId = :hostelId', { hostelId });
-    
+
     // Apply filters
     if (studentId) {
       queryBuilder.andWhere('payment.studentId = :studentId', { studentId });
     }
-    
+
     if (paymentMethod) {
       queryBuilder.andWhere('payment.paymentMethod = :paymentMethod', { paymentMethod });
     }
-    
+
     if (dateFrom) {
       queryBuilder.andWhere('payment.paymentDate >= :dateFrom', { dateFrom });
     }
-    
+
     if (dateTo) {
       queryBuilder.andWhere('payment.paymentDate <= :dateTo', { dateTo });
     }
-    
+
     if (search) {
       queryBuilder.andWhere(
         '(student.name ILIKE :search OR payment.reference ILIKE :search OR payment.transactionId ILIKE :search)',
         { search: `%${search}%` }
       );
     }
-    
+
     // Apply pagination
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
-    
+
     // Order by creation date (most recent first)
     queryBuilder.orderBy('payment.createdAt', 'DESC');
-    
+
     const [payments, total] = await queryBuilder.getManyAndCount();
-    
+
     // Transform to API response format
     const transformedItems = payments.map(payment => this.transformToApiResponse(payment));
-    
+
     return {
       items: transformedItems,
       pagination: {
@@ -101,11 +101,11 @@ export class PaymentsService {
         'invoiceAllocations.invoice'
       ]
     });
-    
+
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
-    
+
     return this.transformToApiResponse(payment);
   }
 
@@ -124,7 +124,7 @@ export class PaymentsService {
       ],
       order: { createdAt: 'DESC' }
     });
-    
+
     return payments.map(payment => this.transformToApiResponse(payment));
   }
 
@@ -158,7 +158,10 @@ export class PaymentsService {
       processedBy: createPaymentDto.processedBy || 'admin',
       bankName: createPaymentDto.bankName,
       chequeNumber: createPaymentDto.chequeNumber,
-      chequeDate: createPaymentDto.chequeDate
+      chequeDate: createPaymentDto.chequeDate,
+      // NEW: Nepalese billing support
+      paymentType: createPaymentDto.paymentType,
+      monthCovered: createPaymentDto.monthCovered
     });
 
     const savedPayment = await this.paymentRepository.save(payment);
@@ -183,7 +186,7 @@ export class PaymentsService {
     }
 
     const payment = await this.findOne(id, hostelId);
-    
+
     // Update main payment entity
     await this.paymentRepository.update(id, {
       amount: updatePaymentDto.amount,
@@ -195,7 +198,10 @@ export class PaymentsService {
       transactionId: updatePaymentDto.transactionId,
       bankName: updatePaymentDto.bankName,
       chequeNumber: updatePaymentDto.chequeNumber,
-      chequeDate: updatePaymentDto.chequeDate
+      chequeDate: updatePaymentDto.chequeDate,
+      // NEW: Nepalese billing support
+      paymentType: updatePaymentDto.paymentType,
+      monthCovered: updatePaymentDto.monthCovered
     });
 
     return this.findOne(id, hostelId);
@@ -208,16 +214,16 @@ export class PaymentsService {
     }
 
     const totalPayments = await this.paymentRepository.count({ where: { hostelId } });
-    const completedPayments = await this.paymentRepository.count({ 
-      where: { hostelId, status: PaymentStatus.COMPLETED } 
+    const completedPayments = await this.paymentRepository.count({
+      where: { hostelId, status: PaymentStatus.COMPLETED }
     });
-    const pendingPayments = await this.paymentRepository.count({ 
-      where: { hostelId, status: PaymentStatus.PENDING } 
+    const pendingPayments = await this.paymentRepository.count({
+      where: { hostelId, status: PaymentStatus.PENDING }
     });
-    const failedPayments = await this.paymentRepository.count({ 
-      where: { hostelId, status: PaymentStatus.FAILED } 
+    const failedPayments = await this.paymentRepository.count({
+      where: { hostelId, status: PaymentStatus.FAILED }
     });
-    
+
     const amountResult = await this.paymentRepository
       .createQueryBuilder('payment')
       .select('SUM(payment.amount)', 'totalAmount')
@@ -367,7 +373,7 @@ export class PaymentsService {
     }
 
     const payment = await this.findOne(id, hostelId);
-    
+
     // Soft delete - mark as cancelled
     await this.paymentRepository.update(id, {
       status: PaymentStatus.CANCELLED
