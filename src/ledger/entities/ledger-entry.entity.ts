@@ -12,7 +12,10 @@ export enum LedgerEntryType {
   PENALTY = 'Penalty',
   CREDIT_NOTE = 'Credit Note',
   DEBIT_NOTE = 'Debit Note',
-  ADMIN_CHARGE = 'Admin Charge'
+  ADMIN_CHARGE = 'Admin Charge',
+  ADVANCE_PAYMENT = 'Advance Payment',    // NEW: Initial advance payment
+  MONTHLY_PAYMENT = 'Monthly Payment',    // NEW: Regular monthly payment
+  CHECKOUT_SETTLEMENT = 'Checkout Settlement'  // NEW: Final settlement
 }
 
 export enum BalanceType {

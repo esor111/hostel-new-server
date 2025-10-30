@@ -12,6 +12,8 @@ import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
 import { BedSyncService } from '../rooms/bed-sync.service';
+import { AdvancePaymentService } from './services/advance-payment.service';
+import { CheckoutSettlementService } from './services/checkout-settlement.service';
 // import { HostelScopedService } from '../common/services/hostel-scoped.service'; // Commented out for backward compatibility
 
 @Injectable()
@@ -32,6 +34,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
     @InjectRepository(RoomOccupant)
     private roomOccupantRepository: Repository<RoomOccupant>,
     private bedSyncService: BedSyncService,
+    private advancePaymentService: AdvancePaymentService,
+    private checkoutSettlementService: CheckoutSettlementService,
   ) {
     // super(studentRepository, 'Student'); // Commented out for backward compatibility
   }
@@ -587,19 +591,43 @@ export class StudentsService { // Removed HostelScopedService extension for back
       // 🛏️ ENHANCED BED RELEASE - Update booking-guest status and free up the bed
       await this.releaseBedAndUpdateBooking(queryRunner, student, checkoutDetails);
 
-      // Commit transaction
+      // Commit transaction for basic checkout operations
       await queryRunner.commitTransaction();
 
-      // 📢 RECENT ACTIVITIES - Log checkout activity (outside transaction)
+      // 🧮 NEPALESE BILLING: Calculate accurate settlement (outside transaction)
+      let accurateSettlement = null;
+      try {
+        const settlementResult = await this.checkoutSettlementService.processCheckoutSettlement(
+          studentId,
+          checkoutDetails.checkoutDate || new Date().toISOString().split('T')[0],
+          hostelId,
+          checkoutDetails.notes
+        );
+        accurateSettlement = settlementResult.settlement;
+        console.log(`✅ Accurate settlement processed: ${settlementResult.message}`);
+      } catch (error) {
+        console.error('❌ Settlement calculation failed:', error);
+        // Don't fail checkout if settlement calculation fails
+      }
+
+      // 📢 RECENT ACTIVITIES - Log checkout activity
       await this.logCheckoutActivity(student, currentBalance.currentBalance, netSettlement);
 
-      // Calculate final balance after adjustments
-      const finalBalance = currentBalance.currentBalance + netSettlement;
+      // Use accurate settlement if available, otherwise use basic calculation
+      const finalSettlement = accurateSettlement || {
+        refundDue: refundAmount,
+        additionalDue: deductionAmount,
+        netSettlement,
+        totalPaymentsMade: 0,
+        totalActualUsage: 0,
+        usageBreakdown: []
+      };
 
       console.log(`✅ Checkout completed for ${student.name}:`);
       console.log(`   - Initial balance: NPR ${currentBalance.currentBalance}`);
-      console.log(`   - Net settlement: NPR ${netSettlement}`);
-      console.log(`   - Final balance: NPR ${finalBalance}`);
+      console.log(`   - Total payments made: NPR ${finalSettlement.totalPaymentsMade?.toLocaleString() || 'N/A'}`);
+      console.log(`   - Actual usage: NPR ${finalSettlement.totalActualUsage?.toLocaleString() || 'N/A'}`);
+      console.log(`   - Refund due: NPR ${finalSettlement.refundDue?.toLocaleString() || refundAmount.toLocaleString()}`);
       console.log(`   - Room occupancy history updated`);
       console.log(`   - Bed released and made available`);
 
@@ -607,11 +635,12 @@ export class StudentsService { // Removed HostelScopedService extension for back
         success: true,
         studentId,
         checkoutDate: checkoutDetails.checkoutDate || new Date(),
-        finalBalance,
-        refundAmount,
-        deductionAmount,
-        netSettlement,
-        message: 'Student checkout processed successfully with complete financial settlement'
+        finalBalance: currentBalance.currentBalance,
+        refundAmount: finalSettlement.refundDue || refundAmount,
+        deductionAmount: finalSettlement.additionalDue || deductionAmount,
+        netSettlement: finalSettlement.netSettlement || netSettlement,
+        accurateSettlement: accurateSettlement,
+        message: 'Student checkout processed successfully with Nepalese billing settlement'
       };
 
     } catch (error) {
@@ -995,20 +1024,49 @@ export class StudentsService { // Removed HostelScopedService extension for back
       // For now, we'll store them as notes in financial info
     }
 
+    // Save financial entries first
+    if (financialEntries.length > 0) {
+      await this.financialRepository.save(financialEntries);
+    }
+
+    // NEPALESE BILLING: Process advance payment for current month
+    const configurationDate = new Date();
+    let advancePaymentResult = null;
+    
+    try {
+      advancePaymentResult = await this.advancePaymentService.processAdvancePayment(
+        studentId,
+        hostelId,
+        configurationDate
+      );
+      console.log(`✅ Advance payment processed: NPR ${advancePaymentResult.amount.toLocaleString()} for ${advancePaymentResult.monthCovered}`);
+    } catch (error) {
+      console.error('❌ Failed to process advance payment:', error);
+      throw new BadRequestException(`Configuration failed: ${error.message}`);
+    }
+
     // Mark student as configured and active
     await this.studentRepository.update(studentId, {
       isConfigured: true,
       status: StudentStatus.ACTIVE
     });
 
+    const totalMonthlyFee = financialEntries.reduce((sum, entry) => sum + entry.amount, 0);
+
     return {
       success: true,
-      message: 'Student configuration completed successfully',
+      message: 'Student configuration completed successfully with advance payment',
       studentId,
-      configurationDate: new Date(),
-      totalMonthlyFee: financialEntries.reduce((sum, entry) => sum + entry.amount, 0),
+      configurationDate,
+      totalMonthlyFee,
       guardianConfigured: !!(configData.guardian?.name || configData.guardian?.phone),
-      academicConfigured: !!(configData.course || configData.institution)
+      academicConfigured: !!(configData.course || configData.institution),
+      advancePayment: {
+        amount: advancePaymentResult.amount,
+        monthCovered: advancePaymentResult.monthCovered,
+        paymentId: advancePaymentResult.paymentId,
+        message: advancePaymentResult.message
+      }
     };
   }
 
@@ -1192,6 +1250,45 @@ export class StudentsService { // Removed HostelScopedService extension for back
     } catch (error) {
       console.error('❌ Error logging checkout activity:', error);
       // Don't fail checkout for logging errors
+    }
+  }
+
+  /**
+   * 🏦 NEPALESE BILLING: Get payment status for student
+   */
+  async getPaymentStatus(studentId: string, hostelId: string) {
+    try {
+      const { NepalesesBillingService } = await import('../billing/services/nepalese-billing.service');
+      const nepalesesBillingService = new NepalesesBillingService(
+        this.studentRepository,
+        null as any, // Will be injected properly when called
+        null as any,
+        null as any,
+        this.financialRepository,
+        null as any,
+        this.advancePaymentService
+      );
+
+      return await nepalesesBillingService.getPaymentStatus(studentId, hostelId);
+    } catch (error) {
+      console.error('Error getting payment status:', error);
+      throw new BadRequestException(`Failed to get payment status: ${error.message}`);
+    }
+  }
+
+  /**
+   * 🧮 NEPALESE BILLING: Calculate checkout settlement
+   */
+  async calculateCheckoutSettlement(studentId: string, checkoutDate: string, hostelId: string) {
+    try {
+      return await this.checkoutSettlementService.calculateCheckoutSettlement(
+        studentId,
+        checkoutDate,
+        hostelId
+      );
+    } catch (error) {
+      console.error('Error calculating checkout settlement:', error);
+      throw new BadRequestException(`Failed to calculate settlement: ${error.message}`);
     }
   }
 }

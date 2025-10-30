@@ -96,4 +96,55 @@ export class BillingController {
       data: history
     };
   }
+
+  @Post('generate-nepalese-monthly')
+  @ApiOperation({ summary: 'Generate monthly invoices using Nepalese billing system' })
+  @ApiResponse({ status: 201, description: 'Nepalese monthly invoices generated successfully' })
+  async generateNepalesesMonthlyInvoices(@GetHostelId() hostelId: string, @Body() generateDto: GenerateMonthlyInvoicesDto) {
+    const { NepalesesBillingService } = await import('./services/nepalese-billing.service');
+    const nepalesesBillingService = new NepalesesBillingService(
+      this.billingService['studentRepository'],
+      this.billingService['invoiceRepository'],
+      this.billingService['invoiceItemRepository'],
+      null as any, // Will be injected properly
+      this.billingService['financialInfoRepository'],
+      null as any, // Will be injected properly
+      null as any  // Will be injected properly
+    );
+
+    const result = await nepalesesBillingService.generateMonthlyInvoices(
+      generateDto.month,
+      generateDto.year,
+      generateDto.dueDate ? new Date(generateDto.dueDate) : undefined,
+      hostelId
+    );
+    
+    return {
+      status: HttpStatus.CREATED,
+      data: result
+    };
+  }
+
+  @Get('payment-due-students')
+  @ApiOperation({ summary: 'Get students with payments due (Nepalese billing)' })
+  @ApiResponse({ status: 200, description: 'Payment due students retrieved successfully' })
+  async getPaymentDueStudents(@GetHostelId() hostelId: string) {
+    const { NepalesesBillingService } = await import('./services/nepalese-billing.service');
+    const nepalesesBillingService = new NepalesesBillingService(
+      this.billingService['studentRepository'],
+      this.billingService['invoiceRepository'],
+      this.billingService['invoiceItemRepository'],
+      null as any,
+      this.billingService['financialInfoRepository'],
+      null as any,
+      null as any
+    );
+
+    const students = await nepalesesBillingService.getPaymentDueStudents(hostelId);
+    
+    return {
+      status: HttpStatus.OK,
+      data: students
+    };
+  }
 }

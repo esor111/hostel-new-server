@@ -257,8 +257,8 @@ export class StudentsController {
   }
 
   @Post(':id/configure')
-  @ApiOperation({ summary: 'Configure student charges' })
-  @ApiResponse({ status: 200, description: 'Student configured successfully' })
+  @ApiOperation({ summary: 'Configure student charges with advance payment (Nepalese billing)' })
+  @ApiResponse({ status: 200, description: 'Student configured successfully with advance payment' })
   async configureStudent(@Param('id') id: string, @Body(ValidationPipe) configData: any, @GetHostelId() hostelId: string) {
     const result = await this.studentsService.configureStudent(id, configData, hostelId);
 
@@ -266,6 +266,34 @@ export class StudentsController {
     return {
       status: HttpStatus.OK,
       data: result
+    };
+  }
+
+  @Get(':id/payment-status')
+  @ApiOperation({ summary: 'Get student payment status (Nepalese billing)' })
+  @ApiResponse({ status: 200, description: 'Payment status retrieved successfully' })
+  async getPaymentStatus(@Param('id') id: string, @GetHostelId() hostelId: string) {
+    const paymentStatus = await this.studentsService.getPaymentStatus(id, hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      data: paymentStatus
+    };
+  }
+
+  @Post(':id/calculate-settlement')
+  @ApiOperation({ summary: 'Calculate checkout settlement (Nepalese billing)' })
+  @ApiResponse({ status: 200, description: 'Settlement calculated successfully' })
+  async calculateSettlement(
+    @Param('id') id: string, 
+    @Body() body: { checkoutDate: string }, 
+    @GetHostelId() hostelId: string
+  ) {
+    const settlement = await this.studentsService.calculateCheckoutSettlement(id, body.checkoutDate, hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      data: settlement
     };
   }
 }

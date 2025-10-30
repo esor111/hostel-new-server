@@ -60,6 +60,11 @@ export class Student extends BaseEntity {
   @Column({ name: 'is_configured', default: false })
   isConfigured: boolean;
 
+  @Column({ name: 'advance_payment_month', length: 20, nullable: true })
+  advancePaymentMonth: string;
+
+  @Column({ name: 'last_billing_month', length: 20, nullable: true })
+  lastBillingMonth: string;
 
   // Foreign Keys
   @Column({ name: 'hostelId' })

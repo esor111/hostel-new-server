@@ -22,6 +22,14 @@ export enum PaymentStatus {
   REFUNDED = 'Refunded'
 }
 
+export enum PaymentType {
+  REGULAR = 'REGULAR',           // Legacy/existing payments
+  ADVANCE = 'ADVANCE',           // Initial advance payment on configuration
+  MONTHLY = 'MONTHLY',           // Regular monthly payments
+  REFUND = 'REFUND',            // Checkout refunds
+  SETTLEMENT = 'SETTLEMENT'      // Final settlement adjustments
+}
+
 @Entity('payments')
 @Index(['studentId'])
 @Index(['paymentDate'])
@@ -70,6 +78,17 @@ export class Payment extends BaseEntity {
 
   @Column({ name: 'processed_by', length: 100, default: 'admin' })
   processedBy: string;
+
+  @Column({
+    name: 'payment_type',
+    type: 'enum',
+    enum: PaymentType,
+    default: PaymentType.REGULAR
+  })
+  paymentType: PaymentType;
+
+  @Column({ name: 'month_covered', length: 20, nullable: true })
+  monthCovered: string;
 
   @Column({ name: 'bank_name', length: 100, nullable: true })
   bankName: string;
