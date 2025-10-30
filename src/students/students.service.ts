@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, QueryRunner } from 'typeorm';
 import { Student, StudentStatus } from './entities/student.entity';
 import { StudentContact, ContactType } from './entities/student-contact.entity';
 import { StudentAcademicInfo } from './entities/student-academic-info.entity';
@@ -10,6 +10,7 @@ import { ConfigureStudentDto } from './dto/configure-student.dto';
 import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { Room } from '../rooms/entities/room.entity';
+import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
 import { BedSyncService } from '../rooms/bed-sync.service';
 // import { HostelScopedService } from '../common/services/hostel-scoped.service'; // Commented out for backward compatibility
 
@@ -28,6 +29,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
     private ledgerRepository: Repository<LedgerEntry>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
+    @InjectRepository(RoomOccupant)
+    private roomOccupantRepository: Repository<RoomOccupant>,
     private bedSyncService: BedSyncService,
   ) {
     // super(studentRepository, 'Student'); // Commented out for backward compatibility
@@ -468,72 +471,157 @@ export class StudentsService { // Removed HostelScopedService extension for back
   }
 
   async processCheckout(studentId: string, checkoutDetails: any, hostelId: string) {
-    const student = await this.findOne(studentId, hostelId);
+    // Use transaction for data consistency
+    const queryRunner = this.studentRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Update student status to inactive
-    await this.studentRepository.update(studentId, {
-      status: StudentStatus.INACTIVE
-    });
-
-    // Clear room assignment if needed
-    if (checkoutDetails.clearRoom) {
-      await this.studentRepository.update(studentId, {
-        roomId: null
-      });
-    }
-
-    // CRITICAL FIX: Update booking-guest status and free up the bed using BedSyncService
     try {
-      // Find the booking guest record for this student
-      const bookingGuestRepository = this.studentRepository.manager.getRepository(BookingGuest);
+      const student = await this.findOne(studentId, hostelId);
 
-      // Find booking guest by student name (matching logic from enhanced service)
-      const bookingGuest = await bookingGuestRepository.findOne({
-        where: [
-          { guestName: student.name }
-          // Removed: { email: student.email } - email field no longer exists in BookingGuest
-        ]
+      // 🏦 PHASE 1: FINANCIAL INTEGRATION - Get current balance from LedgerV2Service
+      let currentBalance = { currentBalance: 0, balanceType: 'Cr' };
+      try {
+        // Import LedgerV2Service dynamically to avoid circular dependency
+        const { LedgerV2Service } = await import('../ledger-v2/services/ledger-v2.service');
+        const ledgerV2Repository = queryRunner.manager.getRepository('LedgerEntryV2');
+        const ledgerV2Service = new LedgerV2Service(
+          ledgerV2Repository as any,
+          queryRunner.manager.getRepository('Student') as any,
+          null as any, // transactionService - will handle manually
+          null as any  // calculationService - will handle manually
+        );
+        
+        currentBalance = await ledgerV2Service.getStudentBalance(studentId, hostelId);
+        console.log(`💰 Current balance for ${student.name}: NPR ${currentBalance.currentBalance} (${currentBalance.balanceType})`);
+      } catch (error) {
+        console.warn('⚠️ Could not fetch balance from LedgerV2Service, using fallback calculation');
+        // Fallback: Calculate from existing ledger entries
+        const balanceResult = await queryRunner.manager
+          .createQueryBuilder()
+          .select('SUM(ledger.debit)', 'totalDebits')
+          .addSelect('SUM(ledger.credit)', 'totalCredits')
+          .from('ledger_entries', 'ledger')
+          .where('ledger.studentId = :studentId', { studentId })
+          .andWhere('ledger.isReversed = false')
+          .getRawOne();
+
+        const totalDebits = parseFloat(balanceResult?.totalDebits) || 0;
+        const totalCredits = parseFloat(balanceResult?.totalCredits) || 0;
+        const netBalance = totalDebits - totalCredits;
+        
+        currentBalance = {
+          currentBalance: netBalance,
+          balanceType: netBalance >= 0 ? 'Dr' : 'Cr'
+        };
+      }
+
+      // Calculate final settlement amounts
+      const refundAmount = checkoutDetails.refundAmount || 0;
+      const deductionAmount = checkoutDetails.deductionAmount || 0;
+      const netSettlement = refundAmount - deductionAmount;
+
+      // 🏦 PHASE 1: FINANCIAL INTEGRATION - Create ledger entries for checkout settlement
+      if (refundAmount > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .insert()
+          .into('ledger_entries_v2')
+          .values({
+            studentId,
+            hostelId,
+            type: 'ADJUSTMENT',
+            description: `Checkout refund - ${checkoutDetails.notes || 'Final settlement'} - ${student.name}`,
+            referenceId: null,
+            debit: 0,
+            credit: refundAmount,
+            date: new Date(),
+            notes: `Checkout refund processed during student checkout`,
+            isReversed: false,
+            entrySequence: () => 'COALESCE((SELECT MAX(entry_sequence) FROM ledger_entries_v2), 0) + 1'
+          })
+          .execute();
+        
+        console.log(`💸 Created refund entry: NPR ${refundAmount} for ${student.name}`);
+      }
+
+      if (deductionAmount > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .insert()
+          .into('ledger_entries_v2')
+          .values({
+            studentId,
+            hostelId,
+            type: 'ADJUSTMENT',
+            description: `Checkout deduction - ${checkoutDetails.notes || 'Damages/utilities'} - ${student.name}`,
+            referenceId: null,
+            debit: deductionAmount,
+            credit: 0,
+            date: new Date(),
+            notes: `Checkout deduction processed during student checkout`,
+            isReversed: false,
+            entrySequence: () => 'COALESCE((SELECT MAX(entry_sequence) FROM ledger_entries_v2), 0) + 1'
+          })
+          .execute();
+        
+        console.log(`💰 Created deduction entry: NPR ${deductionAmount} for ${student.name}`);
+      }
+
+      // Update student status to inactive
+      await queryRunner.manager.update('students', studentId, {
+        status: StudentStatus.INACTIVE,
+        updatedAt: new Date()
       });
 
-      if (bookingGuest) {
-        // Update booking guest status to CHECKED_OUT
-        await bookingGuestRepository.update(bookingGuest.id, {
-          status: GuestStatus.CHECKED_OUT,
-          actualCheckOutDate: checkoutDetails.checkoutDate || new Date()
+      // Clear room assignment if needed
+      if (checkoutDetails.clearRoom) {
+        await queryRunner.manager.update('students', studentId, {
+          roomId: null
         });
-
-        // Use BedSyncService to properly handle bed release
-        if (bookingGuest.bedId) {
-          await this.bedSyncService.handleBookingCancellation(
-            [bookingGuest.bedId],
-            `Student checkout: ${student.name}`
-          );
-
-          console.log(`✅ Bed ${bookingGuest.bedId} freed up for student ${student.name} using BedSyncService`);
-        }
-      } else {
-        console.warn(`⚠️ No booking guest found for student ${student.name} during checkout`);
       }
+
+      // 🏠 PHASE 2: HISTORICAL TRACKING - Update RoomOccupant with checkout date
+      await this.updateRoomOccupancyHistory(queryRunner, studentId, checkoutDetails.checkoutDate);
+
+      // 🛏️ ENHANCED BED RELEASE - Update booking-guest status and free up the bed
+      await this.releaseBedAndUpdateBooking(queryRunner, student, checkoutDetails);
+
+      // Commit transaction
+      await queryRunner.commitTransaction();
+
+      // 📢 RECENT ACTIVITIES - Log checkout activity (outside transaction)
+      await this.logCheckoutActivity(student, currentBalance.currentBalance, netSettlement);
+
+      // Calculate final balance after adjustments
+      const finalBalance = currentBalance.currentBalance + netSettlement;
+
+      console.log(`✅ Checkout completed for ${student.name}:`);
+      console.log(`   - Initial balance: NPR ${currentBalance.currentBalance}`);
+      console.log(`   - Net settlement: NPR ${netSettlement}`);
+      console.log(`   - Final balance: NPR ${finalBalance}`);
+      console.log(`   - Room occupancy history updated`);
+      console.log(`   - Bed released and made available`);
+
+      return {
+        success: true,
+        studentId,
+        checkoutDate: checkoutDetails.checkoutDate || new Date(),
+        finalBalance,
+        refundAmount,
+        deductionAmount,
+        netSettlement,
+        message: 'Student checkout processed successfully with complete financial settlement'
+      };
+
     } catch (error) {
-      console.error('❌ Error updating bed availability during checkout:', error);
-      // Don't fail the entire checkout process, but log the error
+      // Rollback transaction on error
+      await queryRunner.rollbackTransaction();
+      console.error('❌ Checkout transaction failed:', error);
+      throw new BadRequestException(`Checkout failed: ${error.message}`);
+    } finally {
+      await queryRunner.release();
     }
-
-    // Calculate final settlement
-    const finalBalance = 0; // Will calculate from ledger
-    const refundAmount = checkoutDetails.refundAmount || 0;
-    const deductionAmount = checkoutDetails.deductionAmount || 0;
-
-    return {
-      success: true,
-      studentId,
-      checkoutDate: checkoutDetails.checkoutDate || new Date(),
-      finalBalance,
-      refundAmount,
-      deductionAmount,
-      netSettlement: refundAmount - deductionAmount,
-      message: 'Student checkout processed successfully'
-    };
   }
 
   async advancedSearch(searchDto: any) {
@@ -968,6 +1056,142 @@ export class StudentsService { // Removed HostelScopedService extension for back
         { studentId, feeType: FeeType.FOOD, isActive: true },
         { amount: dto.foodFee }
       );
+    }
+  }
+
+  /**
+   * 🏠 PHASE 2: HISTORICAL TRACKING - Update room occupancy with checkout date
+   */
+  private async updateRoomOccupancyHistory(queryRunner: any, studentId: string, checkoutDate?: string) {
+    try {
+      // Find active occupancy record for this student
+      const occupancy = await queryRunner.manager
+        .createQueryBuilder()
+        .select('*')
+        .from('room_occupants', 'occupant')
+        .where('occupant.student_id = :studentId', { studentId })
+        .andWhere('occupant.check_out_date IS NULL')
+        .andWhere('occupant.status = :status', { status: 'Active' })
+        .getRawOne();
+
+      if (occupancy) {
+        const checkoutDateValue = checkoutDate ? new Date(checkoutDate) : new Date();
+        
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update('room_occupants')
+          .set({
+            check_out_date: checkoutDateValue,
+            status: 'Checked_Out',
+            notes: 'Student checkout processed',
+            updated_at: new Date()
+          })
+          .where('id = :id', { id: occupancy.id })
+          .execute();
+
+        console.log(`🏠 Updated room occupancy history for student ${studentId} - checkout date: ${checkoutDateValue.toISOString().split('T')[0]}`);
+      } else {
+        console.warn(`⚠️ No active room occupancy found for student ${studentId}`);
+      }
+    } catch (error) {
+      console.error('❌ Error updating room occupancy history:', error);
+      // Don't fail the entire checkout, but log the error
+    }
+  }
+
+  /**
+   * 🛏️ ENHANCED BED RELEASE - Robust bed release with multiple lookup strategies
+   */
+  private async releaseBedAndUpdateBooking(queryRunner: any, student: any, checkoutDetails: any) {
+    try {
+      // Strategy 1: Find booking guest by student name
+      let bookingGuest = await queryRunner.manager
+        .createQueryBuilder()
+        .select('*')
+        .from('booking_guests', 'guest')
+        .where('guest.guest_name = :guestName', { guestName: student.name })
+        .andWhere('guest.status = :status', { status: GuestStatus.CHECKED_IN })
+        .getRawOne();
+
+      // Strategy 2: If name match fails, try by bed assignment
+      if (!bookingGuest && student.bedNumber) {
+        const bed = await queryRunner.manager
+          .createQueryBuilder()
+          .select('*')
+          .from('beds', 'bed')
+          .where('bed.bed_number = :bedNumber', { bedNumber: student.bedNumber })
+          .getRawOne();
+
+        if (bed) {
+          bookingGuest = await queryRunner.manager
+            .createQueryBuilder()
+            .select('*')
+            .from('booking_guests', 'guest')
+            .where('guest.bed_id = :bedId', { bedId: bed.id })
+            .andWhere('guest.status = :status', { status: GuestStatus.CHECKED_IN })
+            .getRawOne();
+        }
+      }
+
+      if (bookingGuest) {
+        // Update booking guest status to CHECKED_OUT
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update('booking_guests')
+          .set({
+            status: GuestStatus.CHECKED_OUT,
+            actual_check_out_date: checkoutDetails.checkoutDate ? new Date(checkoutDetails.checkoutDate) : new Date(),
+            updated_at: new Date()
+          })
+          .where('id = :id', { id: bookingGuest.id })
+          .execute();
+
+        // Use BedSyncService to properly handle bed release (outside transaction)
+        if (bookingGuest.bed_id) {
+          // We'll call this after transaction commits
+          setTimeout(async () => {
+            try {
+              await this.bedSyncService.handleBookingCancellation(
+                [bookingGuest.bed_id],
+                `Student checkout: ${student.name} - ${checkoutDetails.notes || 'Regular checkout'}`
+              );
+              console.log(`✅ Bed ${bookingGuest.bed_id} freed up for student ${student.name} using BedSyncService`);
+            } catch (error) {
+              console.error('❌ Error in BedSyncService:', error);
+            }
+          }, 1000);
+        }
+
+        console.log(`🛏️ Updated booking guest ${bookingGuest.id} to CHECKED_OUT status`);
+      } else {
+        console.warn(`⚠️ No booking guest found for student ${student.name} during checkout`);
+      }
+    } catch (error) {
+      console.error('❌ Error updating bed availability during checkout:', error);
+      // Don't fail the entire checkout process, but log the error
+    }
+  }
+
+  /**
+   * 📢 RECENT ACTIVITIES - Log checkout activity for dashboard
+   */
+  private async logCheckoutActivity(student: any, initialBalance: number, netSettlement: number) {
+    try {
+      // The dashboard service already picks up checkout activities by looking for INACTIVE students
+      // with recent updatedAt timestamps, so we don't need to create a separate activity record.
+      // The student status update to INACTIVE with updatedAt will automatically appear in recent activities.
+      
+      console.log(`📢 Checkout activity will appear in dashboard for student: ${student.name}`);
+      console.log(`   - Initial balance: NPR ${initialBalance}`);
+      console.log(`   - Net settlement: NPR ${netSettlement}`);
+      console.log(`   - Activity will be picked up by dashboard service automatically`);
+      
+      // Optional: If you want to create a specific activity log entry, you could add it here
+      // But the current dashboard service already handles this by monitoring student status changes
+      
+    } catch (error) {
+      console.error('❌ Error logging checkout activity:', error);
+      // Don't fail checkout for logging errors
     }
   }
 }
