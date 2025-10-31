@@ -237,7 +237,7 @@ export class RoomsService extends HostelScopedService<Room> {
       .leftJoinAndSelect('room.roomType', 'roomType')
       .leftJoinAndSelect('room.occupants', 'occupants', 'occupants.status = :occupantStatus', { occupantStatus: 'Active' })
       .leftJoinAndSelect('occupants.student', 'student')
-      .leftJoinAndSelect('room.amenities', 'roomAmenities')
+      .leftJoinAndSelect('room.amenities', 'roomAmenities', 'roomAmenities.isActive = :isActive', { isActive: true })
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
       .leftJoinAndSelect('room.layout', 'layout')
       .leftJoinAndSelect('room.beds', 'beds');
@@ -473,6 +473,7 @@ export class RoomsService extends HostelScopedService<Room> {
       monthlyRate: createRoomDto.rent || createRoomDto.monthlyRate,
       occupancy: createRoomDto.occupancy || 0,
       gender: createRoomDto.gender || 'Any',
+      floor: createRoomDto.floor || 1,
       status: createRoomDto.status || RoomStatus.ACTIVE,
       maintenanceStatus: createRoomDto.maintenanceStatus || 'Good',
       lastCleaned: createRoomDto.lastCleaned,
@@ -702,6 +703,7 @@ export class RoomsService extends HostelScopedService<Room> {
     if (updateRoomDto.monthlyRate !== undefined) updateData.monthlyRate = updateRoomDto.monthlyRate;
     if (updateRoomDto.occupancy !== undefined) updateData.occupancy = updateRoomDto.occupancy;
     if (updateRoomDto.gender !== undefined) updateData.gender = updateRoomDto.gender;
+    if (updateRoomDto.floor !== undefined) updateData.floor = updateRoomDto.floor;
     if (updateRoomDto.status !== undefined) updateData.status = updateRoomDto.status;
     if (updateRoomDto.maintenanceStatus !== undefined) updateData.maintenanceStatus = updateRoomDto.maintenanceStatus;
     if (updateRoomDto.lastCleaned !== undefined) updateData.lastCleaned = updateRoomDto.lastCleaned;
@@ -1109,7 +1111,7 @@ export class RoomsService extends HostelScopedService<Room> {
       amenities: amenities,
       status: room.status,
       layout: enhancedLayout, // Enhanced with bed data
-      floor: room.building?.name || 'Ground Floor', // Fallback
+      floor: room.floor || 1, // Use actual floor number
       roomNumber: room.roomNumber,
       occupants: occupants,
       availableBeds: calculatedAvailableBeds, // 🔧 FIXED: Use calculated available beds

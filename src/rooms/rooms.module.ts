@@ -6,6 +6,7 @@ import { RoomsNewController } from './rooms-new.controller';
 import { RoomsNewService } from './rooms-new.service';
 import { RoomsOptimizedController } from './rooms-optimized.controller';
 import { RoomsOptimizedService } from './rooms-optimized.service';
+import { RoomUpdateController } from './room-update.controller';
 import { BedSyncService } from './bed-sync.service';
 import { BedService } from './bed.service';
 import { Room } from './entities/room.entity';
@@ -38,7 +39,7 @@ import { AuthModule } from '../auth/auth.module';
     HostelModule,
     AuthModule,
   ],
-  controllers: [RoomsController, RoomsNewController, RoomsOptimizedController],
+  controllers: [RoomsController, RoomsNewController, RoomsOptimizedController, RoomUpdateController],
   providers: [RoomsService, RoomsNewService, RoomsOptimizedService, BedSyncService, BedService],
   exports: [RoomsService, RoomsNewService, RoomsOptimizedService, BedSyncService, BedService],
 })

@@ -23,10 +23,11 @@ export class RoomsOptimizedController {
 
     const result = await this.roomsOptimizedService.findAllLightweight(query, query.hostelId);
 
-    // Return EXACT same format as original API for compatibility
+    // Return format compatible with frontend expectations
     return {
       status: HttpStatus.OK,
-      result: result
+      items: result.items,
+      pagination: result.pagination
     };
   }
 

@@ -67,6 +67,9 @@ export class Room extends BaseEntity {
   @Column({ type: 'varchar', nullable: true })
   gender: string;
 
+  @Column({ type: 'int', nullable: true })
+  floor: number;
+
   @Column({ type: 'varchar' })
   status: string;
 

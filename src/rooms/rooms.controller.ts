@@ -133,6 +133,11 @@ export class RoomsController {
   @ApiOperation({ summary: 'Update room' })
   @ApiResponse({ status: 200, description: 'Room updated successfully' })
   async updateRoom(@Param('id') id: string, @Body() updateRoomDto: UpdateRoomDto, @GetHostelId() hostelId: string) {
+    console.log('🏠 UPDATE ROOM CONTROLLER - Room ID:', id);
+    console.log('🏠 UPDATE ROOM CONTROLLER - Hostel ID:', hostelId);
+    console.log('🏠 UPDATE ROOM CONTROLLER - Update DTO:', JSON.stringify(updateRoomDto, null, 2));
+    console.log('🏠 UPDATE ROOM CONTROLLER - Floor value:', updateRoomDto.floor, 'Type:', typeof updateRoomDto.floor);
+    
     const room = await this.roomsService.update(id, updateRoomDto, hostelId);
 
     // Return EXACT same format as current Express API

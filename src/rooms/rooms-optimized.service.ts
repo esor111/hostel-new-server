@@ -86,7 +86,7 @@ export class RoomsOptimizedService {
       const queryBuilder = this.roomRepository.createQueryBuilder('room')
         .leftJoinAndSelect('room.roomType', 'roomType')
         .leftJoinAndSelect('room.layout', 'layout')
-        .leftJoinAndSelect('room.amenities', 'roomAmenities')
+        .leftJoinAndSelect('room.amenities', 'roomAmenities', 'roomAmenities.isActive = :isActive', { isActive: true })
         .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
         .select([
           'room.id',
@@ -95,6 +95,7 @@ export class RoomsOptimizedService {
           'room.bedCount',
           'room.occupancy',
           'room.gender',
+          'room.floor',
           'room.monthlyRate',
           'room.status',
           'room.maintenanceStatus',
@@ -172,7 +173,7 @@ export class RoomsOptimizedService {
           amenities: amenities,
           status: room.status,
           layout: layoutData, // Include layout for compatibility
-          floor: 'Ground Floor', // Default
+          floor: room.floor || 1, // Use actual floor number
           roomNumber: room.roomNumber,
           occupants: [], // No occupants in lightweight mode for performance
           availableBeds: room.bedCount - room.occupancy,
