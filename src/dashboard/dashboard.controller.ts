@@ -91,6 +91,40 @@ export class DashboardController {
     };
   }
 
+  @Get("total-outstanding-dues")
+  @ApiOperation({
+    summary: "Get total outstanding dues amount and count",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Total outstanding dues retrieved successfully",
+  })
+  async getTotalOutstandingDues(@GetHostelId() hostelId: string) {
+    const result = await this.dashboardService.getTotalOutstandingDues(hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      data: result,
+    };
+  }
+
+  @Get("all-outstanding-dues")
+  @ApiOperation({
+    summary: "Get all students with outstanding dues (active + inactive)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "All students with outstanding dues retrieved successfully",
+  })
+  async getAllOutstandingDues(@GetHostelId() hostelId: string) {
+    const students = await this.dashboardService.getCheckedOutWithDues(hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      data: students,
+    };
+  }
+
   @Get("monthly-revenue")
   @ApiOperation({ summary: "Get monthly revenue data" })
   @ApiResponse({
