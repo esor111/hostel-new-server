@@ -237,7 +237,7 @@ export class RoomsService extends HostelScopedService<Room> {
       .leftJoinAndSelect('room.roomType', 'roomType')
       .leftJoinAndSelect('room.occupants', 'occupants', 'occupants.status = :occupantStatus', { occupantStatus: 'Active' })
       .leftJoinAndSelect('occupants.student', 'student')
-      .leftJoinAndSelect('room.amenities', 'roomAmenities', 'roomAmenities.isActive = :isActive', { isActive: true })
+      .leftJoinAndSelect('room.amenities', 'roomAmenities', 'roomAmenities.isActive = :amenityActive', { amenityActive: true })
       .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
       .leftJoinAndSelect('room.layout', 'layout')
       .leftJoinAndSelect('room.beds', 'beds');
