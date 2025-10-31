@@ -15,6 +15,7 @@ import { Hostel } from '../hostel/entities/hostel.entity';
 import { AuthModule } from '../auth/auth.module';
 import { HostelModule } from '../hostel/hostel.module';
 import { LedgerV2Module } from '../ledger-v2/ledger-v2.module';
+import { AttendanceModule } from '../attendance/attendance.module';
 import { AdvancePaymentService } from './services/advance-payment.service';
 import { CheckoutSettlementService } from './services/checkout-settlement.service';
 
@@ -35,6 +36,7 @@ import { CheckoutSettlementService } from './services/checkout-settlement.servic
     AuthModule,
     HostelModule,
     LedgerV2Module,
+    AttendanceModule,
   ],
   controllers: [StudentsController],
   providers: [

@@ -40,6 +40,8 @@ import { MaintenanceRequest } from '../maintenance/entities/maintenance-request.
 import { AdminCharge } from '../admin-charges/entities/admin-charge.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
 import { MealPlan } from '../meal-plans/entities/meal-plan.entity';
+import { StudentAttendance } from '../attendance/entities/student-attendance.entity';
+import { StudentCheckInOut } from '../attendance/entities/student-checkin-checkout.entity';
 
 // Load environment variables
 config();
@@ -98,6 +100,10 @@ export const dataSourceOptions: DataSourceOptions = {
     
     // Meal Plan entities
     MealPlan,
+    
+    // Attendance entities
+    StudentAttendance,
+    StudentCheckInOut,
   ],
   // Migrations disabled - using synchronize mode for development
   migrations: [],
