@@ -2,7 +2,8 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Student, StudentStatus } from '../students/entities/student.entity';
-import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
+import { LedgerEntryV2 } from '../ledger-v2/entities/ledger-entry-v2.entity';
+import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 import { Payment, PaymentStatus } from '../payments/entities/payment.entity';
 import { Invoice, InvoiceStatus } from '../invoices/entities/invoice.entity';
 import { MultiGuestBooking, MultiGuestBookingStatus } from '../bookings/entities/multi-guest-booking.entity';
@@ -15,8 +16,9 @@ export class DashboardService {
   constructor(
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
-    @InjectRepository(LedgerEntry)
-    private ledgerRepository: Repository<LedgerEntry>,
+    @InjectRepository(LedgerEntryV2)
+    private ledgerRepository: Repository<LedgerEntryV2>,
+    private ledgerV2Service: LedgerV2Service,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Invoice)
@@ -101,13 +103,16 @@ export class DashboardService {
 
     const thisMonthRevenue = parseFloat(thisMonthRevenueResult?.total) || 0;
 
-    // Get pending payments count (failed + pending)
-    const pendingPayments = await this.paymentRepository
+    // Get pending payments amount (failed + pending)
+    const pendingPaymentsResult = await this.paymentRepository
       .createQueryBuilder('payment')
       .innerJoin('payment.student', 'student')
+      .select('SUM(payment.amount)', 'totalAmount')
       .where('payment.status IN (:...statuses)', { statuses: [PaymentStatus.PENDING, PaymentStatus.FAILED] })
       .andWhere('student.hostelId = :hostelId', { hostelId })
-      .getCount();
+      .getRawOne();
+
+    const pendingPayments = parseFloat(pendingPaymentsResult?.totalAmount) || 0;
 
     // Calculate occupancy percentage based on beds, not rooms
     const occupancyPercentage = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
@@ -189,13 +194,13 @@ export class DashboardService {
       });
     });
 
-    // Get recent ledger entries (admin charges, discounts, adjustments)
+    // Get recent ledger entries (admin charges, discounts, adjustments) using V2
     const recentLedgerEntries = await this.ledgerRepository
       .createQueryBuilder('ledger')
       .leftJoinAndSelect('ledger.student', 'student')
-      .where('ledger.type IN (:...types)', { types: ['Adjustment', 'Discount'] })
+      .where('ledger.type IN (:...types)', { types: ['Adjustment', 'Discount', 'Admin Charge'] })
       .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
-      .andWhere('student.hostelId = :hostelId', { hostelId })
+      .andWhere('ledger.hostelId = :hostelId', { hostelId })
       .orderBy('ledger.createdAt', 'DESC')
       .limit(5)
       .getMany();
@@ -325,34 +330,55 @@ export class DashboardService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
-    const studentsWithDues = await this.studentRepository
+    // Get all students (both active and inactive) for this hostel
+    const students = await this.studentRepository
       .createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
-      .leftJoin('student.ledgerEntries', 'ledger')
-      .select([
-        'student.id',
-        'student.name',
-        'student.phone',
-        'student.email',
-        'room.roomNumber',
-        'SUM(CASE WHEN ledger.balanceType = \'Dr\' THEN ledger.balance ELSE -ledger.balance END) as outstandingDues'
-      ])
-      .where('student.status = :status', { status: StudentStatus.INACTIVE })
-      .andWhere('student.hostelId = :hostelId', { hostelId })
-      .groupBy('student.id, room.roomNumber')
-      .having('SUM(CASE WHEN ledger.balanceType = \'Dr\' THEN ledger.balance ELSE -ledger.balance END) > 0')
-      .getRawMany();
+      .where('student.hostelId = :hostelId', { hostelId })
+      .getMany();
 
-    return studentsWithDues.map(student => ({
-      studentId: student.student_id,
-      studentName: student.student_name,
-      roomNumber: student.room_roomNumber,
-      phone: student.student_phone,
-      email: student.student_email,
-      outstandingDues: parseFloat(student.outstandingDues) || 0,
-      checkoutDate: student.student_updatedAt, // Assuming checkout updates the student record
-      status: 'pending_payment'
-    }));
+    const studentsWithDues = [];
+
+    // Check each student's balance using LedgerV2Service
+    for (const student of students) {
+      try {
+        const balanceData = await this.ledgerV2Service.getStudentBalance(student.id, hostelId);
+        
+        if (balanceData.currentBalance > 0) {
+          studentsWithDues.push({
+            studentId: student.id,
+            studentName: student.name,
+            roomNumber: student.room?.roomNumber,
+            phone: student.phone,
+            email: student.email,
+            outstandingDues: balanceData.currentBalance,
+            checkoutDate: student.status === StudentStatus.INACTIVE ? student.updatedAt : null,
+            status: student.status === StudentStatus.ACTIVE ? 'active_with_dues' : 'checked_out_with_dues',
+            studentStatus: student.status
+          });
+        }
+      } catch (error) {
+        console.log(`Error getting balance for student ${student.name}:`, error.message);
+      }
+    }
+
+    return studentsWithDues;
+  }
+
+  async getTotalOutstandingDues(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const studentsWithDues = await this.getCheckedOutWithDues(hostelId);
+    const totalAmount = studentsWithDues.reduce((sum, student) => sum + student.outstandingDues, 0);
+    
+    return {
+      amount: totalAmount,
+      invoiceCount: studentsWithDues.length,
+      students: studentsWithDues
+    };
   }
 
   async getMonthlyRevenue(months: number = 12, hostelId: string) {
