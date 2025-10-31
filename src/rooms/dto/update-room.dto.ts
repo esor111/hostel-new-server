@@ -1,7 +1,7 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { IsString, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested, Min, Max } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { CreateRoomDto, CreateRoomAmenityDto, CreateRoomLayoutDto } from './create-room.dto';
+import { CreateRoomDto, CreateRoomLayoutDto } from './create-room.dto';
 
 export class UpdateRoomDto extends PartialType(CreateRoomDto) {
   @IsOptional()
