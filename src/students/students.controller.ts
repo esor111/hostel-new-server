@@ -59,6 +59,19 @@ export class StudentsController {
     };
   }
 
+  @Get('billing-timeline')
+  @ApiOperation({ summary: 'Get configuration billing timeline' })
+  @ApiResponse({ status: 200, description: 'Billing timeline retrieved successfully' })
+  async getBillingTimeline(@GetHostelId() hostelId: string) {
+    const result = await this.studentsService.getConfigurationBillingTimeline(hostelId);
+
+    // Return EXACT same format as current Express API
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get student by ID' })
   @ApiResponse({ status: 200, description: 'Student retrieved successfully' })
@@ -148,19 +161,6 @@ export class StudentsController {
     return {
       status: HttpStatus.OK,
       data: invoices
-    };
-  }
-
-  @Get('billing-timeline')
-  @ApiOperation({ summary: 'Get configuration billing timeline' })
-  @ApiResponse({ status: 200, description: 'Billing timeline retrieved successfully' })
-  async getBillingTimeline(@GetHostelId() hostelId: string) {
-    const result = await this.studentsService.getConfigurationBillingTimeline(hostelId);
-
-    // Return EXACT same format as current Express API
-    return {
-      status: HttpStatus.OK,
-      data: result
     };
   }
 
