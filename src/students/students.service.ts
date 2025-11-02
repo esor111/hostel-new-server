@@ -296,21 +296,35 @@ export class StudentsService { // Removed HostelScopedService extension for back
     const laundryFee = student.financialInfo?.find(f => f.feeType === FeeType.LAUNDRY && f.isActive);
     const foodFee = student.financialInfo?.find(f => f.feeType === FeeType.FOOD && f.isActive);
 
-    // Calculate current balance from ledger entries
-    const balanceResult = await this.ledgerRepository
-      .createQueryBuilder('ledger')
-      .select('SUM(ledger.debit)', 'totalDebits')
-      .addSelect('SUM(ledger.credit)', 'totalCredits')
-      .where('ledger.studentId = :studentId', { studentId: student.id })
-      .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
-      .getRawOne();
+    // Calculate current balance from LedgerV2 (new system)
+    let currentBalance = 0;
+    let advanceBalance = 0;
+    
+    try {
+      // Import LedgerV2Service dynamically to get balance
+      const { LedgerV2Service } = await import('../ledger-v2/services/ledger-v2.service');
+      const ledgerV2Repository = this.ledgerRepository.manager.getRepository('LedgerEntryV2');
+      
+      const balanceResult = await ledgerV2Repository
+        .createQueryBuilder('ledger')
+        .select('SUM(ledger.debit)', 'totalDebits')
+        .addSelect('SUM(ledger.credit)', 'totalCredits')
+        .where('ledger.studentId = :studentId', { studentId: student.id })
+        .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
+        .getRawOne();
 
-    const totalDebits = parseFloat(balanceResult?.totalDebits) || 0;
-    const totalCredits = parseFloat(balanceResult?.totalCredits) || 0;
-    const netBalance = totalDebits - totalCredits;
+      const totalDebits = parseFloat(balanceResult?.totalDebits) || 0;
+      const totalCredits = parseFloat(balanceResult?.totalCredits) || 0;
+      const netBalance = totalDebits - totalCredits;
 
-    const currentBalance = netBalance > 0 ? netBalance : 0; // Dues (positive balance)
-    const advanceBalance = netBalance < 0 ? Math.abs(netBalance) : 0; // Advance (negative balance)
+      currentBalance = netBalance > 0 ? netBalance : 0; // Dues (positive balance)
+      advanceBalance = netBalance < 0 ? Math.abs(netBalance) : 0; // Advance (negative balance)
+    } catch (error) {
+      console.error('Error calculating balance from LedgerV2:', error);
+      // Fallback to 0 if error
+      currentBalance = 0;
+      advanceBalance = 0;
+    }
 
     // Return EXACT same structure as current JSON
     return {
