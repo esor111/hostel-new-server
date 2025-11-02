@@ -104,6 +104,49 @@ export class DashboardService {
     const thisMonthRevenue = parseFloat(thisMonthRevenueResult?.total) || 0;
 
     // Get outstanding dues (unpaid invoices)
+    console.log('🔍 Querying outstanding dues for hostelId:', hostelId);
+    
+    // First, let's see ALL invoices for debugging
+    const allInvoices = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .innerJoin('invoice.student', 'student')
+      .select([
+        'invoice.id', 
+        'invoice.status', 
+        'invoice.total', 
+        'invoice.paymentTotal', 
+        'student.status', 
+        'student.name',
+        'student.id'
+      ])
+      .where('student.hostelId = :hostelId', { hostelId })
+      .getRawMany();
+    
+    console.log('📋 ALL Invoices in database:', JSON.stringify(allInvoices, null, 2));
+    console.log('📋 Total invoices found:', allInvoices.length);
+    
+    // Check which invoices match our criteria
+    const matchingInvoices = allInvoices.filter(inv => {
+      const statusMatch = ['Unpaid', 'Overdue', 'Partially Paid'].includes(inv.invoice_status);
+      const studentActive = inv.student_status === 'Active';
+      const hasBalance = (inv.invoice_total - inv.invoice_paymentTotal) > 0;
+      
+      console.log(`Invoice ${inv.invoice_id}:`, {
+        status: inv.invoice_status,
+        statusMatch,
+        studentStatus: inv.student_status,
+        studentActive,
+        balance: inv.invoice_total - inv.invoice_paymentTotal,
+        hasBalance
+      });
+      
+      return statusMatch && studentActive && hasBalance;
+    });
+    
+    console.log('✅ Matching invoices:', matchingInvoices.length);
+    console.log('💰 Total from matching:', matchingInvoices.reduce((sum, inv) => sum + (inv.invoice_total - inv.invoice_paymentTotal), 0));
+    
+    // Now get the sum
     const outstandingDuesResult = await this.invoiceRepository
       .createQueryBuilder('invoice')
       .innerJoin('invoice.student', 'student')
@@ -113,7 +156,12 @@ export class DashboardService {
       .andWhere('student.status = :status', { status: StudentStatus.ACTIVE })
       .getRawOne();
 
+    console.log('📊 Raw query result:', outstandingDuesResult);
+    console.log('💰 totalDue from query:', outstandingDuesResult?.totalDue);
+    
     const outstandingDues = parseFloat(outstandingDuesResult?.totalDue) || 0;
+    
+    console.log('💵 Parsed outstandingDues:', outstandingDues);
 
     // Calculate occupancy percentage based on beds, not rooms
     const occupancyPercentage = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
