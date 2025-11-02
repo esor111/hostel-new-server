@@ -18,6 +18,7 @@ import { LedgerV2Module } from '../ledger-v2/ledger-v2.module';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { AdvancePaymentService } from './services/advance-payment.service';
 import { CheckoutSettlementService } from './services/checkout-settlement.service';
+import { InvoicesModule } from '../invoices/invoices.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { CheckoutSettlementService } from './services/checkout-settlement.servic
     HostelModule,
     LedgerV2Module,
     AttendanceModule,
+    InvoicesModule,
   ],
   controllers: [StudentsController],
   providers: [

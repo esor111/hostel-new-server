@@ -11,7 +11,6 @@ export interface AdvancePaymentResult {
   success: boolean;
   paymentId: string;
   amount: number;
-  monthCovered: string;
   ledgerEntryId: string;
   message: string;
 }
@@ -125,15 +124,16 @@ export class AdvancePaymentService {
   }
 
   /**
-   * Process advance payment for newly configured student
+   * Process advance payment as credit balance (NEW: No month association)
    */
   async processAdvancePayment(
-    studentId: string, 
+    studentId: string,
+    amount: number, // Allow any amount, not just calculated fee
     hostelId: string,
-    configurationDate: Date = new Date(),
+    paymentDate: Date = new Date(),
     paymentMethod: PaymentMethod = PaymentMethod.CASH
   ): Promise<AdvancePaymentResult> {
-    // Validate student exists and is not already configured with advance payment
+    // Validate student exists
     const student = await this.studentRepository.findOne({
       where: { id: studentId, hostelId }
     });
@@ -142,65 +142,40 @@ export class AdvancePaymentService {
       throw new BadRequestException('Student not found');
     }
 
-    if (student.advancePaymentMonth) {
-      throw new BadRequestException('Student already has advance payment processed');
-    }
+    // NEW: No month-specific validation - advance is just credit balance
 
-    // Calculate monthly fee
-    const feeCalculation = await this.calculateMonthlyFee(studentId);
-
-    // Determine month covered by advance payment
-    const monthCovered = this.getMonthCovered(configurationDate);
-
-    // Check if advance payment already exists
-    const existingAdvancePayment = await this.paymentRepository.findOne({
-      where: {
-        studentId,
-        paymentType: PaymentType.ADVANCE,
-        monthCovered
-      }
-    });
-
-    if (existingAdvancePayment) {
-      throw new BadRequestException(`Advance payment already exists for month ${monthCovered}`);
-    }
-
-    // Create advance payment record
+    // Create advance payment record WITHOUT monthCovered
     const advancePayment = this.paymentRepository.create({
       studentId,
       hostelId,
-      amount: feeCalculation.totalMonthlyFee,
+      amount,
       paymentType: PaymentType.ADVANCE,
       paymentMethod,
-      paymentDate: configurationDate,
-      monthCovered,
+      paymentDate,
+      monthCovered: null, // REMOVED: No month association
       status: PaymentStatus.COMPLETED,
-      notes: `Initial advance payment for ${monthCovered} - Configuration date: ${configurationDate.toISOString().split('T')[0]}`,
-      processedBy: 'system_configuration'
+      notes: `Advance payment - Credit balance of NPR ${amount.toLocaleString()}`,
+      processedBy: 'advance_payment_system'
     });
 
     const savedPayment = await this.paymentRepository.save(advancePayment);
 
-    // Create ledger entry (CREDIT - student has advance)
+    // Create ledger entry as credit (no month association)
     const ledgerEntry = await this.ledgerV2Service.createAdjustmentEntry({
       studentId,
-      amount: feeCalculation.totalMonthlyFee,
-      description: `Advance payment for ${monthCovered} - ${student.name}`,
+      amount,
+      description: `Advance payment credit - ${student.name}`,
       type: 'credit'
     }, hostelId);
 
-    // Update student with advance payment information
-    await this.studentRepository.update(studentId, {
-      advancePaymentMonth: monthCovered
-    });
+    // NEW: Do NOT update student.advancePaymentMonth
 
     return {
       success: true,
       paymentId: savedPayment.id,
-      amount: feeCalculation.totalMonthlyFee,
-      monthCovered,
+      amount,
       ledgerEntryId: ledgerEntry.id,
-      message: `Advance payment of NPR ${feeCalculation.totalMonthlyFee.toLocaleString()} processed for ${monthCovered}`
+      message: `Advance payment of NPR ${amount.toLocaleString()} processed as credit balance`
     };
   }
 

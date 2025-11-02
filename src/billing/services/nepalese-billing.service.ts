@@ -98,18 +98,9 @@ export class NepalesesBillingService {
 
     for (const student of activeStudents) {
       try {
-        // CRITICAL: Skip if this is their advance payment month
-        if (this.isAdvancePaymentMonth(student, month, year)) {
-          result.skipped++;
-          result.skippedStudents.push({
-            studentId: student.id,
-            studentName: student.name,
-            reason: `Advance payment covers ${monthKey}`
-          });
-          console.log(`⏭️ Skipping ${student.name} - advance payment covers ${monthKey}`);
-          continue;
-        }
-
+        // NEW: Always generate invoices regardless of advance payments
+        // Advance payments are now credit balance only, used at checkout
+        
         // Check if invoice already exists for this month
         const existingInvoice = await this.invoiceRepository.findOne({
           where: {
@@ -156,16 +147,17 @@ export class NepalesesBillingService {
   }
 
   /**
+   * DEPRECATED: No longer needed - advance payments are now credit balance only
    * Check if billing month is the same as student's advance payment month
    */
-  private isAdvancePaymentMonth(student: Student, billingMonth: number, billingYear: number): boolean {
-    if (!student.advancePaymentMonth) {
-      return false;
-    }
+  // private isAdvancePaymentMonth(student: Student, billingMonth: number, billingYear: number): boolean {
+  //   if (!student.advancePaymentMonth) {
+  //     return false;
+  //   }
 
-    const [advanceYear, advanceMonth] = student.advancePaymentMonth.split('-').map(Number);
-    return advanceYear === billingYear && (advanceMonth - 1) === billingMonth;
-  }
+  //   const [advanceYear, advanceMonth] = student.advancePaymentMonth.split('-').map(Number);
+  //   return advanceYear === billingYear && (advanceMonth - 1) === billingMonth;
+  // }
 
   /**
    * Generate full month invoice for student

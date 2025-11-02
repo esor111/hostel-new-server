@@ -14,6 +14,7 @@ import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
 import { BedSyncService } from '../rooms/bed-sync.service';
 import { AdvancePaymentService } from './services/advance-payment.service';
 import { CheckoutSettlementService } from './services/checkout-settlement.service';
+import { InvoicesService } from '../invoices/invoices.service';
 // import { HostelScopedService } from '../common/services/hostel-scoped.service'; // Commented out for backward compatibility
 
 @Injectable()
@@ -36,6 +37,7 @@ export class StudentsService { // Removed HostelScopedService extension for back
     private bedSyncService: BedSyncService,
     private advancePaymentService: AdvancePaymentService,
     private checkoutSettlementService: CheckoutSettlementService,
+    private invoicesService: InvoicesService,
   ) {
     // super(studentRepository, 'Student'); // Commented out for backward compatibility
   }
@@ -1029,19 +1031,32 @@ export class StudentsService { // Removed HostelScopedService extension for back
       await this.financialRepository.save(financialEntries);
     }
 
-    // NEPALESE BILLING: Process advance payment for current month
+    // NEW: Generate immediate configuration-based invoice
     const configurationDate = new Date();
-    let advancePaymentResult = null;
+    let firstInvoice = null;
     
     try {
-      advancePaymentResult = await this.advancePaymentService.processAdvancePayment(
+      // Calculate total monthly fee
+      const feeCalculation = await this.advancePaymentService.calculateMonthlyFee(studentId);
+      
+      // Calculate first billing period (config date to next month same date)
+      const periodStart = configurationDate;
+      const periodEnd = new Date(configurationDate);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      
+      // Generate immediate configuration-based invoice
+      firstInvoice = await this.invoicesService.createConfigurationBasedInvoice(
         studentId,
         hostelId,
+        periodStart,
+        periodEnd,
+        feeCalculation.totalMonthlyFee,
         configurationDate
       );
-      console.log(`✅ Advance payment processed: NPR ${advancePaymentResult.amount.toLocaleString()} for ${advancePaymentResult.monthCovered}`);
+      
+      console.log(`✅ Immediate invoice generated: NPR ${feeCalculation.totalMonthlyFee.toLocaleString()} for period ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`);
     } catch (error) {
-      console.error('❌ Failed to process advance payment:', error);
+      console.error('❌ Failed to generate immediate invoice:', error);
       throw new BadRequestException(`Configuration failed: ${error.message}`);
     }
 
@@ -1055,17 +1070,20 @@ export class StudentsService { // Removed HostelScopedService extension for back
 
     return {
       success: true,
-      message: 'Student configuration completed successfully with advance payment',
+      message: 'Student configuration completed successfully with immediate billing',
       studentId,
       configurationDate,
       totalMonthlyFee,
       guardianConfigured: !!(configData.guardian?.name || configData.guardian?.phone),
       academicConfigured: !!(configData.course || configData.institution),
-      advancePayment: {
-        amount: advancePaymentResult.amount,
-        monthCovered: advancePaymentResult.monthCovered,
-        paymentId: advancePaymentResult.paymentId,
-        message: advancePaymentResult.message
+      firstInvoice: {
+        invoiceId: firstInvoice.id,
+        amount: firstInvoice.total,
+        periodStart: firstInvoice.periodStart,
+        periodEnd: firstInvoice.periodEnd,
+        dueDate: firstInvoice.dueDate,
+        status: firstInvoice.status,
+        billingType: firstInvoice.billingType
       }
     };
   }

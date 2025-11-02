@@ -61,6 +61,25 @@ export class Invoice extends BaseEntity {
   @Column({ name: 'generated_by', length: 100, default: 'system' })
   generatedBy: string;
 
+  // NEW: Configuration-based billing fields
+  @Column({ 
+    name: 'billing_type',
+    type: 'enum', 
+    enum: ['CALENDAR', 'CONFIGURATION'], 
+    default: 'CALENDAR',
+    nullable: true 
+  })
+  billingType?: 'CALENDAR' | 'CONFIGURATION';
+
+  @Column({ name: 'period_start', type: 'timestamp', nullable: true })
+  periodStart?: Date;
+
+  @Column({ name: 'period_end', type: 'timestamp', nullable: true })
+  periodEnd?: Date;
+
+  @Column({ name: 'configuration_date', type: 'timestamp', nullable: true })
+  configurationDate?: Date;
+
   // Computed Properties
   get balanceDue(): number {
     return this.total - this.paymentTotal;
@@ -72,6 +91,15 @@ export class Invoice extends BaseEntity {
 
   get roomNumber(): string {
     return this.student?.room?.roomNumber || '';
+  }
+
+  get periodLabel(): string {
+    if (this.billingType === 'CONFIGURATION' && this.periodStart && this.periodEnd) {
+      const start = this.periodStart.toLocaleDateString();
+      const end = this.periodEnd.toLocaleDateString();
+      return `${start} - ${end}`;
+    }
+    return this.month; // Fallback to calendar month
   }
 
   // Relations

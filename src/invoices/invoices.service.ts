@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
 import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
@@ -118,7 +118,13 @@ export class InvoicesService {
       paymentTotal: createInvoiceDto.paymentTotal || 0,
       notes: createInvoiceDto.notes,
       invoiceNumber: createInvoiceDto.invoiceNumber || this.generateInvoiceNumber(),
-      generatedBy: createInvoiceDto.generatedBy || 'system'
+      generatedBy: createInvoiceDto.generatedBy || 'system',
+      
+      // NEW: Configuration-based billing fields
+      billingType: createInvoiceDto.billingType || 'CALENDAR',
+      periodStart: createInvoiceDto.periodStart,
+      periodEnd: createInvoiceDto.periodEnd,
+      configurationDate: createInvoiceDto.configurationDate
     });
 
     const savedInvoice = await this.invoiceRepository.save(invoice);
@@ -485,6 +491,118 @@ export class InvoicesService {
       paidAmount: parseFloat(data.paidAmount) || 0,
       paidCount: parseInt(data.paidCount),
       collectionRate: data.count > 0 ? (parseInt(data.paidCount) / parseInt(data.count)) * 100 : 0
+    }));
+  }
+
+  // NEW: Configuration-based billing methods
+
+  /**
+   * Create configuration-based invoice for a specific billing period
+   */
+  async createConfigurationBasedInvoice(
+    studentId: string,
+    hostelId: string,
+    periodStart: Date,
+    periodEnd: Date,
+    amount: number,
+    configurationDate?: Date
+  ): Promise<any> {
+    // Validate inputs
+    if (!studentId || !hostelId || !periodStart || !periodEnd || !amount) {
+      throw new BadRequestException('Missing required parameters for configuration-based invoice');
+    }
+
+    // Check if invoice already exists for this period
+    const existingInvoice = await this.invoiceRepository.findOne({
+      where: {
+        studentId,
+        hostelId,
+        billingType: 'CONFIGURATION',
+        periodStart
+      }
+    });
+
+    if (existingInvoice) {
+      throw new BadRequestException(`Invoice already exists for period ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`);
+    }
+
+    // Create configuration-based invoice
+    const invoiceData = {
+      studentId,
+      hostelId,
+      month: periodStart.toISOString().substring(0, 7), // Keep for compatibility (YYYY-MM)
+      billingType: 'CONFIGURATION',
+      periodStart,
+      periodEnd,
+      configurationDate: configurationDate || new Date(),
+      total: amount,
+      status: InvoiceStatus.UNPAID,
+      dueDate: periodEnd, // Due at end of period
+      subtotal: amount,
+      notes: `Configuration-based billing: ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`,
+      generatedBy: 'configuration_billing_system'
+    };
+
+    return await this.create(invoiceData, hostelId);
+  }
+
+  /**
+   * Get outstanding dues for configuration-based billing
+   */
+  async getOutstandingDues(studentId: string, hostelId: string): Promise<any[]> {
+    const invoices = await this.invoiceRepository.find({
+      where: {
+        studentId,
+        hostelId,
+        billingType: 'CONFIGURATION',
+        status: In([InvoiceStatus.UNPAID, InvoiceStatus.PARTIALLY_PAID])
+      },
+      order: { periodStart: 'ASC' },
+      relations: ['student']
+    });
+
+    return invoices.map(invoice => this.transformToApiResponse(invoice));
+  }
+
+  /**
+   * Get accumulated due amount for configuration-based billing
+   */
+  async getAccumulatedDues(studentId: string, hostelId: string): Promise<number> {
+    const result = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .select('SUM(invoice.total - invoice.paymentTotal)', 'totalDue')
+      .where('invoice.studentId = :studentId', { studentId })
+      .andWhere('invoice.hostelId = :hostelId', { hostelId })
+      .andWhere('invoice.billingType = :billingType', { billingType: 'CONFIGURATION' })
+      .andWhere('invoice.status IN (:...statuses)', { 
+        statuses: [InvoiceStatus.UNPAID, InvoiceStatus.PARTIALLY_PAID] 
+      })
+      .getRawOne();
+      
+    return parseFloat(result?.totalDue) || 0;
+  }
+
+  /**
+   * Get configuration-based invoices for a student with period labels
+   */
+  async getConfigurationBasedInvoices(studentId: string, hostelId: string): Promise<any[]> {
+    const invoices = await this.invoiceRepository.find({
+      where: {
+        studentId,
+        hostelId,
+        billingType: 'CONFIGURATION'
+      },
+      order: { periodStart: 'ASC' },
+      relations: ['student', 'items', 'paymentAllocations', 'paymentAllocations.payment']
+    });
+
+    return invoices.map(invoice => ({
+      ...this.transformToApiResponse(invoice),
+      periodLabel: invoice.periodLabel, // Use the computed property
+      billingType: invoice.billingType,
+      periodStart: invoice.periodStart,
+      periodEnd: invoice.periodEnd,
+      configurationDate: invoice.configurationDate
     }));
   }
 }
