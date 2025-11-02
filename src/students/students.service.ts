@@ -936,6 +936,11 @@ export class StudentsService { // Removed HostelScopedService extension for back
   async configureStudent(studentId: string, configData: any, hostelId: string) {
     const student = await this.findOne(studentId, hostelId);
 
+    // ✅ PROTECTION: Prevent re-configuration if student is already configured
+    if (student.isConfigured) {
+      throw new BadRequestException('Student is already configured. Cannot configure again.');
+    }
+
     // ✅ CRITICAL FIX: Save guardian information
     if (configData.guardian) {
       // First, deactivate any existing guardian contacts
@@ -1077,6 +1082,26 @@ export class StudentsService { // Removed HostelScopedService extension for back
       throw new BadRequestException(`Configuration failed: ${error.message}`);
     }
 
+    // NEW: Process advance payment if provided
+    let advancePaymentRecord = null;
+    if (configData.advancePayment && configData.advancePayment > 0) {
+      try {
+        console.log(`💰 Processing advance payment: NPR ${configData.advancePayment}`);
+        
+        advancePaymentRecord = await this.advancePaymentService.processAdvancePayment(
+          studentId,
+          configData.advancePayment,
+          hostelId
+        );
+        
+        console.log(`✅ Advance payment recorded: NPR ${configData.advancePayment}`);
+      } catch (error) {
+        console.error('❌ Failed to record advance payment:', error);
+        // Don't fail configuration if advance payment fails, just log it
+        console.warn('⚠️ Configuration completed but advance payment failed');
+      }
+    }
+
     // Mark student as configured and active
     await this.studentRepository.update(studentId, {
       isConfigured: true,
@@ -1101,7 +1126,12 @@ export class StudentsService { // Removed HostelScopedService extension for back
         dueDate: firstInvoice.dueDate,
         status: firstInvoice.status,
         billingType: firstInvoice.billingType
-      }
+      },
+      advancePayment: advancePaymentRecord ? {
+        paymentId: advancePaymentRecord.paymentId,
+        amount: configData.advancePayment,
+        recorded: true
+      } : null
     };
   }
 
