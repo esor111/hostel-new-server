@@ -108,7 +108,7 @@ export class DashboardService {
       .createQueryBuilder('invoice')
       .innerJoin('invoice.student', 'student')
       .select('SUM(invoice.total - invoice.paymentTotal)', 'totalDue')
-      .where('invoice.status IN (:...statuses)', { statuses: [InvoiceStatus.PENDING, InvoiceStatus.OVERDUE] })
+      .where('invoice.status IN (:...statuses)', { statuses: [InvoiceStatus.UNPAID, InvoiceStatus.OVERDUE, InvoiceStatus.PARTIALLY_PAID] })
       .andWhere('student.hostelId = :hostelId', { hostelId })
       .andWhere('student.status = :status', { status: StudentStatus.ACTIVE })
       .getRawOne();
