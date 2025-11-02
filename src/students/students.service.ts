@@ -1328,6 +1328,150 @@ export class StudentsService { // Removed HostelScopedService extension for back
   }
 
   /**
+   * 📅 BILLING TIMELINE: Get billing timeline for configuration-based billing
+   * Shows past events, current status, and upcoming billing cycles
+   */
+  async getConfigurationBillingTimeline(hostelId: string) {
+    try {
+      const timeline: any[] = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Get all configured students
+      const students = await this.studentRepository.find({
+        where: { hostelId, isConfigured: true },
+        order: { enrollmentDate: 'DESC' }
+      });
+
+      // Add configuration events (past)
+      for (const student of students) {
+        if (student.enrollmentDate) {
+          const configDate = new Date(student.enrollmentDate);
+          configDate.setHours(0, 0, 0, 0);
+          
+          timeline.push({
+            id: `config-${student.id}`,
+            date: configDate.toISOString(),
+            type: 'CONFIGURATION',
+            status: configDate < today ? 'PAST' : configDate.getTime() === today.getTime() ? 'TODAY' : 'UPCOMING',
+            title: `${student.name} configured`,
+            description: `Student configuration completed`,
+            studentName: student.name,
+            metadata: { studentId: student.id }
+          });
+        }
+      }
+
+      // Get recent invoices (past 30 days)
+      const recentInvoices = await this.invoicesService.findAll(
+        { 
+          limit: 100,
+          billingType: 'CONFIGURATION'
+        },
+        hostelId
+      );
+
+      // Add invoice events
+      if (recentInvoices.items) {
+        for (const invoice of recentInvoices.items) {
+          const invoiceDate = new Date(invoice.createdAt);
+          invoiceDate.setHours(0, 0, 0, 0);
+          
+          timeline.push({
+            id: `invoice-${invoice.id}`,
+            date: invoiceDate.toISOString(),
+            type: 'INVOICE_GENERATED',
+            status: invoiceDate < today ? 'PAST' : invoiceDate.getTime() === today.getTime() ? 'TODAY' : 'UPCOMING',
+            title: `Invoice generated - ${invoice.studentName || 'Student'}`,
+            description: `NPR ${invoice.total?.toLocaleString()} for period ${invoice.periodLabel || invoice.month}`,
+            amount: invoice.total,
+            studentName: invoice.studentName,
+            metadata: { invoiceId: invoice.id }
+          });
+        }
+      }
+
+      // Calculate upcoming billing cycles
+      // For each configured student, find their next billing date
+      const upcomingBillingDates = new Map<string, any[]>();
+      
+      for (const student of students) {
+        if (student.enrollmentDate) {
+          const configDate = new Date(student.enrollmentDate);
+          
+          // Calculate next 3 billing cycles
+          for (let i = 1; i <= 3; i++) {
+            const nextBillingDate = new Date(configDate);
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + i);
+            nextBillingDate.setHours(0, 0, 0, 0);
+            
+            if (nextBillingDate > today) {
+              const dateKey = nextBillingDate.toISOString().split('T')[0];
+              
+              if (!upcomingBillingDates.has(dateKey)) {
+                upcomingBillingDates.set(dateKey, []);
+              }
+              
+              upcomingBillingDates.get(dateKey)!.push(student);
+            }
+          }
+        }
+      }
+
+      // Add upcoming billing cycle events
+      for (const [dateKey, studentsInCycle] of upcomingBillingDates.entries()) {
+        const billingDate = new Date(dateKey);
+        const daysUntil = Math.ceil((billingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        timeline.push({
+          id: `billing-${dateKey}`,
+          date: billingDate.toISOString(),
+          type: 'UPCOMING_BILLING',
+          status: 'UPCOMING',
+          title: `Next billing cycle (${daysUntil} days)`,
+          description: `${studentsInCycle.length} invoice${studentsInCycle.length > 1 ? 's' : ''} will be generated`,
+          metadata: { 
+            studentCount: studentsInCycle.length,
+            daysUntil,
+            students: studentsInCycle.map(s => ({ id: s.id, name: s.name }))
+          }
+        });
+      }
+
+      // Sort timeline by date (most recent first for past, nearest first for upcoming)
+      timeline.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        
+        if (a.status === 'UPCOMING' && b.status === 'UPCOMING') {
+          return dateA - dateB; // Ascending for upcoming
+        }
+        return dateB - dateA; // Descending for past
+      });
+
+      // Group by status
+      const pastEvents = timeline.filter(e => e.status === 'PAST').slice(0, 10); // Last 10 events
+      const todayEvents = timeline.filter(e => e.status === 'TODAY');
+      const upcomingEvents = timeline.filter(e => e.status === 'UPCOMING').slice(0, 5); // Next 5 events
+
+      return {
+        past: pastEvents,
+        today: todayEvents,
+        upcoming: upcomingEvents,
+        summary: {
+          totalEvents: timeline.length,
+          pastEventsCount: pastEvents.length,
+          upcomingEventsCount: upcomingEvents.length,
+          nextBillingDate: upcomingEvents.find(e => e.type === 'UPCOMING_BILLING')?.date || null
+        }
+      };
+    } catch (error) {
+      console.error('Error getting billing timeline:', error);
+      throw new BadRequestException(`Failed to get billing timeline: ${error.message}`);
+    }
+  }
+
+  /**
    * 👁️ CHECKOUT PREVIEW: Get checkout preview without processing
    * Shows what will happen when student checks out
    */

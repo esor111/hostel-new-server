@@ -151,6 +151,19 @@ export class StudentsController {
     };
   }
 
+  @Get('billing-timeline')
+  @ApiOperation({ summary: 'Get configuration billing timeline' })
+  @ApiResponse({ status: 200, description: 'Billing timeline retrieved successfully' })
+  async getBillingTimeline(@GetHostelId() hostelId: string) {
+    const result = await this.studentsService.getConfigurationBillingTimeline(hostelId);
+
+    // Return EXACT same format as current Express API
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
   @Get(':id/checkout-preview')
   @ApiOperation({ summary: 'Get checkout preview for student' })
   @ApiResponse({ status: 200, description: 'Checkout preview retrieved successfully' })
