@@ -146,14 +146,15 @@ export class DashboardService {
     console.log('✅ Matching invoices:', matchingInvoices.length);
     console.log('💰 Total from matching:', matchingInvoices.reduce((sum, inv) => sum + (inv.invoice_total - inv.invoice_paymentTotal), 0));
     
-    // Now get the sum
+    // Now get the sum (include BOTH active and inactive students with unpaid invoices)
     const outstandingDuesResult = await this.invoiceRepository
       .createQueryBuilder('invoice')
       .innerJoin('invoice.student', 'student')
       .select('SUM(invoice.total - invoice.paymentTotal)', 'totalDue')
       .where('invoice.status IN (:...statuses)', { statuses: [InvoiceStatus.UNPAID, InvoiceStatus.OVERDUE, InvoiceStatus.PARTIALLY_PAID] })
       .andWhere('student.hostelId = :hostelId', { hostelId })
-      .andWhere('student.status = :status', { status: StudentStatus.ACTIVE })
+      // REMOVED: .andWhere('student.status = :status', { status: StudentStatus.ACTIVE })
+      // We want to track dues from BOTH active and checked-out students
       .getRawOne();
 
     console.log('📊 Raw query result:', outstandingDuesResult);
