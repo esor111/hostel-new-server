@@ -15,6 +15,7 @@ import { BedSyncService } from '../rooms/bed-sync.service';
 import { AdvancePaymentService } from './services/advance-payment.service';
 import { CheckoutSettlementService } from './services/checkout-settlement.service';
 import { InvoicesService } from '../invoices/invoices.service';
+import { Payment } from '../payments/entities/payment.entity';
 // import { HostelScopedService } from '../common/services/hostel-scoped.service'; // Commented out for backward compatibility
 
 @Injectable()
@@ -34,6 +35,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
     private roomRepository: Repository<Room>,
     @InjectRepository(RoomOccupant)
     private roomOccupantRepository: Repository<RoomOccupant>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
     private bedSyncService: BedSyncService,
     private advancePaymentService: AdvancePaymentService,
     private checkoutSettlementService: CheckoutSettlementService,
@@ -1321,6 +1324,87 @@ export class StudentsService { // Removed HostelScopedService extension for back
     } catch (error) {
       console.error('Error calculating checkout settlement:', error);
       throw new BadRequestException(`Failed to calculate settlement: ${error.message}`);
+    }
+  }
+
+  /**
+   * 👁️ CHECKOUT PREVIEW: Get checkout preview without processing
+   * Shows what will happen when student checks out
+   */
+  async getCheckoutPreview(studentId: string, hostelId: string) {
+    try {
+      // Get student details
+      const student = await this.studentRepository.findOne({
+        where: { id: studentId, hostelId }
+      });
+
+      if (!student) {
+        throw new NotFoundException('Student not found');
+      }
+
+      // Get outstanding invoices
+      const outstandingInvoices = await this.invoicesService.getOutstandingDues(studentId, hostelId);
+
+      // Calculate total dues
+      const totalDues = outstandingInvoices.reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
+
+      // Get advance payments (payments with type ADVANCE)
+      const advancePayments = await this.paymentRepository.find({
+        where: {
+          studentId,
+          paymentType: 'ADVANCE' as any,
+          status: 'Completed' as any
+        },
+        order: { paymentDate: 'DESC' }
+      });
+
+      // Calculate total advance
+      const totalAdvance = advancePayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+      // Calculate final amount (positive = student owes, negative = refund due)
+      const finalAmount = totalDues - totalAdvance;
+
+      // Determine status
+      let status: 'AMOUNT_DUE' | 'REFUND_DUE' | 'SETTLED';
+      let summary: string;
+
+      if (finalAmount > 0) {
+        status = 'AMOUNT_DUE';
+        summary = `NPR ${finalAmount.toLocaleString()} due from student`;
+      } else if (finalAmount < 0) {
+        status = 'REFUND_DUE';
+        summary = `NPR ${Math.abs(finalAmount).toLocaleString()} refund due to student`;
+      } else {
+        status = 'SETTLED';
+        summary = 'Account fully settled';
+      }
+
+      // Format response
+      return {
+        studentId: student.id,
+        studentName: student.name,
+        configurationDate: student.enrollmentDate?.toISOString().split('T')[0] || null,
+        outstandingInvoices: outstandingInvoices.map(inv => ({
+          id: inv.id,
+          periodLabel: inv.periodLabel || inv.month,
+          amount: inv.balanceDue || 0,
+          dueDate: inv.dueDate?.toISOString().split('T')[0] || null
+        })),
+        totalDues,
+        advancePayments: advancePayments.map(payment => ({
+          id: payment.id,
+          amount: Number(payment.amount),
+          date: payment.paymentDate?.toISOString().split('T')[0] || null,
+          type: payment.paymentType
+        })),
+        totalAdvance,
+        finalAmount,
+        status,
+        summary
+      };
+    } catch (error) {
+      console.error('Error getting checkout preview:', error);
+      throw new BadRequestException(`Failed to get checkout preview: ${error.message}`);
     }
   }
 }

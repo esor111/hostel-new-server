@@ -151,6 +151,19 @@ export class StudentsController {
     };
   }
 
+  @Get(':id/checkout-preview')
+  @ApiOperation({ summary: 'Get checkout preview for student' })
+  @ApiResponse({ status: 200, description: 'Checkout preview retrieved successfully' })
+  async getCheckoutPreview(@Param('id') id: string, @GetHostelId() hostelId: string) {
+    const result = await this.studentsService.getCheckoutPreview(id, hostelId);
+
+    // Return EXACT same format as current Express API
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
   @Post(':id/checkout')
   @ApiOperation({ summary: 'Process student checkout' })
   @ApiResponse({ status: 200, description: 'Checkout processed successfully' })
