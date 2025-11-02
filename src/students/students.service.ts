@@ -1337,6 +1337,21 @@ export class StudentsService { // Removed HostelScopedService extension for back
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
+      // Safe date formatter
+      const formatDate = (date: any): string | null => {
+        if (!date) return null;
+        try {
+          if (date instanceof Date) return date.toISOString();
+          if (typeof date === 'string' || typeof date === 'number') {
+            const d = new Date(date);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      };
+
       // Get all configured students
       const students = await this.studentRepository.find({
         where: { hostelId, isConfigured: true },
@@ -1362,33 +1377,40 @@ export class StudentsService { // Removed HostelScopedService extension for back
         }
       }
 
-      // Get recent invoices (past 30 days)
+      // Get recent invoices (limit for perf). Note: findAll returns { items, pagination }
       const recentInvoices = await this.invoicesService.findAll(
-        { 
-          limit: 100,
-          billingType: 'CONFIGURATION'
-        },
+        { limit: 100 },
         hostelId
       );
 
       // Add invoice events
-      if (recentInvoices.items) {
-        for (const invoice of recentInvoices.items) {
-          const invoiceDate = new Date(invoice.createdAt);
-          invoiceDate.setHours(0, 0, 0, 0);
-          
-          timeline.push({
-            id: `invoice-${invoice.id}`,
-            date: invoiceDate.toISOString(),
-            type: 'INVOICE_GENERATED',
-            status: invoiceDate < today ? 'PAST' : invoiceDate.getTime() === today.getTime() ? 'TODAY' : 'UPCOMING',
-            title: `Invoice generated - ${invoice.studentName || 'Student'}`,
-            description: `NPR ${invoice.total?.toLocaleString()} for period ${invoice.periodLabel || invoice.month}`,
-            amount: invoice.total,
-            studentName: invoice.studentName,
-            metadata: { invoiceId: invoice.id }
-          });
-        }
+      const invoiceItems: any[] = Array.isArray(recentInvoices?.items)
+        ? recentInvoices.items
+        : (Array.isArray(recentInvoices) ? recentInvoices : []);
+
+      for (const invoice of invoiceItems) {
+        // Prefer createdAt; fallback to periodStart or configurationDate
+        const iso = formatDate(invoice.createdAt) || formatDate(invoice.periodStart) || formatDate(invoice.configurationDate);
+        if (!iso) continue; // skip if no valid date
+        const invoiceDate = new Date(iso);
+        invoiceDate.setHours(0, 0, 0, 0);
+
+        const status = invoiceDate < today
+          ? 'PAST'
+          : invoiceDate.getTime() === today.getTime() ? 'TODAY' : 'UPCOMING';
+
+        timeline.push({
+          id: `invoice-${invoice.id}`,
+          date: invoiceDate.toISOString(),
+          type: 'INVOICE_GENERATED',
+          status,
+          title: `Invoice generated - ${invoice.studentName || 'Student'}`,
+          // Avoid toLocaleString on server; keep number raw and concise text
+          description: `Amount NPR ${Number(invoice.total || 0)} for period ${invoice.periodLabel || invoice.month || ''}`.trim(),
+          amount: Number(invoice.total || 0),
+          studentName: invoice.studentName,
+          metadata: { invoiceId: invoice.id }
+        });
       }
 
       // Calculate upcoming billing cycles
