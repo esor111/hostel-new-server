@@ -1379,22 +1379,37 @@ export class StudentsService { // Removed HostelScopedService extension for back
         summary = 'Account fully settled';
       }
 
-      // Format response
+      // Format response with safe date handling
+      const formatDate = (date: any): string | null => {
+        if (!date) return null;
+        try {
+          if (date instanceof Date) {
+            return date.toISOString().split('T')[0];
+          }
+          if (typeof date === 'string') {
+            return new Date(date).toISOString().split('T')[0];
+          }
+          return null;
+        } catch (error) {
+          return null;
+        }
+      };
+
       return {
         studentId: student.id,
         studentName: student.name,
-        configurationDate: student.enrollmentDate?.toISOString().split('T')[0] || null,
+        configurationDate: formatDate(student.enrollmentDate),
         outstandingInvoices: outstandingInvoices.map(inv => ({
           id: inv.id,
           periodLabel: inv.periodLabel || inv.month,
           amount: inv.balanceDue || 0,
-          dueDate: inv.dueDate?.toISOString().split('T')[0] || null
+          dueDate: formatDate(inv.dueDate)
         })),
         totalDues,
         advancePayments: advancePayments.map(payment => ({
           id: payment.id,
           amount: Number(payment.amount),
-          date: payment.paymentDate?.toISOString().split('T')[0] || null,
+          date: formatDate(payment.paymentDate),
           type: payment.paymentType
         })),
         totalAdvance,
