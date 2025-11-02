@@ -103,16 +103,17 @@ export class DashboardService {
 
     const thisMonthRevenue = parseFloat(thisMonthRevenueResult?.total) || 0;
 
-    // Get pending payments amount (failed + pending)
-    const pendingPaymentsResult = await this.paymentRepository
-      .createQueryBuilder('payment')
-      .innerJoin('payment.student', 'student')
-      .select('SUM(payment.amount)', 'totalAmount')
-      .where('payment.status IN (:...statuses)', { statuses: [PaymentStatus.PENDING, PaymentStatus.FAILED] })
+    // Get outstanding dues (unpaid invoices)
+    const outstandingDuesResult = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .innerJoin('invoice.student', 'student')
+      .select('SUM(invoice.total - invoice.paymentTotal)', 'totalDue')
+      .where('invoice.status IN (:...statuses)', { statuses: [InvoiceStatus.PENDING, InvoiceStatus.OVERDUE] })
       .andWhere('student.hostelId = :hostelId', { hostelId })
+      .andWhere('student.status = :status', { status: StudentStatus.ACTIVE })
       .getRawOne();
 
-    const pendingPayments = parseFloat(pendingPaymentsResult?.totalAmount) || 0;
+    const outstandingDues = parseFloat(outstandingDuesResult?.totalDue) || 0;
 
     // Calculate occupancy percentage based on beds, not rooms
     const occupancyPercentage = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
@@ -129,7 +130,7 @@ export class DashboardService {
         value: `NPR ${thisMonthRevenue.toLocaleString()}`,
         amount: thisMonthRevenue
       },
-      pendingPayments,
+      outstandingDues,
       occupancyPercentage
     };
   }
