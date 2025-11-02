@@ -118,6 +118,13 @@ export class DashboardService {
     // Calculate occupancy percentage based on beds, not rooms
     const occupancyPercentage = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
 
+    console.log('📊 Dashboard Stats:', {
+      totalStudents,
+      outstandingDues,
+      monthlyRevenue: thisMonthRevenue,
+      occupancyPercentage
+    });
+
     return {
       totalStudents,
       availableRooms,
