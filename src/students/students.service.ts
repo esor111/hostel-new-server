@@ -1358,7 +1358,58 @@ export class StudentsService { // Removed HostelScopedService extension for back
   }
 
   /**
-   * 📅 BILLING TIMELINE: Get billing timeline for configuration-based billing
+   * 📅 BILLING TIMELINE: Get billing timeline with pagination
+   * Shows past events, current status, and upcoming billing cycles
+   */
+  async getConfigurationBillingTimelinePaginated(
+    page: number = 1,
+    limit: number = 10,
+    hostelId: string
+  ) {
+    try {
+      // Get full timeline
+      const fullTimeline = await this.getConfigurationBillingTimeline(hostelId);
+      
+      // Combine all events for pagination
+      const allEvents = [
+        ...fullTimeline.upcoming,
+        ...fullTimeline.today,
+        ...fullTimeline.past
+      ];
+      
+      // Calculate pagination
+      const total = allEvents.length;
+      const totalPages = Math.ceil(total / limit);
+      const skip = (page - 1) * limit;
+      const paginatedEvents = allEvents.slice(skip, skip + limit);
+      
+      // Separate back into categories
+      const paginatedPast = paginatedEvents.filter(e => e.status === 'PAST');
+      const paginatedToday = paginatedEvents.filter(e => e.status === 'TODAY');
+      const paginatedUpcoming = paginatedEvents.filter(e => e.status === 'UPCOMING');
+      
+      return {
+        past: paginatedPast,
+        today: paginatedToday,
+        upcoming: paginatedUpcoming,
+        summary: fullTimeline.summary,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasNext: skip + limit < total,
+          hasPrev: page > 1
+        }
+      };
+    } catch (error) {
+      console.error('Error getting paginated billing timeline:', error);
+      throw new BadRequestException(`Failed to get billing timeline: ${error.message}`);
+    }
+  }
+
+  /**
+   * 📅 BILLING TIMELINE: Get billing timeline for configuration-based billing (Legacy - no pagination)
    * Shows past events, current status, and upcoming billing cycles
    */
   async getConfigurationBillingTimeline(hostelId: string) {

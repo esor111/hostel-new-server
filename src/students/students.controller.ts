@@ -60,9 +60,33 @@ export class StudentsController {
   }
 
   @Get('billing-timeline')
-  @ApiOperation({ summary: 'Get configuration billing timeline' })
+  @ApiOperation({ summary: 'Get configuration billing timeline with pagination' })
+  @ApiResponse({ status: 200, description: 'Billing timeline retrieved successfully with pagination' })
+  async getBillingTimeline(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @GetHostelId() hostelId?: string
+  ) {
+    const pageNum = page ? parseInt(page) : 1;
+    const limitNum = limit ? parseInt(limit) : 10;
+    
+    const result = await this.studentsService.getConfigurationBillingTimelinePaginated(
+      pageNum,
+      limitNum,
+      hostelId
+    );
+
+    // Return with pagination info
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
+  @Get('billing-timeline/legacy')
+  @ApiOperation({ summary: 'Get configuration billing timeline (legacy - no pagination)' })
   @ApiResponse({ status: 200, description: 'Billing timeline retrieved successfully' })
-  async getBillingTimeline(@GetHostelId() hostelId: string) {
+  async getBillingTimelineLegacy(@GetHostelId() hostelId: string) {
     const result = await this.studentsService.getConfigurationBillingTimeline(hostelId);
 
     // Return EXACT same format as current Express API
