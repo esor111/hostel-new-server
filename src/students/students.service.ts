@@ -1451,8 +1451,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
         if (student.enrollmentDate) {
           const configDate = new Date(student.enrollmentDate);
           
-          // Calculate next 3 billing cycles
-          for (let i = 1; i <= 3; i++) {
+          // Calculate next 2 billing cycles (reduced from 3 for cleaner UI)
+          for (let i = 1; i <= 2; i++) {
             const nextBillingDate = new Date(configDate);
             nextBillingDate.setMonth(nextBillingDate.getMonth() + i);
             nextBillingDate.setHours(0, 0, 0, 0);
