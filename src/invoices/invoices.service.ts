@@ -106,7 +106,7 @@ export class InvoicesService {
 
     // Create invoice entity
     const invoice = this.invoiceRepository.create({
-      id: createInvoiceDto.id || this.generateInvoiceId(),
+      // REMOVED: id field - let TypeORM generate UUID automatically
       studentId: createInvoiceDto.studentId,
       hostelId: hostelId,
       month: createInvoiceDto.month,
@@ -275,7 +275,7 @@ export class InvoicesService {
 
   private async createInvoiceItems(invoiceId: string, items: any[]) {
     const invoiceItems = items.map(item => ({
-      id: item.id || this.generateItemId(),
+      // REMOVED: id field - let TypeORM generate UUID automatically
       invoiceId,
       description: item.description,
       amount: item.amount,
@@ -300,20 +300,12 @@ export class InvoicesService {
     }
   }
 
-  private generateInvoiceId(): string {
-    return `INV${Date.now()}`;
-  }
-
   private generateInvoiceNumber(): string {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const timestamp = Date.now().toString().slice(-6);
     return `INV-${year}${month}-${timestamp}`;
-  }
-
-  private generateItemId(): string {
-    return `ITEM${Date.now()}${Math.floor(Math.random() * 100)}`;
   }
 
   async findByStudentId(studentId: string, hostelId: string) {
