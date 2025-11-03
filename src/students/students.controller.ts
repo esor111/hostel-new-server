@@ -6,7 +6,8 @@ import {
   UpdateStudentDto,
   SearchStudentDto,
   CheckoutStudentDto,
-  BulkUpdateStudentDto
+  BulkUpdateStudentDto,
+  SwitchBedDto
 } from './dto';
 import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -208,6 +209,24 @@ export class StudentsController {
     const result = await this.studentsService.processCheckout(id, checkoutDetails, hostelId);
 
     // Return EXACT same format as current Express API
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
+  @Post(':id/switch-bed')
+  @ApiOperation({ summary: 'Switch student to a different bed with full financial integrity' })
+  @ApiResponse({ status: 200, description: 'Bed switch completed successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid bed switch request or validation failed' })
+  @ApiResponse({ status: 404, description: 'Student or bed not found' })
+  async switchBed(
+    @Param('id') id: string,
+    @Body(ValidationPipe) switchBedDto: SwitchBedDto,
+    @GetHostelId() hostelId: string
+  ) {
+    const result = await this.studentsService.switchBed(id, switchBedDto, hostelId);
+
     return {
       status: HttpStatus.OK,
       data: result

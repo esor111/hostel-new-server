@@ -5,8 +5,10 @@ import { Student, StudentStatus } from './entities/student.entity';
 import { StudentContact, ContactType } from './entities/student-contact.entity';
 import { StudentAcademicInfo } from './entities/student-academic-info.entity';
 import { StudentFinancialInfo, FeeType } from './entities/student-financial-info.entity';
+import { BedSwitchAudit } from './entities/bed-switch-audit.entity';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { ConfigureStudentDto } from './dto/configure-student.dto';
+import { SwitchBedDto } from './dto/switch-bed.dto';
 import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { Room } from '../rooms/entities/room.entity';
@@ -29,6 +31,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
     private academicRepository: Repository<StudentAcademicInfo>,
     @InjectRepository(StudentFinancialInfo)
     private financialRepository: Repository<StudentFinancialInfo>,
+    @InjectRepository(BedSwitchAudit)
+    private bedSwitchAuditRepository: Repository<BedSwitchAudit>,
     @InjectRepository(LedgerEntry)
     private ledgerRepository: Repository<LedgerEntry>,
     @InjectRepository(Room)
@@ -37,6 +41,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
     private roomOccupantRepository: Repository<RoomOccupant>,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    @InjectRepository(Bed)
+    private bedRepository: Repository<Bed>,
     private bedSyncService: BedSyncService,
     private advancePaymentService: AdvancePaymentService,
     private checkoutSettlementService: CheckoutSettlementService,
@@ -1668,5 +1674,258 @@ export class StudentsService { // Removed HostelScopedService extension for back
       console.error('Error getting checkout preview:', error);
       throw new BadRequestException(`Failed to get checkout preview: ${error.message}`);
     }
+  }
+
+  /**
+   * 🔄 BED SWITCH - Switch student to different bed with full financial integrity
+   * Uses same transaction pattern as processCheckout()
+   */
+  async switchBed(studentId: string, switchBedDto: SwitchBedDto, hostelId: string) {
+    console.log(`🔄 Starting bed switch for student ${studentId} to bed ${switchBedDto.newBedId}`);
+
+    // Validate hostelId
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const queryRunner = this.studentRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // STEP 1: Validate student and get current state
+      const student = await queryRunner.manager.findOne(Student, {
+        where: { id: studentId, hostelId },
+        relations: ['room', 'financialInfo']
+      });
+
+      if (!student) {
+        throw new NotFoundException(`Student ${studentId} not found`);
+      }
+
+      if (student.status !== StudentStatus.ACTIVE) {
+        throw new BadRequestException('Only active students can switch beds');
+      }
+
+      // STEP 2: Get current bed
+      const currentBed = await queryRunner.manager.findOne(Bed, {
+        where: { currentOccupantId: studentId },
+        relations: ['room']
+      });
+
+      if (!currentBed) {
+        throw new NotFoundException('Current bed assignment not found for student');
+      }
+
+      // STEP 3: Get target bed and validate
+      const targetBed = await queryRunner.manager.findOne(Bed, {
+        where: { id: switchBedDto.newBedId, hostelId },
+        relations: ['room']
+      });
+
+      if (!targetBed) {
+        throw new NotFoundException(`Target bed ${switchBedDto.newBedId} not found`);
+      }
+
+      if (targetBed.status !== BedStatus.AVAILABLE) {
+        throw new BadRequestException(`Target bed is not available (status: ${targetBed.status})`);
+      }
+
+      if (currentBed.id === targetBed.id) {
+        throw new BadRequestException('Student is already in this bed');
+      }
+
+      // STEP 4: Get financial data before switch
+      const oldBalance = await this.calculateLedgerBalance(studentId);
+      const oldRate = currentBed.monthlyRate || 0;
+      const newRate = targetBed.monthlyRate || 0;
+      const rateDifference = newRate - oldRate;
+      const rateChanged = Math.abs(rateDifference) > 0.01;
+      const effectiveDate = switchBedDto.effectiveDate ? new Date(switchBedDto.effectiveDate) : new Date();
+
+      console.log(`📊 Rate comparison: Old=${oldRate}, New=${newRate}, Difference=${rateDifference}, Changed=${rateChanged}`);
+
+      // STEP 5: Update financial info if rate changed
+      if (rateChanged) {
+        // Deactivate old base_monthly entry
+        await queryRunner.manager.update(
+          StudentFinancialInfo,
+          { studentId, feeType: FeeType.BASE_MONTHLY, isActive: true },
+          { isActive: false, effectiveTo: effectiveDate }
+        );
+
+        // Create new base_monthly entry
+        await queryRunner.manager.save(StudentFinancialInfo, {
+          studentId,
+          feeType: FeeType.BASE_MONTHLY,
+          amount: newRate,
+          effectiveFrom: effectiveDate,
+          isActive: true,
+          notes: `Rate updated due to bed switch from ${currentBed.bedIdentifier} (${oldRate}) to ${targetBed.bedIdentifier} (${newRate})`
+        });
+
+        // Create ledger adjustment entry
+        await queryRunner.manager.save(LedgerEntry, {
+          studentId,
+          entryType: 'adjustment',
+          balanceType: rateDifference > 0 ? 'debit' : 'credit',
+          debit: rateDifference > 0 ? Math.abs(rateDifference) : 0,
+          credit: rateDifference < 0 ? Math.abs(rateDifference) : 0,
+          description: `Bed switch rate adjustment: ${oldRate} → ${newRate} (${rateDifference > 0 ? '+' : ''}${rateDifference})`,
+          isReversed: false,
+          createdAt: effectiveDate
+        });
+
+        console.log(`✅ Financial info updated with new rate: ${newRate}`);
+      }
+
+      // STEP 6: Update student record
+      await queryRunner.manager.update(Student, studentId, {
+        roomId: targetBed.roomId,
+        bedNumber: targetBed.bedNumber
+      });
+
+      // STEP 7: Update bed occupancy
+      // Clear old bed
+      await queryRunner.manager.update(Bed, currentBed.id, {
+        status: BedStatus.AVAILABLE,
+        currentOccupantId: null,
+        currentOccupantName: null,
+        occupiedSince: null,
+        notes: `Released by ${student.name} on ${effectiveDate.toISOString().split('T')[0]} (bed switch)`
+      });
+
+      // Assign new bed
+      await queryRunner.manager.update(Bed, targetBed.id, {
+        status: BedStatus.OCCUPIED,
+        currentOccupantId: studentId,
+        currentOccupantName: student.name,
+        occupiedSince: effectiveDate,
+        notes: `Assigned to ${student.name} via bed switch on ${effectiveDate.toISOString().split('T')[0]}`
+      });
+
+      // STEP 8: Update room occupancy history
+      // Close old occupancy
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update(RoomOccupant)
+        .set({ checkOutDate: effectiveDate, status: 'Transferred' })
+        .where('studentId = :studentId', { studentId })
+        .andWhere('checkOutDate IS NULL')
+        .execute();
+
+      // Create new occupancy
+      await queryRunner.manager.save(RoomOccupant, {
+        studentId,
+        roomId: targetBed.roomId,
+        bedId: targetBed.id,
+        checkInDate: effectiveDate,
+        status: 'Active'
+      });
+
+      // STEP 9: Calculate new balance and create audit record
+      const newBalance = await this.calculateLedgerBalance(studentId);
+      const advanceAdjustment = rateChanged ? (oldBalance - newBalance) : 0;
+
+      const audit = await queryRunner.manager.save(BedSwitchAudit, {
+        studentId,
+        fromBedId: currentBed.id,
+        toBedId: targetBed.id,
+        fromRoomId: currentBed.roomId,
+        toRoomId: targetBed.roomId,
+        oldRate,
+        newRate,
+        rateDifference,
+        oldBalance,
+        newBalance,
+        advanceAdjustment,
+        switchDate: effectiveDate,
+        reason: switchBedDto.reason || 'Bed switch',
+        approvedBy: switchBedDto.approvedBy,
+        financialSnapshot: {
+          student: { id: student.id, name: student.name },
+          oldBed: { id: currentBed.id, identifier: currentBed.bedIdentifier, rate: oldRate },
+          newBed: { id: targetBed.id, identifier: targetBed.bedIdentifier, rate: newRate },
+          rateChanged,
+          effectiveDate: effectiveDate.toISOString()
+        }
+      });
+
+      // STEP 10: Commit transaction
+      await queryRunner.commitTransaction();
+
+      console.log(`✅ Bed switch completed successfully: ${currentBed.bedIdentifier} → ${targetBed.bedIdentifier}`);
+
+      // STEP 11: Async operations (after commit)
+      setImmediate(async () => {
+        try {
+          // Sync room occupancy counts
+          await this.bedSyncService.updateRoomOccupancyFromBeds(currentBed.roomId);
+          await this.bedSyncService.updateRoomOccupancyFromBeds(targetBed.roomId);
+          console.log(`✅ Room occupancy synced for both rooms`);
+        } catch (error) {
+          console.warn(`⚠️ Failed to sync room occupancy: ${error.message}`);
+        }
+      });
+
+      // Return comprehensive result
+      return {
+        success: true,
+        message: `Successfully switched ${student.name} from ${currentBed.bedIdentifier} to ${targetBed.bedIdentifier}`,
+        bedSwitch: {
+          studentId,
+          studentName: student.name,
+          fromBed: {
+            id: currentBed.id,
+            identifier: currentBed.bedIdentifier,
+            roomNumber: currentBed.room?.roomNumber,
+            rate: oldRate
+          },
+          toBed: {
+            id: targetBed.id,
+            identifier: targetBed.bedIdentifier,
+            roomNumber: targetBed.room?.roomNumber,
+            rate: newRate
+          },
+          rateChange: {
+            changed: rateChanged,
+            oldRate,
+            newRate,
+            difference: rateDifference
+          },
+          balanceImpact: {
+            oldBalance,
+            newBalance,
+            advanceAdjustment
+          },
+          effectiveDate: effectiveDate.toISOString().split('T')[0],
+          auditId: audit.id
+        }
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error(`❌ Bed switch failed: ${error.message}`);
+      throw new BadRequestException(`Bed switch failed: ${error.message}`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Helper: Calculate ledger balance for a student
+   */
+  private async calculateLedgerBalance(studentId: string): Promise<number> {
+    const result = await this.ledgerRepository
+      .createQueryBuilder('ledger')
+      .select('SUM(ledger.debit)', 'totalDebits')
+      .addSelect('SUM(ledger.credit)', 'totalCredits')
+      .where('ledger.studentId = :studentId', { studentId })
+      .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
+      .getRawOne();
+
+    const totalDebits = parseFloat(result?.totalDebits || '0');
+    const totalCredits = parseFloat(result?.totalCredits || '0');
+    return totalDebits - totalCredits;
   }
 }
