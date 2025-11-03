@@ -214,13 +214,14 @@ export class BedService {
         throw new BadRequestException('Cannot remove occupied bed');
       }
 
-      // Mark as out of order instead of hard delete
-      await this.bedRepository.update(id, {
-        status: BedStatus.OUT_OF_ORDER,
-        description: `${bed.description} (Removed)`
-      });
+      // Delete the bed (if not occupied)
+      if (bed.status === BedStatus.OCCUPIED || bed.status === BedStatus.RESERVED) {
+        throw new BadRequestException('Cannot delete occupied or reserved bed');
+      }
+      
+      await this.bedRepository.delete(id);
 
-      this.logger.log(`✅ Marked bed ${bed.bedIdentifier} as out of order`);
+      this.logger.log(`✅ Deleted bed ${bed.bedIdentifier}`);
     } catch (error) {
       this.logger.error(`❌ Error removing bed ${id}:`, error);
       throw error;
@@ -257,11 +258,6 @@ export class BedService {
       // Check if bed is in maintenance
       if (bed.status === BedStatus.MAINTENANCE) {
         errors.push(`Bed ${bed.bedIdentifier} is under maintenance`);
-      }
-
-      // Check if bed is out of order
-      if (bed.status === BedStatus.OUT_OF_ORDER) {
-        errors.push(`Bed ${bed.bedIdentifier} is out of order`);
       }
 
       // Add warnings for potential issues
@@ -508,15 +504,13 @@ export class BedService {
       availableBeds,
       occupiedBeds,
       reservedBeds,
-      maintenanceBeds,
-      outOfOrderBeds
+      maintenanceBeds
     ] = await Promise.all([
       queryBuilder.getCount(),
       queryBuilder.clone().andWhere('bed.status = :status', { status: BedStatus.AVAILABLE }).getCount(),
       queryBuilder.clone().andWhere('bed.status = :status', { status: BedStatus.OCCUPIED }).getCount(),
       queryBuilder.clone().andWhere('bed.status = :status', { status: BedStatus.RESERVED }).getCount(),
       queryBuilder.clone().andWhere('bed.status = :status', { status: BedStatus.MAINTENANCE }).getCount(),
-      queryBuilder.clone().andWhere('bed.status = :status', { status: BedStatus.OUT_OF_ORDER }).getCount(),
     ]);
 
     const occupancyRate = totalBeds > 0 ? (occupiedBeds / totalBeds) * 100 : 0;
@@ -527,7 +521,6 @@ export class BedService {
       occupiedBeds,
       reservedBeds,
       maintenanceBeds,
-      outOfOrderBeds,
       occupancyRate: Math.round(occupancyRate * 100) / 100
     };
   }
@@ -911,11 +904,10 @@ export class BedService {
 
     // Define allowed status transitions
     const allowedTransitions: Record<BedStatus, BedStatus[]> = {
-      [BedStatus.AVAILABLE]: [BedStatus.OCCUPIED, BedStatus.RESERVED, BedStatus.MAINTENANCE, BedStatus.OUT_OF_ORDER],
+      [BedStatus.AVAILABLE]: [BedStatus.OCCUPIED, BedStatus.RESERVED, BedStatus.MAINTENANCE],
       [BedStatus.OCCUPIED]: [BedStatus.AVAILABLE, BedStatus.MAINTENANCE],
       [BedStatus.RESERVED]: [BedStatus.AVAILABLE, BedStatus.OCCUPIED, BedStatus.MAINTENANCE],
-      [BedStatus.MAINTENANCE]: [BedStatus.AVAILABLE, BedStatus.OUT_OF_ORDER],
-      [BedStatus.OUT_OF_ORDER]: [BedStatus.MAINTENANCE, BedStatus.AVAILABLE]
+      [BedStatus.MAINTENANCE]: [BedStatus.AVAILABLE]
     };
 
     if (!allowedTransitions[currentStatus]?.includes(newStatus)) {
