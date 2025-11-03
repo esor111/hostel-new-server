@@ -1114,6 +1114,32 @@ export class StudentsService { // Removed HostelScopedService extension for back
       status: StudentStatus.ACTIVE
     });
 
+    // 🔧 FIX: Update bed status from RESERVED to OCCUPIED
+    if (student.bedNumber && student.roomId) {
+      try {
+        // Find the bed using bedNumber (or bedIdentifier) and roomId
+        const bed = await this.bedRepository.findOne({
+          where: { 
+            roomId: student.roomId,
+            bedIdentifier: student.bedNumber // bedNumber is stored as bedIdentifier in beds table
+          }
+        });
+
+        if (bed) {
+          await this.bedRepository.update(bed.id, {
+            status: BedStatus.OCCUPIED,
+            currentOccupantName: student.name
+          });
+          console.log(`✅ Bed ${student.bedNumber} status updated: RESERVED → OCCUPIED for student ${student.name}`);
+        } else {
+          console.warn(`⚠️ Bed ${student.bedNumber} not found in room ${student.roomId} for student ${student.name}`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to update bed status for student ${studentId}:`, error);
+        // Don't fail configuration if bed update fails
+      }
+    }
+
     const totalMonthlyFee = financialEntries.reduce((sum, entry) => sum + entry.amount, 0);
 
     return {
