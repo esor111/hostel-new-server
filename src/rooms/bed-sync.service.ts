@@ -19,6 +19,7 @@ export interface BedPosition {
   bedType?: string; // single, bunk, etc.
   bunkLevel?: string; // top, bottom (for bunk beds)
   color?: string; // Color for bed status visualization
+  properties?: any; // Nested properties object from frontend
   bedDetails?: {
     bedNumber?: string;
     monthlyRate?: number;
@@ -256,15 +257,21 @@ export class BedSyncService {
       }
 
       if (bed) {
-        // Update position ID to match bed identifier for frontend consistency
+        // Update position ID to match bed UUID for frontend consistency
         const enhancedPosition = {
           ...position,
-          id: bed.bedIdentifier, // KEY FIX: Update position ID to match bed identifier
+          id: bed.id, // Use actual bed UUID instead of bedIdentifier
+          bedIdentifier: bed.bedIdentifier, // Keep bedIdentifier for reference
           status: bed.status,
           occupantId: bed.currentOccupantId,
           occupantName: bed.currentOccupantName,
           gender: bed.gender,
           color: this.getBedStatusColor(bed.status),
+          properties: {
+            ...position.properties,
+            bedId: bed.id, // Update nested bedId to UUID
+            status: bed.status.toLowerCase()
+          },
           bedDetails: {
             bedNumber: bed.bedNumber,
             monthlyRate: bed.monthlyRate,
@@ -508,10 +515,14 @@ export class BedSyncService {
       description = `${position.bunkLevel.charAt(0).toUpperCase() + position.bunkLevel.slice(1)} bunk bed ${bedNumber} in ${room.name}`;
     }
 
+    // Generate unique bed identifier using room number as prefix
+    const roomPrefix = room.roomNumber || `R-${room.id.substring(0, 8)}`;
+    const uniqueBedIdentifier = `${roomPrefix}-${position.id}`;
+    
     const bedData = {
       roomId,
       hostelId: room.hostelId, // CRITICAL FIX: Add missing hostelId
-      bedIdentifier: position.id,
+      bedIdentifier: uniqueBedIdentifier, // Use room-specific unique identifier
       bedNumber,
       status: BedStatus.AVAILABLE, // Default to available
       gender: (position.gender as 'Male' | 'Female' | 'Any') || room.gender as 'Male' | 'Female' | 'Any' || 'Any',

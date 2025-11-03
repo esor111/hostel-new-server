@@ -86,6 +86,7 @@ export class RoomsOptimizedService {
       const queryBuilder = this.roomRepository.createQueryBuilder('room')
         .leftJoinAndSelect('room.roomType', 'roomType')
         .leftJoinAndSelect('room.layout', 'layout')
+        .leftJoinAndSelect('room.beds', 'beds')
         .leftJoinAndSelect('room.amenities', 'roomAmenities', 'roomAmenities.isActive = :amenityActive', { amenityActive: true })
         .leftJoinAndSelect('roomAmenities.amenity', 'amenity')
         .select([
@@ -108,6 +109,17 @@ export class RoomsOptimizedService {
           'layout.layoutData',
           'layout.dimensions',
           'layout.layoutType',
+          'beds.id',
+          'beds.bedIdentifier',
+          'beds.bedNumber',
+          'beds.status',
+          'beds.gender',
+          'beds.monthlyRate',
+          'beds.currentOccupantId',
+          'beds.currentOccupantName',
+          'beds.lastCleaned',
+          'beds.maintenanceNotes',
+          'beds.occupiedSince',
           'roomAmenities.id',
           'roomAmenities.isActive',
           'amenity.id',
@@ -135,6 +147,51 @@ export class RoomsOptimizedService {
       queryBuilder.orderBy('room.createdAt', 'DESC');
 
       const [rooms, total] = await queryBuilder.getManyAndCount();
+
+      // Merge bed data into layout positions for all rooms
+      for (const room of rooms) {
+        if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
+          room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+            room.layout.layoutData.bedPositions,
+            room.beds
+          );
+        }
+        // Also merge into elements if they exist
+        if (room.layout?.layoutData?.elements && room.beds && room.beds.length > 0) {
+          const bedElements = room.layout.layoutData.elements.filter(e => e.type && e.type.includes('bed'));
+          if (bedElements.length > 0) {
+            // Create a map of bed identifiers to bed entities for quick lookup
+            const bedMap = new Map();
+            room.beds.forEach(bed => {
+              // Map both the simple ID (bed1) and the full identifier (R-111-bed1)
+              const simpleId = bed.bedIdentifier.split('-').pop(); // Extract "bed1" from "R-111-bed1"
+              bedMap.set(simpleId, bed);
+              bedMap.set(bed.bedIdentifier, bed);
+            });
+            
+            // Update elements with actual bed UUIDs
+            room.layout.layoutData.elements = room.layout.layoutData.elements.map(element => {
+              if (element.type && element.type.includes('bed')) {
+                // Try to find matching bed by element.id
+                const matchedBed = bedMap.get(element.id);
+                if (matchedBed) {
+                  return {
+                    ...element,
+                    id: matchedBed.id, // Use actual bed UUID
+                    properties: {
+                      ...element.properties,
+                      bedId: matchedBed.id, // Use actual bed UUID
+                      status: matchedBed.status.toLowerCase(),
+                      bedIdentifier: matchedBed.bedIdentifier // Add identifier for reference
+                    }
+                  };
+                }
+              }
+              return element;
+            });
+          }
+        }
+      }
 
       // Transform to response - SAME structure as original API but optimized
       const transformedItems = rooms.map(room => {
@@ -186,7 +243,7 @@ export class RoomsOptimizedService {
           images: room.images || [],
           createdAt: room.createdAt,
           updatedAt: room.updatedAt,
-          beds: [], // No beds in lightweight mode for performance
+          beds: room.beds || [], // Include beds for bed management
           hostelId: effectiveHostelId
         };
       });

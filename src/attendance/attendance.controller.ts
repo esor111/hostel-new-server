@@ -1,8 +1,14 @@
-import { Controller, Post, Get, Body, Query, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
 import { CheckInDto, CheckOutDto, AttendanceFiltersDto } from './dto';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
+import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 
+@ApiTags('attendance')
 @Controller('attendance')
+@UseGuards(HostelAuthWithContextGuard)
+@ApiBearerAuth()
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
@@ -42,10 +48,7 @@ export class AttendanceController {
    * GET /attendance/current-status?hostelId=xxx
    */
   @Get('current-status')
-  async getCurrentStatus(@Query('hostelId') hostelId: string) {
-    if (!hostelId) {
-      throw new Error('hostelId is required');
-    }
+  async getCurrentStatus(@GetHostelId() hostelId: string) {
     return this.attendanceService.getCurrentStatus(hostelId);
   }
 
@@ -55,11 +58,11 @@ export class AttendanceController {
    */
   @Get('reports/daily')
   async getDailyReport(
-    @Query('hostelId') hostelId: string,
+    @GetHostelId() hostelId: string,
     @Query('date') date: string
   ) {
-    if (!hostelId || !date) {
-      throw new Error('hostelId and date are required');
+    if (!date) {
+      throw new Error('date is required');
     }
     return this.attendanceService.getDailyReport(hostelId, date);
   }
@@ -69,11 +72,11 @@ export class AttendanceController {
    * GET /attendance/reports/activity?hostelId=xxx&dateFrom=xxx&dateTo=xxx
    */
   @Get('reports/activity')
-  async getActivityReport(@Query() filters: AttendanceFiltersDto) {
-    if (!filters.hostelId) {
-      throw new Error('hostelId is required');
-    }
-    return this.attendanceService.getActivityReport(filters.hostelId, filters);
+  async getActivityReport(
+    @GetHostelId() hostelId: string,
+    @Query() filters: AttendanceFiltersDto
+  ) {
+    return this.attendanceService.getActivityReport(hostelId, filters);
   }
 
   /**
@@ -82,12 +85,12 @@ export class AttendanceController {
    */
   @Get('reports/summary')
   async getSummaryReport(
-    @Query('hostelId') hostelId: string,
+    @GetHostelId() hostelId: string,
     @Query('dateFrom') dateFrom: string,
     @Query('dateTo') dateTo: string
   ) {
-    if (!hostelId || !dateFrom || !dateTo) {
-      throw new Error('hostelId, dateFrom, and dateTo are required');
+    if (!dateFrom || !dateTo) {
+      throw new Error('dateFrom and dateTo are required');
     }
     return this.attendanceService.getSummaryReport(hostelId, dateFrom, dateTo);
   }

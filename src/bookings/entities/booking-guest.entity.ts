@@ -74,3 +74,5 @@ export class BookingGuest extends BaseEntity {
   @JoinColumn({ name: 'bed_id' })
   bed: Bed;
 }
+
+//bed request 

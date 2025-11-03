@@ -1051,7 +1051,8 @@ export class RoomsService extends HostelScopedService<Room> {
             // Update position ID to match bed identifier for frontend mapping
             return {
               ...position,
-              id: matchingBed.bedIdentifier, // KEY FIX: Ensure IDs match
+              id: matchingBed.id, // Use actual bed UUID instead of bedIdentifier
+              bedIdentifier: matchingBed.bedIdentifier, // Keep bedIdentifier for reference
               status: responseStatus,
               occupantId: matchingBed.currentOccupantId,
               occupantName: matchingBed.currentOccupantName,

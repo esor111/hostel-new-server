@@ -58,7 +58,7 @@ async function seedAttendance() {
       SELECT id, hostel_name as name, business_id as "businessId"
       FROM hostel_profiles
       WHERE is_active = true
-      ORDER BY created_at DESC
+      ORDER BY "createdAt" DESC
     `);
 
     if (hostels.length === 0) {
@@ -76,11 +76,11 @@ async function seedAttendance() {
     // STEP 2: Fetch existing active students
     console.log('👥 STEP 2: Fetching active students...');
     const students = await dataSource.query<StudentData[]>(`
-      SELECT id, name, hostel_id as "hostelId", status
+      SELECT id, name, "hostelId", status
       FROM students
       WHERE status = 'Active'
-      AND hostel_id IS NOT NULL
-      ORDER BY created_at DESC
+      AND "hostelId" IS NOT NULL
+      ORDER BY "createdAt" DESC
     `);
 
     if (students.length === 0) {
@@ -156,12 +156,13 @@ async function seedAttendance() {
 
     for (const record of attendanceRecords) {
       try {
-        await dataSource.query(`
+        const result = await dataSource.query(`
           INSERT INTO student_attendance 
-            (student_id, hostel_id, date, first_check_in_time, type, notes, created_at, updated_at)
+            (student_id, hostel_id, date, first_check_in_time, type, notes, "createdAt", "updatedAt")
           VALUES 
             ($1, $2, $3, $4, $5, $6, NOW(), NOW())
           ON CONFLICT (student_id, hostel_id, date) DO NOTHING
+          RETURNING id
         `, [
           record.studentId,
           record.hostelId,
@@ -170,10 +171,14 @@ async function seedAttendance() {
           record.type,
           record.notes
         ]);
-        insertedCount++;
+        if (result.length > 0) {
+          insertedCount++;
+        } else {
+          skippedCount++;
+        }
       } catch (error) {
         skippedCount++;
-        // Silently skip duplicates
+        console.error(`   ⚠️  Error inserting record:`, error.message);
       }
     }
 
