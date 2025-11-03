@@ -6,7 +6,7 @@ import { StudentContact, ContactType } from './entities/student-contact.entity';
 import { StudentAcademicInfo } from './entities/student-academic-info.entity';
 import { StudentFinancialInfo, FeeType } from './entities/student-financial-info.entity';
 import { BedSwitchAudit } from './entities/bed-switch-audit.entity';
-import { LedgerEntry, BalanceType } from '../ledger/entities/ledger-entry.entity';
+import { LedgerEntry, BalanceType, LedgerEntryType } from '../ledger/entities/ledger-entry.entity';
 import { ConfigureStudentDto } from './dto/configure-student.dto';
 import { SwitchBedDto } from './dto/switch-bed.dto';
 import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.entity';
@@ -1767,13 +1767,14 @@ export class StudentsService { // Removed HostelScopedService extension for back
         // Create ledger adjustment entry
         await queryRunner.manager.save(LedgerEntry, {
           studentId,
-          entryType: 'adjustment',
+          hostelId,
+          date: effectiveDate,
+          type: LedgerEntryType.ADJUSTMENT,
           balanceType: rateDifference > 0 ? BalanceType.DR : BalanceType.CR,
           debit: rateDifference > 0 ? Math.abs(rateDifference) : 0,
           credit: rateDifference < 0 ? Math.abs(rateDifference) : 0,
           description: `Bed switch rate adjustment: ${oldRate} → ${newRate} (${rateDifference > 0 ? '+' : ''}${rateDifference})`,
-          isReversed: false,
-          createdAt: effectiveDate
+          isReversed: false
         });
 
         console.log(`✅ Financial info updated with new rate: ${newRate}`);
