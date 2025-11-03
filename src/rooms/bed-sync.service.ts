@@ -113,7 +113,7 @@ export class BedSyncService {
           this.logger.log(`✅ Exact match: ${layoutBedId} (${matchedBed.status})`);
           
           await this.bedRepository.update(matchedBed.id, {
-            gender: position.gender || matchedBed.gender,
+            gender: (position.gender as 'Male' | 'Female' | 'Any') || matchedBed.gender,
             monthlyRate: position.bedDetails?.monthlyRate || room.monthlyRate,
             description: `Bed ${matchedBed.bedNumber} in ${room.name}`,
             status: matchedBed.status === BedStatus.OCCUPIED || matchedBed.status === BedStatus.RESERVED 
@@ -134,7 +134,7 @@ export class BedSyncService {
           
           await this.bedRepository.update(matchedBed.id, {
             bedIdentifier: layoutBedId,
-            gender: position.gender || matchedBed.gender,
+            gender: (position.gender as 'Male' | 'Female' | 'Any') || matchedBed.gender,
             monthlyRate: position.bedDetails?.monthlyRate || room.monthlyRate,
             description: `Bed ${matchedBed.bedNumber} in ${room.name}`,
             status: BedStatus.AVAILABLE

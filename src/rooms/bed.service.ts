@@ -209,12 +209,7 @@ export class BedService {
     try {
       const bed = await this.findOne(id);
 
-      // Check if bed is occupied
-      if (bed.status === BedStatus.OCCUPIED) {
-        throw new BadRequestException('Cannot remove occupied bed');
-      }
-
-      // Delete the bed (if not occupied)
+      // Check if bed is occupied or reserved
       if (bed.status === BedStatus.OCCUPIED || bed.status === BedStatus.RESERVED) {
         throw new BadRequestException('Cannot delete occupied or reserved bed');
       }
