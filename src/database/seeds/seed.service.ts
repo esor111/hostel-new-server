@@ -65,6 +65,10 @@ import { Report } from "../../reports/entities/report.entity";
 import { AdminCharge, AdminChargeType, AdminChargeStatus } from "../../admin-charges/entities/admin-charge.entity";
 import { Hostel } from "../../hostel/entities/hostel.entity";
 
+// Attendance entities
+import { StudentAttendance, AttendanceType } from "../../attendance/entities/student-attendance.entity";
+import { StudentCheckInOut, CheckInOutStatus, CheckInOutType } from "../../attendance/entities/student-checkin-checkout.entity";
+
 @Injectable()
 export class SeedService {
   private readonly logger = new Logger(SeedService.name);
@@ -128,7 +132,13 @@ export class SeedService {
 
     // Hostel repository
     @InjectRepository(Hostel)
-    private hostelRepository: Repository<Hostel>
+    private hostelRepository: Repository<Hostel>,
+
+    // Attendance repositories
+    @InjectRepository(StudentAttendance)
+    private attendanceRepository: Repository<StudentAttendance>,
+    @InjectRepository(StudentCheckInOut)
+    private checkInOutRepository: Repository<StudentCheckInOut>
   ) { }
 
   async checkSeedStatus() {
@@ -152,6 +162,8 @@ export class SeedService {
       adminCharges: await this.adminChargeRepository.count(),
       // bookings: await this.bookingRepository.count(), // Commented out during transition
       reports: await this.reportRepository.count(),
+      attendance: await this.attendanceRepository.count(),
+      checkInOuts: await this.checkInOutRepository.count(),
       lastSeeded: new Date().toISOString(),
     };
 
@@ -233,7 +245,10 @@ export class SeedService {
         // 9. Ledger entries depend on all financial entities
         ledgerEntries: await this.seedLedgerEntriesWithHostelId(hostelId, false),
 
-        // 10. Bookings are temporarily disabled during transition
+        // 10. Attendance data depends on students
+        attendance: await this.seedAttendanceWithHostelId(hostelId, false),
+
+        // 11. Bookings are temporarily disabled during transition
         // bookings: await this.seedBookings(false),
       };
 
@@ -2240,6 +2255,186 @@ export class SeedService {
       message: `Added images to ${updatedCount} rooms`,
       totalRooms: allRooms.length,
       roomsWithImages: allRooms.length - roomsWithoutImages.length + updatedCount
+    };
+  }
+
+  /**
+   * Seed attendance data for a specific hostel
+   */
+  async seedAttendanceWithHostelId(hostelId: string, force = false) {
+    if (!force && (await this.attendanceRepository.count({ where: { hostelId } })) > 0) {
+      return {
+        message: `Attendance data for hostel ${hostelId} already exists, use ?force=true to reseed`,
+        count: 0,
+      };
+    }
+
+    this.logger.log(`🎯 Seeding attendance data for hostel ${hostelId}...`);
+
+    // Get students for this hostel
+    const students = await this.studentRepository.find({
+      where: { hostelId, status: StudentStatus.ACTIVE }
+    });
+
+    if (students.length === 0) {
+      this.logger.warn(`No active students found for hostel ${hostelId}`);
+      return { count: 0, message: 'No students found to create attendance data' };
+    }
+
+    if (force) {
+      await this.checkInOutRepository.createQueryBuilder()
+        .delete()
+        .where("hostelId = :hostelId", { hostelId })
+        .execute();
+      await this.attendanceRepository.createQueryBuilder()
+        .delete()
+        .where("hostelId = :hostelId", { hostelId })
+        .execute();
+    }
+
+    const attendanceRecords = [];
+    const checkInOutRecords = [];
+    let totalPresentStudents = 0;
+    
+    // Create attendance data for the last 7 days
+    const today = new Date();
+    const dates = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      dates.push(date);
+    }
+
+    // Helper function to format date as YYYY-MM-DD
+    const formatDate = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    // Helper function to format time as HH:MM:SS
+    const formatTime = (date: Date): string => {
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      return `${hours}:${minutes}:${seconds}`;
+    };
+
+    for (const date of dates) {
+      const dateStr = formatDate(date);
+      
+      // Randomly select 70-90% of students to be present each day
+      const presentStudents = students.filter(() => Math.random() > 0.2);
+      totalPresentStudents += presentStudents.length;
+      
+      for (const student of presentStudents) {
+        // Create random check-in time between 7 AM and 10 AM
+        const checkInHour = 7 + Math.floor(Math.random() * 3);
+        const checkInMinute = Math.floor(Math.random() * 60);
+        const checkInTime = new Date(date);
+        checkInTime.setHours(checkInHour, checkInMinute, 0, 0);
+
+        // Create attendance record
+        attendanceRecords.push({
+          studentId: student.id,
+          hostelId: hostelId,
+          date: dateStr,
+          firstCheckInTime: formatTime(checkInTime),
+          type: AttendanceType.MANUAL,
+          notes: `Attendance for ${dateStr}`
+        });
+
+        // Create 1-3 check-in/out sessions per day
+        const sessionCount = 1 + Math.floor(Math.random() * 3);
+        let currentTime = new Date(checkInTime);
+
+        for (let session = 0; session < sessionCount; session++) {
+          // Check-in time
+          const sessionCheckIn = new Date(currentTime);
+          
+          // Check-out time (2-6 hours later)
+          const hoursOut = 2 + Math.floor(Math.random() * 4);
+          const checkOutTime = new Date(sessionCheckIn);
+          checkOutTime.setHours(checkOutTime.getHours() + hoursOut);
+
+          // Don't create sessions that go past midnight
+          if (checkOutTime.getDate() !== date.getDate()) {
+            break;
+          }
+
+          // Create check-in record
+          checkInOutRecords.push({
+            studentId: student.id,
+            hostelId: hostelId,
+            checkInTime: sessionCheckIn,
+            checkOutTime: checkOutTime,
+            status: CheckInOutStatus.CHECKED_OUT,
+            type: CheckInOutType.MANUAL,
+            notes: `Session ${session + 1} on ${dateStr}`
+          });
+
+          // Next session starts 1-3 hours after checkout
+          currentTime = new Date(checkOutTime);
+          currentTime.setHours(currentTime.getHours() + 1 + Math.floor(Math.random() * 2));
+        }
+      }
+    }
+
+    // Create some students who are currently checked in (today only)
+    const todayStr = formatDate(today);
+    const currentlyCheckedInStudents = students.slice(0, Math.floor(students.length * 0.3));
+    
+    for (const student of currentlyCheckedInStudents) {
+      // Check if they already have attendance today
+      const hasAttendanceToday = attendanceRecords.some(
+        record => record.studentId === student.id && record.date === todayStr
+      );
+
+      if (!hasAttendanceToday) {
+        // Create attendance record for today
+        const checkInHour = 8 + Math.floor(Math.random() * 2);
+        const checkInMinute = Math.floor(Math.random() * 60);
+        const checkInTime = new Date(today);
+        checkInTime.setHours(checkInHour, checkInMinute, 0, 0);
+
+        attendanceRecords.push({
+          studentId: student.id,
+          hostelId: hostelId,
+          date: todayStr,
+          firstCheckInTime: formatTime(checkInTime),
+          type: AttendanceType.MANUAL,
+          notes: `Current check-in for ${todayStr}`
+        });
+
+        // Create active check-in (no checkout time)
+        checkInOutRecords.push({
+          studentId: student.id,
+          hostelId: hostelId,
+          checkInTime: checkInTime,
+          checkOutTime: null,
+          status: CheckInOutStatus.CHECKED_IN,
+          type: CheckInOutType.MANUAL,
+          notes: `Currently checked in since ${formatTime(checkInTime)}`
+        });
+      }
+    }
+
+    // Save all records
+    const savedAttendance = await this.attendanceRepository.save(attendanceRecords);
+    const savedCheckInOuts = await this.checkInOutRepository.save(checkInOutRecords);
+
+    this.logger.log(`✅ Seeded ${savedAttendance.length} attendance records and ${savedCheckInOuts.length} check-in/out records for hostel ${hostelId}`);
+
+    return {
+      count: savedAttendance.length + savedCheckInOuts.length,
+      data: {
+        attendance: savedAttendance.length,
+        checkInOuts: savedCheckInOuts.length,
+        studentsWithData: totalPresentStudents,
+        currentlyCheckedIn: currentlyCheckedInStudents.length,
+        daysOfData: dates.length
+      }
     };
   }
 }

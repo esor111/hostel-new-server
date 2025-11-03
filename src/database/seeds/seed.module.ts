@@ -36,6 +36,10 @@ import { Report } from '../../reports/entities/report.entity';
 import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
 import { Hostel } from '../../hostel/entities/hostel.entity';
 
+// Attendance entities
+import { StudentAttendance } from '../../attendance/entities/student-attendance.entity';
+import { StudentCheckInOut } from '../../attendance/entities/student-checkin-checkout.entity';
+
 @Module({
   imports: [
     DatabaseModule,
@@ -77,6 +81,10 @@ import { Hostel } from '../../hostel/entities/hostel.entity';
       
       // Hostel entities
       Hostel,
+      
+      // Attendance entities
+      StudentAttendance,
+      StudentCheckInOut,
     ]),
   ],
   controllers: [SeedController],

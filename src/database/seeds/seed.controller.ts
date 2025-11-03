@@ -466,6 +466,30 @@ export class SeedController {
     }
   }
 
+  @Post('attendance')
+  @ApiOperation({ summary: 'Seed attendance data for a specific hostel' })
+  @ApiResponse({ status: 201, description: 'Attendance data seeded successfully' })
+  async seedAttendance(@Body() body: { hostelId: string, force?: boolean }) {
+    try {
+      const result = await this.seedService.seedAttendanceWithHostelId(body.hostelId, body.force || false);
+      
+      return {
+        status: 201,
+        message: 'Attendance data seeded successfully',
+        data: result
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: 500,
+          message: 'Failed to seed attendance data',
+          error: error.message
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
   @Post('add-room-images')
   @ApiOperation({ summary: 'Add sample images to existing rooms that don\'t have any' })
   @ApiResponse({ status: 200, description: 'Room images added successfully' })
