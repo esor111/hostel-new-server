@@ -21,6 +21,7 @@
     "typeorm": "typeorm-ts-node-commonjs",
     "schema:drop": "npm run typeorm -- schema:drop -d ormconfig.ts",
     "seed:run": "ts-node src/database/seeds/seed-data.ts",
+    "seed:attendance": "ts-node scripts/seed-attendance.ts",
     "db:setup": "node setup-database.js",
     "db:reset": "npm run schema:drop && npm run seed:run",
     "test:api": "node test-api.js",
