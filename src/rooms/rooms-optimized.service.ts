@@ -370,8 +370,7 @@ export class RoomsOptimizedService {
       'Available': '#10B981', // Green
       'Occupied': '#EF4444',  // Red
       'Reserved': '#F59E0B',  // Yellow/Orange
-      'Maintenance': '#6B7280', // Gray
-      'Out_Of_Order': '#6B7280' // Gray
+      'Maintenance': '#6B7280' // Gray
     };
 
     return colorMap[status] || '#6B7280'; // Default to gray

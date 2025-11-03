@@ -922,8 +922,7 @@ export class RoomsService extends HostelScopedService<Room> {
       'Available': '#10B981', // Green
       'Occupied': '#EF4444',  // Red
       'Reserved': '#F59E0B',  // Yellow/Orange
-      'Maintenance': '#6B7280', // Gray
-      'Out_Of_Order': '#6B7280' // Gray
+      'Maintenance': '#6B7280' // Gray
     };
 
     return colorMap[status] || '#6B7280'; // Default to gray
@@ -1036,16 +1035,13 @@ export class RoomsService extends HostelScopedService<Room> {
 
       // Merge bed entity data into positions if beds exist
       if (bedPositions && room.beds && room.beds.length > 0) {
-        // SIMPLE FIX: Map bedPosition IDs to match bed identifiers for frontend consistency
-        const activeBeds = room.beds.filter(bed => bed.status !== 'Out_Of_Order');
-
         enhancedLayout.bedPositions = bedPositions.map((position, index) => {
           // Try to find matching bed by position index or identifier
-          let matchingBed = activeBeds.find(bed => bed.bedIdentifier === position.id);
+          let matchingBed = room.beds.find(bed => bed.bedIdentifier === position.id);
 
           // If no exact match, use bed by index (fallback)
-          if (!matchingBed && activeBeds[index]) {
-            matchingBed = activeBeds[index];
+          if (!matchingBed && room.beds[index]) {
+            matchingBed = room.beds[index];
           }
 
           if (matchingBed) {

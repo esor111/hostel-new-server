@@ -7,8 +7,7 @@ export enum BedStatus {
   AVAILABLE = 'Available',
   OCCUPIED = 'Occupied',
   RESERVED = 'Reserved',
-  MAINTENANCE = 'Maintenance',
-  OUT_OF_ORDER = 'Out_Of_Order'
+  MAINTENANCE = 'Maintenance'
 }
 
 @Entity('beds')

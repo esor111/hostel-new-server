@@ -55,7 +55,6 @@ export class BedSyncService {
   async syncBedsFromLayout(roomId: string, bedPositions: BedPosition[]): Promise<void> {
     this.logger.log(`🔄 Syncing beds from layout for room ${roomId}`);
     this.logger.log(`🛏️ Received ${bedPositions.length} bed positions to sync`);
-    this.logger.log(`🛏️ Bed positions data:`, JSON.stringify(bedPositions, null, 2));
 
     try {
       // Validate bedPositions first
@@ -70,17 +69,10 @@ export class BedSyncService {
         this.logger.warn(`Validation warnings: ${validation.warnings.join(', ')}`);
       }
 
-      // TEMPORARY FIX: Skip normalization to avoid conflicts
-      // const normalizedPositions = await this.normalizeBedPositions(bedPositions, roomId);
-      // this.logger.debug(`Normalized ${bedPositions.length} bed positions`);
-
-      // Use original positions directly
-      const processedPositions = bedPositions;
-      this.logger.debug(`Processing ${processedPositions.length} bed positions directly (normalization disabled)`);
-
-      // Get existing beds for this room
+      // Get existing beds for this room, sorted by bedNumber
       const existingBeds = await this.bedRepository.find({
-        where: { roomId }
+        where: { roomId },
+        order: { bedNumber: 'ASC' }
       });
 
       // Get room details for defaults
@@ -92,75 +84,91 @@ export class BedSyncService {
         throw new Error(`Room ${roomId} not found`);
       }
 
-      // Create a map of existing beds by bedIdentifier
-      const existingBedMap = new Map<string, Bed>();
-      existingBeds.forEach(bed => {
-        existingBedMap.set(bed.bedIdentifier, bed);
-      });
+      // Separate beds by status
+      const occupiedBeds = existingBeds.filter(bed => 
+        bed.status === BedStatus.OCCUPIED || bed.status === BedStatus.RESERVED
+      );
+      
+      const availableBeds = existingBeds.filter(bed => 
+        bed.status === BedStatus.AVAILABLE || bed.status === BedStatus.MAINTENANCE
+      );
 
-      // Track which beds should exist after sync
-      const expectedBedIdentifiers = new Set(processedPositions.map(pos => pos.id));
+      this.logger.log(`📊 Bed inventory: ${occupiedBeds.length} occupied/reserved, ${availableBeds.length} available`);
 
-      // Process each bed position
-      for (const bedPosition of processedPositions) {
-        const bedIdentifier = bedPosition.id;
-        const existingBed = existingBedMap.get(bedIdentifier);
+      // Track processed bed IDs
+      const processedBedIds = new Set<string>();
 
-        if (existingBed) {
-          // Update existing bed if needed
-          await this.updateBedFromPosition(existingBed.id, bedPosition, room);
-          this.logger.debug(`✅ Updated bed ${bedIdentifier}`);
-        } else {
-          // Check if bed identifier already exists globally (unique constraint)
-          const globalExistingBed = await this.bedRepository.findOne({
-            where: { bedIdentifier }
+      // PHASE 1: Process each layout position
+      for (let i = 0; i < bedPositions.length; i++) {
+        const position = bedPositions[i];
+        const layoutBedId = position.id;
+
+        // Try to find exact match first (for occupied beds)
+        let matchedBed = existingBeds.find(bed => 
+          bed.bedIdentifier === layoutBedId && !processedBedIds.has(bed.id)
+        );
+
+        if (matchedBed) {
+          // EXACT MATCH - Just update metadata, don't change bedIdentifier
+          this.logger.log(`✅ Exact match: ${layoutBedId} (${matchedBed.status})`);
+          
+          await this.bedRepository.update(matchedBed.id, {
+            gender: position.gender || matchedBed.gender,
+            monthlyRate: position.bedDetails?.monthlyRate || room.monthlyRate,
+            description: `Bed ${matchedBed.bedNumber} in ${room.name}`,
+            status: matchedBed.status === BedStatus.OCCUPIED || matchedBed.status === BedStatus.RESERVED 
+              ? matchedBed.status 
+              : BedStatus.AVAILABLE
           });
+          
+          processedBedIds.add(matchedBed.id);
+          continue;
+        }
 
-          if (globalExistingBed && globalExistingBed.roomId !== roomId) {
-            // Generate a unique identifier to resolve conflict
-            const uniqueIdentifier = await this.generateUniqueBedIdentifier(bedIdentifier, roomId);
-            this.logger.warn(`⚠️ Bed identifier ${bedIdentifier} already exists globally, using ${uniqueIdentifier}`);
-            
-            // Update the bedPosition with the new identifier for consistency
-            bedPosition.id = uniqueIdentifier;
-            
-            // Create new bed with unique identifier
-            try {
-              await this.createBedFromPosition(roomId, bedPosition, room);
-              this.logger.debug(`🆕 Created bed ${uniqueIdentifier} (resolved conflict)`);
-            } catch (error) {
-              this.logger.error(`❌ Failed to create bed ${uniqueIdentifier}: ${error.message}`);
-              // Continue with other beds
-            }
-          } else {
-            // Create new bed with original identifier
-            try {
-              const createdBed = await this.createBedFromPosition(roomId, bedPosition, room);
-              this.logger.debug(`🆕 Created bed ${bedIdentifier} with ID ${createdBed.id}`);
-            } catch (error) {
-              this.logger.error(`❌ Failed to create bed ${bedIdentifier}: ${error.message}`);
-              this.logger.error(`❌ Bed position data:`, JSON.stringify(bedPosition, null, 2));
-              this.logger.error(`❌ Room data: ID=${room.id}, hostelId=${room.hostelId}`);
-              // Continue with other beds
-            }
-          }
+        // No exact match - try to reuse available bed
+        matchedBed = availableBeds.find(bed => !processedBedIds.has(bed.id));
+        
+        if (matchedBed) {
+          // REUSE AVAILABLE BED - Safe to update bedIdentifier
+          this.logger.log(`🔄 Reusing bed ${matchedBed.bedIdentifier} → ${layoutBedId}`);
+          
+          await this.bedRepository.update(matchedBed.id, {
+            bedIdentifier: layoutBedId,
+            gender: position.gender || matchedBed.gender,
+            monthlyRate: position.bedDetails?.monthlyRate || room.monthlyRate,
+            description: `Bed ${matchedBed.bedNumber} in ${room.name}`,
+            status: BedStatus.AVAILABLE
+          });
+          
+          processedBedIds.add(matchedBed.id);
+          continue;
+        }
+
+        // No match found - create new bed (bed count increased)
+        this.logger.log(`🆕 Creating new bed ${layoutBedId}`);
+        try {
+          const newBed = await this.createBedFromPosition(roomId, position, room);
+          processedBedIds.add(newBed.id);
+        } catch (error) {
+          this.logger.error(`❌ Failed to create bed ${layoutBedId}: ${error.message}`);
         }
       }
 
-      // Deactivate beds that are no longer in the layout
-      for (const existingBed of existingBeds) {
-        if (!expectedBedIdentifiers.has(existingBed.bedIdentifier)) {
-          // Don't delete, just mark as inactive if it's not occupied
-          if (existingBed.status !== BedStatus.OCCUPIED) {
-            await this.bedRepository.update(existingBed.id, {
-              status: BedStatus.OUT_OF_ORDER,
-              description: 'Removed from layout'
-            });
-            this.logger.debug(`🚫 Deactivated bed ${existingBed.bedIdentifier}`);
-          } else {
-            this.logger.warn(`⚠️ Cannot deactivate occupied bed ${existingBed.bedIdentifier}`);
-          }
+      // PHASE 2: Handle unprocessed beds
+      for (const bed of existingBeds) {
+        if (processedBedIds.has(bed.id)) {
+          continue; // Already handled
         }
+
+        if (bed.status === BedStatus.OCCUPIED || bed.status === BedStatus.RESERVED) {
+          // CRITICAL: Keep occupied beds even if not in layout
+          this.logger.warn(`⚠️ Occupied bed ${bed.bedIdentifier} not in layout - keeping it`);
+          continue;
+        }
+
+        // DELETE available/maintenance beds not in layout
+        this.logger.log(`🗑️ Deleting unused bed: ${bed.bedIdentifier}`);
+        await this.bedRepository.delete(bed.id);
       }
 
       this.logger.log(`✅ Successfully synced beds for room ${roomId}`);
@@ -179,8 +187,7 @@ export class BedSyncService {
       'Available': '#10B981', // Green
       'Occupied': '#EF4444',  // Red
       'Reserved': '#F59E0B',  // Yellow/Orange
-      'Maintenance': '#6B7280', // Gray
-      'Out_Of_Order': '#6B7280' // Gray
+      'Maintenance': '#6B7280' // Gray
     };
 
     return colorMap[status] || '#6B7280'; // Default to gray
@@ -197,12 +204,17 @@ export class BedSyncService {
       return bedPositions;
     }
 
+    this.logger.log(`🔄 Starting mergeBedDataIntoPositions`);
+    this.logger.log(`📦 bedPositions count: ${bedPositions.length}`);
+    this.logger.log(`🛏️ beds count: ${beds.length}`);
+    this.logger.log(`📋 bedPosition IDs: ${bedPositions.map(p => p.id).join(', ')}`);
+    this.logger.log(`🔑 bed identifiers: ${beds.map(b => `${b.bedIdentifier}(${b.status})`).join(', ')}`);
+
     // Create multiple maps for flexible bed lookup
     const bedByIdentifier = new Map<string, Bed>();
     const bedBySimpleId = new Map<string, Bed>();
-    const activeBeds = beds.filter(bed => bed.status !== 'Out_Of_Order');
     
-    activeBeds.forEach(bed => {
+    beds.forEach(bed => {
       bedByIdentifier.set(bed.bedIdentifier, bed);
       
       // Also map by simple ID (extract bed1, bed2 from complex identifiers)
@@ -215,17 +227,32 @@ export class BedSyncService {
 
     // Merge bed data into each position and update position ID to match bed identifier
     const enhancedPositions = bedPositions.map((position, index) => {
+      this.logger.debug(`🔍 Matching position[${index}]: id="${position.id}"`);
+      
       // Try to find matching bed by exact identifier first
       let bed = bedByIdentifier.get(position.id);
+      if (bed) {
+        this.logger.debug(`✅ Exact match found: ${position.id} → ${bed.bedIdentifier} (${bed.status})`);
+      }
       
       // If not found, try to find by simple ID pattern
       if (!bed) {
         bed = bedBySimpleId.get(position.id);
+        if (bed) {
+          this.logger.debug(`✅ Simple ID match found: ${position.id} → ${bed.bedIdentifier} (${bed.status})`);
+        }
       }
       
       // If still not found, try to match by position index
-      if (!bed && activeBeds.length > index) {
-        bed = activeBeds[index];
+      if (!bed && beds.length > index) {
+        bed = beds[index];
+        if (bed) {
+          this.logger.debug(`✅ Index match found: position[${index}] → ${bed.bedIdentifier} (${bed.status})`);
+        }
+      }
+
+      if (!bed) {
+        this.logger.warn(`❌ No bed entity found for position: ${position.id}`);
       }
 
       if (bed) {
@@ -357,16 +384,13 @@ export class BedSyncService {
         this.logger.warn(`Found ${orphanedBeds.length} orphaned beds not in layout`);
 
         for (const bed of orphanedBeds) {
-          if (bed.status === BedStatus.OCCUPIED) {
-            // Keep occupied beds, add them back to layout
-            this.logger.warn(`Keeping occupied orphaned bed ${bed.bedIdentifier}`);
+          if (bed.status === BedStatus.OCCUPIED || bed.status === BedStatus.RESERVED) {
+            // Keep occupied/reserved beds
+            this.logger.warn(`Keeping occupied/reserved orphaned bed ${bed.bedIdentifier}`);
           } else {
-            // Mark non-occupied orphaned beds as out of order
-            await this.bedRepository.update(bed.id, {
-              status: BedStatus.OUT_OF_ORDER,
-              description: 'Orphaned bed - not in current layout'
-            });
-            this.logger.debug(`Marked orphaned bed ${bed.bedIdentifier} as out of order`);
+            // Delete non-occupied orphaned beds
+            await this.bedRepository.delete(bed.id);
+            this.logger.debug(`Deleted orphaned bed ${bed.bedIdentifier}`);
           }
         }
       }
