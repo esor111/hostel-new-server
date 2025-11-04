@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
@@ -41,7 +41,7 @@ import { InvoicesModule } from '../invoices/invoices.module';
     AuthModule,
     HostelModule,
     LedgerV2Module,
-    AttendanceModule,
+    forwardRef(() => AttendanceModule),
     InvoicesModule,
   ],
   controllers: [StudentsController],
