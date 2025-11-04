@@ -21,10 +21,13 @@ export class HostelContextMiddleware implements NestMiddleware {
   async use(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       this.logger.log(`🔧 Middleware called for ${req.method} ${req.url}`);
+      this.logger.log(`🔍 Request headers: ${JSON.stringify(req.headers.authorization?.substring(0, 50))}`);
+      this.logger.log(`🔍 req.user exists: ${!!req.user}`);
+      this.logger.log(`🔍 req.user value: ${JSON.stringify(req.user)}`);
 
       // Skip hostel context for non-authenticated requests
       if (!req.user) {
-        this.logger.debug('No user in request, skipping hostel context');
+        this.logger.warn('⚠️ No user in request, skipping hostel context - Guards should have set req.user');
         return next();
       }
 

@@ -22,18 +22,19 @@ import { MealPlansService } from './meal-plans.service';
 import { CreateMealPlanDto, UpdateMealPlanDto } from './dto';
 import { DayOfWeek } from './entities/meal-plan.entity';
 import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
-import { HostelAuthGuard } from '../auth/guards/hostel-auth.guard';
-import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 
 @ApiTags('meal-plans')
 @Controller('meal-plans')
+@UseGuards(HostelAuthWithContextGuard)
+@ApiBearerAuth()
 export class MealPlansController {
   constructor(private readonly mealPlansService: MealPlansService) {}
 
   @Get()
-  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get all meal plans' })
   @ApiResponse({ status: 200, description: 'List of meal plans retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async getAllMealPlans(@GetHostelId() hostelId: string) {
     const result = await this.mealPlansService.findAll(hostelId);
 
@@ -44,9 +45,9 @@ export class MealPlansController {
   }
 
   @Get('weekly')
-  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get weekly meal plan (all 7 days)' })
   @ApiResponse({ status: 200, description: 'Weekly meal plan retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async getWeeklyMealPlan(@GetHostelId() hostelId: string) {
     const result = await this.mealPlansService.getWeeklyMealPlan(hostelId);
 
@@ -57,11 +58,11 @@ export class MealPlansController {
   }
 
   @Get('day/:day')
-  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get meal plan for a specific day' })
   @ApiParam({ name: 'day', enum: DayOfWeek, description: 'Day of the week' })
   @ApiResponse({ status: 200, description: 'Meal plan for the day retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Meal plan not found for the specified day' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async getMealPlanByDay(
     @GetHostelId() hostelId: string,
     @Param('day') day: DayOfWeek
@@ -75,11 +76,11 @@ export class MealPlansController {
   }
 
   @Get(':id')
-  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get meal plan by ID' })
   @ApiParam({ name: 'id', description: 'Meal plan ID' })
   @ApiResponse({ status: 200, description: 'Meal plan retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Meal plan not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
   async getMealPlan(
     @GetHostelId() hostelId: string,
     @Param('id') id: string
@@ -93,8 +94,6 @@ export class MealPlansController {
   }
 
   @Post()
-  @UseGuards(HostelAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new meal plan' })
   @ApiResponse({ status: 201, description: 'Meal plan created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
@@ -114,8 +113,6 @@ export class MealPlansController {
   }
 
   @Post('weekly')
-  @UseGuards(HostelAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create or update weekly meal plan (bulk operation)' })
   @ApiResponse({ status: 201, description: 'Weekly meal plan processed successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
@@ -134,8 +131,6 @@ export class MealPlansController {
   }
 
   @Put(':id')
-  @UseGuards(HostelAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update meal plan' })
   @ApiParam({ name: 'id', description: 'Meal plan ID' })
   @ApiResponse({ status: 200, description: 'Meal plan updated successfully' })
@@ -157,8 +152,6 @@ export class MealPlansController {
   }
 
   @Delete(':id')
-  @UseGuards(HostelAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete meal plan' })
   @ApiParam({ name: 'id', description: 'Meal plan ID' })
   @ApiResponse({ status: 200, description: 'Meal plan deleted successfully' })
