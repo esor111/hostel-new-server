@@ -1049,16 +1049,6 @@ export class StudentsService { // Removed HostelScopedService extension for back
     }
 
     // Create admin charges for additional charges
-    if (configData.additionalCharges && configData.additionalCharges.length > 0) {
-      // This will be handled by AdminChargesService when we integrate
-      // For now, we'll store them as notes in financial info
-    }
-
-    // Save financial entries first
-    if (financialEntries.length > 0) {
-      await this.financialRepository.save(financialEntries);
-    }
-
     // NEW: Generate immediate configuration-based invoice
     const configurationDate = new Date();
     let firstInvoice = null;
@@ -1088,24 +1078,39 @@ export class StudentsService { // Removed HostelScopedService extension for back
       throw new BadRequestException(`Configuration failed: ${error.message}`);
     }
 
-    // NEW: Process advance payment if provided
+    // AUTO-CALCULATE ADVANCE PAYMENT: Monthly fees + Additional charges
     let advancePaymentRecord = null;
-    if (configData.advancePayment && configData.advancePayment > 0) {
-      try {
-        console.log(`💰 Processing advance payment: NPR ${configData.advancePayment}`);
+    try {
+      // Calculate total monthly fee from financial entries
+      const totalMonthlyFee = financialEntries.reduce((sum, entry) => sum + entry.amount, 0);
+      
+      // Calculate total additional charges
+      const totalAdditionalCharges = (configData.additionalCharges || [])
+        .reduce((sum, charge) => sum + (charge.amount || 0), 0);
+      
+      // Total advance payment = Monthly fees + Additional charges
+      const totalAdvancePayment = totalMonthlyFee + totalAdditionalCharges;
+      
+      if (totalAdvancePayment > 0) {
+        console.log(`💰 Auto-calculating advance payment:`);
+        console.log(`   - Monthly fees: NPR ${totalMonthlyFee.toLocaleString()}`);
+        console.log(`   - Additional charges: NPR ${totalAdditionalCharges.toLocaleString()}`);
+        console.log(`   - Total advance: NPR ${totalAdvancePayment.toLocaleString()}`);
         
         advancePaymentRecord = await this.advancePaymentService.processAdvancePayment(
           studentId,
-          configData.advancePayment,
+          totalAdvancePayment,
           hostelId
         );
         
-        console.log(`✅ Advance payment recorded: NPR ${configData.advancePayment}`);
-      } catch (error) {
-        console.error('❌ Failed to record advance payment:', error);
-        // Don't fail configuration if advance payment fails, just log it
-        console.warn('⚠️ Configuration completed but advance payment failed');
+        console.log(`✅ Advance payment recorded: NPR ${totalAdvancePayment.toLocaleString()}`);
+      } else {
+        console.warn('⚠️ No advance payment calculated (total is 0)');
       }
+    } catch (error) {
+      console.error('❌ Failed to record advance payment:', error);
+      // Don't fail configuration if advance payment fails, just log it
+      console.warn('⚠️ Configuration completed but advance payment failed');
     }
 
     // Mark student as configured and active
@@ -1141,13 +1146,18 @@ export class StudentsService { // Removed HostelScopedService extension for back
     }
 
     const totalMonthlyFee = financialEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    const totalAdditionalCharges = (configData.additionalCharges || [])
+      .reduce((sum, charge) => sum + (charge.amount || 0), 0);
+    const totalAdvancePayment = totalMonthlyFee + totalAdditionalCharges;
 
     return {
       success: true,
-      message: 'Student configuration completed successfully with immediate billing',
+      message: 'Student configuration completed successfully with auto-calculated advance payment',
       studentId,
       configurationDate,
       totalMonthlyFee,
+      totalAdditionalCharges,
+      totalAdvancePayment,
       guardianConfigured: !!(configData.guardian?.name || configData.guardian?.phone),
       academicConfigured: !!(configData.course || configData.institution),
       firstInvoice: {
@@ -1161,7 +1171,11 @@ export class StudentsService { // Removed HostelScopedService extension for back
       },
       advancePayment: advancePaymentRecord ? {
         paymentId: advancePaymentRecord.paymentId,
-        amount: configData.advancePayment,
+        amount: totalAdvancePayment,
+        breakdown: {
+          monthlyFees: totalMonthlyFee,
+          additionalCharges: totalAdditionalCharges
+        },
         recorded: true
       } : null
     };
