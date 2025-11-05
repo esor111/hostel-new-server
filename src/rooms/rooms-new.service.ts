@@ -407,6 +407,19 @@ export class RoomsNewService {
         console.log(`✅ STRATEGY 1: UUID match for position ${position.id} → bed ${matchingBed.bedIdentifier} (${matchingBed.status})`);
       }
       
+      // STRATEGY 1B: Match by UUID when position.id contains room prefix (e.g., "R-128-UUID")
+      if (!matchingBed) {
+        // Extract UUID from position.id if it contains room prefix
+        const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+        const uuidMatch = position.id.match(uuidPattern);
+        if (uuidMatch) {
+          matchingBed = room.beds?.find(bed => bed.id === uuidMatch[0]);
+          if (matchingBed) {
+            console.log(`✅ STRATEGY 1B: UUID extracted from prefixed position ${position.id} → ${uuidMatch[0]} → bed ${matchingBed.bedIdentifier} (${matchingBed.status})`);
+          }
+        }
+      }
+      
       // STRATEGY 2: Match by exact bedIdentifier
       if (!matchingBed) {
         matchingBed = room.beds?.find(bed => bed.bedIdentifier === position.id);

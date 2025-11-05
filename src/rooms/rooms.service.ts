@@ -1396,6 +1396,19 @@ export class RoomsService extends HostelScopedService<Room> {
       });
       const roomPrefix = room?.roomNumber || 'R';
 
+      // 🔧 CRITICAL FIX: Fetch existing beds to preserve their statuses
+      const existingBeds = await this.bedRepository.find({
+        where: { roomId }
+      });
+      const bedStatusMap = new Map(existingBeds.map(bed => [bed.bedIdentifier, {
+        status: bed.status,
+        color: this.getBedStatusColor(bed.status),
+        occupantId: bed.currentOccupantId,
+        occupantName: bed.currentOccupantName
+      }]));
+      console.log(`🔍 Found ${existingBeds.length} existing beds with statuses:`, 
+        existingBeds.map(b => `${b.bedIdentifier}:${b.status}`).join(', '));
+
       // Helper function to strip existing prefix to avoid double-prefixing
       const stripPrefix = (id: string): string => {
         if (!id) return id;
@@ -1416,8 +1429,13 @@ export class RoomsService extends HostelScopedService<Room> {
               // Handle bunk bed levels
               for (const level of element.properties.levels) {
                 const cleanLevelId = stripPrefix(level.id);
+                const bedId = `${roomPrefix}-${cleanLevelId}`;
+                
+                // 🔧 Use actual bed status if exists, otherwise default to Available
+                const bedInfo = bedStatusMap.get(bedId) || { status: 'Available', color: '#10B981' };
+                
                 correctedBedPositions.push({
-                  id: `${roomPrefix}-${cleanLevelId}`, // Room-specific identifier
+                  id: bedId, // Room-specific identifier
                   x: element.x,
                   y: element.y,
                   width: element.width,
@@ -1426,13 +1444,13 @@ export class RoomsService extends HostelScopedService<Room> {
                   type: 'bunk-bed-level',
                   properties: {
                     ...element.properties,
-                    bedId: `${roomPrefix}-${cleanLevelId}`,
+                    bedId: bedId,
                     bunkLevel: level.position,
                     parentBunkId: stripPrefix(element.id)
                   },
-                  status: 'Available',
+                  status: bedInfo.status, // ✅ Use actual status
                   gender: room?.gender || 'Any',
-                  color: '#10B981',
+                  color: bedInfo.color, // ✅ Use actual color
                   bedType: 'bunk',
                   bunkLevel: level.position
                 });
@@ -1440,8 +1458,13 @@ export class RoomsService extends HostelScopedService<Room> {
             } else {
               // Handle single bed
               const cleanElementId = stripPrefix(element.id);
+              const bedId = `${roomPrefix}-${cleanElementId}`;
+              
+              // 🔧 Use actual bed status if exists, otherwise default to Available
+              const bedInfo = bedStatusMap.get(bedId) || { status: 'Available', color: '#10B981' };
+              
               correctedBedPositions.push({
-                id: `${roomPrefix}-${cleanElementId}`, // Room-specific identifier
+                id: bedId, // Room-specific identifier
                 x: element.x,
                 y: element.y,
                 width: element.width,
@@ -1450,11 +1473,11 @@ export class RoomsService extends HostelScopedService<Room> {
                 type: element.type,
                 properties: {
                   ...element.properties,
-                  bedId: `${roomPrefix}-${cleanElementId}`
+                  bedId: bedId
                 },
-                status: 'Available',
+                status: bedInfo.status, // ✅ Use actual status
                 gender: room?.gender || 'Any',
-                color: '#10B981'
+                color: bedInfo.color // ✅ Use actual color
               });
             }
           }
@@ -1466,9 +1489,17 @@ export class RoomsService extends HostelScopedService<Room> {
           const hasPrefix = pos.id.startsWith(`${roomPrefix}-`);
           const correctedId = hasPrefix ? pos.id : `${roomPrefix}-${pos.id}`;
 
+          // 🔧 Use actual bed status if exists, otherwise keep existing or default to Available
+          const bedInfo = bedStatusMap.get(correctedId) || { 
+            status: pos.status || 'Available', 
+            color: pos.color || '#10B981' 
+          };
+
           return {
             ...pos,
             id: correctedId,
+            status: bedInfo.status, // ✅ Use actual status
+            color: bedInfo.color, // ✅ Use actual color
             properties: {
               ...pos.properties,
               bedId: correctedId
