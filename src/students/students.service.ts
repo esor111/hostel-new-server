@@ -300,10 +300,12 @@ export class StudentsService { // Removed HostelScopedService extension for back
     // Get current academic info
     const currentAcademic = student.academicInfo?.find(a => a.isActive);
 
-    // Get current financial info
+    // Get current financial info (all fee types)
     const baseMonthlyFee = student.financialInfo?.find(f => f.feeType === FeeType.BASE_MONTHLY && f.isActive);
     const laundryFee = student.financialInfo?.find(f => f.feeType === FeeType.LAUNDRY && f.isActive);
     const foodFee = student.financialInfo?.find(f => f.feeType === FeeType.FOOD && f.isActive);
+    const wifiFee = student.financialInfo?.find(f => f.feeType === FeeType.UTILITIES && f.isActive);
+    const maintenanceFee = student.financialInfo?.find(f => f.feeType === FeeType.MAINTENANCE && f.isActive);
 
     // Calculate current balance from LedgerV2 (new system)
     // Separate configuration advance from regular payments for accurate invoice calculations
@@ -393,6 +395,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
       baseMonthlyFee: baseMonthlyFee?.amount || 0,
       laundryFee: laundryFee?.amount || 0,
       foodFee: foodFee?.amount || 0,
+      wifiFee: wifiFee?.amount || 0,              // WiFi/Utilities fee
+      maintenanceFee: maintenanceFee?.amount || 0, // Maintenance fee
       enrollmentDate: student.enrollmentDate,
       status: student.status,
       currentBalance,          // Dues (from regular invoices vs regular payments)
