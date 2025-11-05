@@ -1762,6 +1762,7 @@ export class MultiGuestBookingService {
     }
 
     const student = manager.create(Student, {
+      userId: booking.userId, // Link student to the user who created the booking
       name: guest.guestName,
       phone: guestPhone,
       email: guestEmail,
