@@ -441,21 +441,43 @@ export class RoomsNewService {
           status = 'Reserved';
         }
         
-        refId = matchingBed.id;
-        bedId = matchingBed.id;
+        // CRITICAL: Use pure UUID for booking compatibility
+        refId = matchingBed.id;  // This is the pure UUID
+        bedId = matchingBed.id;  // This is the pure UUID
         occupantId = matchingBed.currentOccupantId;
         bedNumber = matchingBed.bedNumber;
         monthlyRate = matchingBed.monthlyRate?.toString() || '0';
         gender = matchingBed.gender || 'Any';
       } else {
+        // 🔧 FIX: Try to extract UUID from position.id if it contains dashes
+        // position.id might be "R-127-UUID" or just "UUID"
+        const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+        const uuidMatch = position.id.match(uuidPattern);
+        
+        if (uuidMatch) {
+          // Found a UUID in the position.id, use it
+          refId = uuidMatch[0];
+          bedId = uuidMatch[0];
+          console.log(`🔧 Extracted UUID from position.id: ${position.id} → ${refId}`);
+        } else {
+          // No UUID found, use position.id as fallback
+          refId = position.id;
+          bedId = position.id;
+        }
+        
         // Use position data as fallback
         status = position.status || 'Available';
         gender = position.gender || 'Any';
+        
+        // 🔧 FIX: Extract bedNumber from position.id
+        // Try to find a number in the position.id
+        const numberMatch = position.id.match(/(\d+)(?!.*\d)/); // Last number in string
+        bedNumber = numberMatch ? numberMatch[1] : '1';
       }
 
       furniture.push({
         id: position.id, // "B1" - visual identifier
-        refId, // "bed-uuid-aaa-111" - real UUID for booking (or position ID as fallback)
+        refId, // Pure UUID for booking
         type: 'bed',
         hostelId: room.hostelId,
 
