@@ -306,14 +306,18 @@ export class StudentsService { // Removed HostelScopedService extension for back
     const foodFee = student.financialInfo?.find(f => f.feeType === FeeType.FOOD && f.isActive);
 
     // Calculate current balance from LedgerV2 (new system)
+    // Separate configuration advance from regular payments for accurate invoice calculations
     let currentBalance = 0;
     let advanceBalance = 0;
+    let configurationAdvance = 0;
+    let totalAdvance = 0;
     
     try {
       // Import LedgerV2Service dynamically to get balance
       const { LedgerV2Service } = await import('../ledger-v2/services/ledger-v2.service');
       const ledgerV2Repository = this.ledgerRepository.manager.getRepository('LedgerEntryV2');
       
+      // Get total debits and credits from ledger (this is the SOURCE OF TRUTH for balance)
       const balanceResult = await ledgerV2Repository
         .createQueryBuilder('ledger')
         .select('SUM(ledger.debit)', 'totalDebits')
@@ -326,16 +330,52 @@ export class StudentsService { // Removed HostelScopedService extension for back
       const totalCredits = parseFloat(balanceResult?.totalCredits) || 0;
       const netBalance = totalDebits - totalCredits;
 
-      currentBalance = netBalance > 0 ? netBalance : 0; // Dues (positive balance)
-      advanceBalance = netBalance < 0 ? Math.abs(netBalance) : 0; // Advance (negative balance)
+      // Calculate current balance from ledger (SOURCE OF TRUTH)
+      currentBalance = netBalance > 0 ? netBalance : 0; // Dues
+      const totalAdvanceFromLedger = netBalance < 0 ? Math.abs(netBalance) : 0;
+
+      // NEW: Get payment breakdown for display purposes only
+      // Get configuration advance (flag = true)
+      const configAdvanceResult = await this.paymentRepository
+        .createQueryBuilder('payment')
+        .select('SUM(payment.amount)', 'total')
+        .where('payment.studentId = :studentId', { studentId: student.id })
+        .andWhere('payment.isConfigurationAdvance = :isConfig', { isConfig: true })
+        .andWhere('payment.status = :status', { status: 'Completed' })
+        .getRawOne();
+
+      configurationAdvance = parseFloat(configAdvanceResult?.total) || 0;
+
+      // Get regular payments (flag = false)
+      const regularPaymentsResult = await this.paymentRepository
+        .createQueryBuilder('payment')
+        .select('SUM(payment.amount)', 'total')
+        .where('payment.studentId = :studentId', { studentId: student.id })
+        .andWhere('payment.isConfigurationAdvance = :isConfig', { isConfig: false })
+        .andWhere('payment.status = :status', { status: 'Completed' })
+        .getRawOne();
+
+      const regularPaymentsTotal = parseFloat(regularPaymentsResult?.total) || 0;
+
+      // Regular advance = Total advance from ledger - Config advance
+      // This shows how much advance is from regular payments vs config
+      advanceBalance = totalAdvanceFromLedger > configurationAdvance 
+        ? totalAdvanceFromLedger - configurationAdvance 
+        : 0;
+
+      // Total advance is from ledger (single source of truth)
+      totalAdvance = totalAdvanceFromLedger;
+
     } catch (error) {
       console.error('Error calculating balance from LedgerV2:', error);
       // Fallback to 0 if error
       currentBalance = 0;
       advanceBalance = 0;
+      configurationAdvance = 0;
+      totalAdvance = 0;
     }
 
-    // Return EXACT same structure as current JSON
+    // Return EXACT same structure as current JSON with NEW balance breakdown fields
     return {
       id: student.id,
       name: student.name,
@@ -355,8 +395,10 @@ export class StudentsService { // Removed HostelScopedService extension for back
       foodFee: foodFee?.amount || 0,
       enrollmentDate: student.enrollmentDate,
       status: student.status,
-      currentBalance,
-      advanceBalance,
+      currentBalance,          // Dues (from regular invoices vs regular payments)
+      advanceBalance,          // Regular advance (from extra regular payments)
+      configurationAdvance,    // NEW: Configuration advance (from initial setup)
+      totalAdvance,            // NEW: Total advance (config + regular)
       emergencyContact: emergencyContact?.phone || null,
       course: currentAcademic?.course || null,
       institution: currentAcademic?.institution || null,
@@ -1100,7 +1142,10 @@ export class StudentsService { // Removed HostelScopedService extension for back
         advancePaymentRecord = await this.advancePaymentService.processAdvancePayment(
           studentId,
           totalAdvancePayment,
-          hostelId
+          hostelId,
+          new Date(), // paymentDate
+          undefined, // paymentMethod (uses default CASH)
+          true // isConfigurationAdvance = TRUE for initial config advance
         );
         
         console.log(`✅ Advance payment recorded: NPR ${totalAdvancePayment.toLocaleString()}`);

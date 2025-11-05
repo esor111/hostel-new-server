@@ -15,34 +15,44 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
   }
 
   async findAll(hostelId?: string) {
-    const queryBuilder = this.mealPlanRepository.createQueryBuilder('mealPlan')
-      .leftJoinAndSelect('mealPlan.hostel', 'hostel')
-      .where('mealPlan.isActive = :isActive', { isActive: true });
+    try {
+      this.logger.debug(`Finding all meal plans for hostelId: ${hostelId}`);
+      
+      const queryBuilder = this.mealPlanRepository.createQueryBuilder('mealPlan')
+        .leftJoinAndSelect('mealPlan.hostel', 'hostel')
+        .where('mealPlan.isActive = :isActive', { isActive: true });
 
-    // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
-    if (hostelId) {
-      queryBuilder.andWhere('mealPlan.hostelId = :hostelId', { hostelId });
+      // Conditional hostel filtering - if hostelId provided, filter by it; if not, return all data
+      if (hostelId) {
+        queryBuilder.andWhere('mealPlan.hostelId = :hostelId', { hostelId });
+      }
+
+      // Order by day of week (Sunday = 0, Monday = 1, etc.)
+      queryBuilder.orderBy(
+        `CASE mealPlan.day 
+          WHEN 'Sunday' THEN 0
+          WHEN 'Monday' THEN 1
+          WHEN 'Tuesday' THEN 2
+          WHEN 'Wednesday' THEN 3
+          WHEN 'Thursday' THEN 4
+          WHEN 'Friday' THEN 5
+          WHEN 'Saturday' THEN 6
+        END`,
+        'ASC'
+      );
+
+      const mealPlans = await queryBuilder.getMany();
+      
+      this.logger.debug(`Found ${mealPlans.length} meal plans`);
+
+      return {
+        items: mealPlans,
+        total: mealPlans.length
+      };
+    } catch (error) {
+      this.logger.error(`Error in findAll for hostelId ${hostelId}:`, error);
+      throw error;
     }
-
-    // Order by day of week (Sunday = 0, Monday = 1, etc.)
-    queryBuilder.orderBy(
-      `CASE 
-        WHEN mealPlan.day = 'Sunday' THEN 0
-        WHEN mealPlan.day = 'Monday' THEN 1
-        WHEN mealPlan.day = 'Tuesday' THEN 2
-        WHEN mealPlan.day = 'Wednesday' THEN 3
-        WHEN mealPlan.day = 'Thursday' THEN 4
-        WHEN mealPlan.day = 'Friday' THEN 5
-        WHEN mealPlan.day = 'Saturday' THEN 6
-      END`
-    );
-
-    const mealPlans = await queryBuilder.getMany();
-
-    return {
-      items: mealPlans,
-      total: mealPlans.length
-    };
   }
 
   async findOne(id: string, hostelId?: string) {
@@ -130,32 +140,43 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
   }
 
   async getWeeklyMealPlan(hostelId?: string) {
-    const allMealPlans = await this.findAll(hostelId);
-    
-    // Create a map for easy access by day
-    const mealPlanMap = new Map();
-    allMealPlans.items.forEach(plan => {
-      mealPlanMap.set(plan.day, plan);
-    });
+    try {
+      this.logger.debug(`Getting weekly meal plan for hostelId: ${hostelId}`);
+      
+      const allMealPlans = await this.findAll(hostelId);
+      
+      this.logger.debug(`Found ${allMealPlans.items.length} meal plans`);
+      
+      // Create a map for easy access by day
+      const mealPlanMap = new Map();
+      allMealPlans.items.forEach(plan => {
+        mealPlanMap.set(plan.day, plan);
+      });
 
-    // Create weekly structure with all days
-    const weeklyPlan = Object.values(DayOfWeek).map(day => {
-      const mealPlan = mealPlanMap.get(day);
-      return mealPlan || {
-        day,
-        breakfast: 'Not planned',
-        lunch: 'Not planned',
-        snacks: 'Not planned',
-        dinner: 'Not planned',
-        notes: null,
-        isActive: false
+      // Create weekly structure with all days
+      const weeklyPlan = Object.values(DayOfWeek).map(day => {
+        const mealPlan = mealPlanMap.get(day);
+        return mealPlan || {
+          day,
+          breakfast: 'Not planned',
+          lunch: 'Not planned',
+          snacks: 'Not planned',
+          dinner: 'Not planned',
+          notes: null,
+          isActive: false
+        };
+      });
+
+      this.logger.debug(`Generated weekly plan with ${weeklyPlan.length} days`);
+
+      return {
+        weeklyPlan,
+        totalDaysPlanned: allMealPlans.items.length
       };
-    });
-
-    return {
-      weeklyPlan,
-      totalDaysPlanned: allMealPlans.items.length
-    };
+    } catch (error) {
+      this.logger.error(`Error in getWeeklyMealPlan for hostelId ${hostelId}:`, error);
+      throw error;
+    }
   }
 
   async bulkCreateWeeklyPlan(weeklyPlanData: CreateMealPlanDto[], hostelId?: string) {

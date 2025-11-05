@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PaymentMethod, PaymentStatus, PaymentType } from '../entities/payment.entity';
 
@@ -79,6 +79,11 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsString()
   monthCovered?: string;
+
+  @ApiProperty({ description: 'Flag to identify configuration advance payment (set by system)', required: false })
+  @IsOptional()
+  @IsBoolean()
+  isConfigurationAdvance?: boolean;
 }
 
 export class InvoiceAllocationDto {

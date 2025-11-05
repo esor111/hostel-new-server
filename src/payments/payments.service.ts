@@ -161,7 +161,8 @@ export class PaymentsService {
       chequeDate: createPaymentDto.chequeDate,
       // NEW: Nepalese billing support
       paymentType: createPaymentDto.paymentType,
-      monthCovered: createPaymentDto.monthCovered
+      monthCovered: createPaymentDto.monthCovered,
+      isConfigurationAdvance: createPaymentDto.isConfigurationAdvance || false
     });
 
     const savedPayment = await this.paymentRepository.save(payment);

@@ -90,6 +90,15 @@ export class Payment extends BaseEntity {
   @Column({ name: 'month_covered', length: 20, nullable: true })
   monthCovered: string;
 
+  // Flag to identify configuration advance payment (initial payment during student setup)
+  // This is used to separate initial advance from regular payments for invoice calculations
+  @Column({ 
+    name: 'is_configuration_advance',
+    type: 'boolean',
+    default: false
+  })
+  isConfigurationAdvance: boolean;
+
   @Column({ name: 'bank_name', length: 100, nullable: true })
   bankName: string;
 

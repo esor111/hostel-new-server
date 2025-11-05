@@ -283,7 +283,8 @@ export class CreateMultiGuestBookingDto {
       duration: '6 months',
       notes: 'Group booking for university students',
       emergencyContact: '+9779876543211',
-      source: 'mobile_app'
+      source: 'mobile_app',
+      hostelId: 'hostel-123'
     }
   })
   @ValidateNested({ message: 'Booking data is invalid' })

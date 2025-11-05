@@ -131,7 +131,8 @@ export class AdvancePaymentService {
     amount: number, // Allow any amount, not just calculated fee
     hostelId: string,
     paymentDate: Date = new Date(),
-    paymentMethod: PaymentMethod = PaymentMethod.CASH
+    paymentMethod: PaymentMethod = PaymentMethod.CASH,
+    isConfigurationAdvance: boolean = false // NEW: Flag for configuration advance
   ): Promise<AdvancePaymentResult> {
     // Validate student exists
     const student = await this.studentRepository.findOne({
@@ -155,7 +156,8 @@ export class AdvancePaymentService {
       monthCovered: null, // REMOVED: No month association
       status: PaymentStatus.COMPLETED,
       notes: `Advance payment - Credit balance of NPR ${amount.toLocaleString()}`,
-      processedBy: 'advance_payment_system'
+      processedBy: 'advance_payment_system',
+      isConfigurationAdvance // NEW: Set configuration advance flag
     });
 
     const savedPayment = await this.paymentRepository.save(advancePayment);
