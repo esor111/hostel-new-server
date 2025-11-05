@@ -7,6 +7,7 @@ import { RoomLayout } from './entities/room-layout.entity';
 
 export interface BedPosition {
   id: string; // bed1, bed2, etc.
+  bedIdentifier?: string; // Optional bedIdentifier for matching (may be sent from frontend)
   x: number;
   y: number;
   width: number;
@@ -103,35 +104,67 @@ export class BedSyncService {
       for (let i = 0; i < bedPositions.length; i++) {
         const position = bedPositions[i];
         const layoutBedId = position.id;
+        const layoutBedIdentifier = position.bedIdentifier; // May be present from frontend
 
-        // Try to find exact match first (for occupied beds)
-        let matchedBed = existingBeds.find(bed => 
-          bed.bedIdentifier === layoutBedId && !processedBedIds.has(bed.id)
-        );
+        // 🔧 ENHANCED MATCHING: Try multiple strategies to find the correct bed
+        // Strategy 1: Match by UUID (when frontend sends bed.id)
+        // Strategy 2: Match by bedIdentifier (when frontend sends bedIdentifier)
+        // Strategy 3: Match by position.bedIdentifier if provided
+        let matchedBed = existingBeds.find(bed => {
+          if (processedBedIds.has(bed.id)) {
+            return false; // Already processed
+          }
+          
+          // Match by UUID
+          if (bed.id === layoutBedId) {
+            this.logger.log(`🎯 UUID match: ${layoutBedId} → ${bed.bedIdentifier}`);
+            return true;
+          }
+          
+          // Match by bedIdentifier
+          if (bed.bedIdentifier === layoutBedId) {
+            this.logger.log(`🎯 bedIdentifier match: ${layoutBedId} → ${bed.bedIdentifier}`);
+            return true;
+          }
+          
+          // Match by position.bedIdentifier if provided
+          if (layoutBedIdentifier && bed.bedIdentifier === layoutBedIdentifier) {
+            this.logger.log(`🎯 position.bedIdentifier match: ${layoutBedIdentifier} → ${bed.bedIdentifier}`);
+            return true;
+          }
+          
+          return false;
+        });
 
         if (matchedBed) {
-          // EXACT MATCH - Just update metadata, don't change bedIdentifier
-          this.logger.log(`✅ Exact match: ${layoutBedId} (${matchedBed.status})`);
+          // EXACT MATCH - Just update metadata, PRESERVE STATUS for occupied/reserved beds
+          this.logger.log(`✅ Exact match found: position="${layoutBedId}" → bed="${matchedBed.bedIdentifier}" (${matchedBed.status})`);
+          
+          // 🔒 CRITICAL: NEVER reset occupied/reserved bed status
+          const preserveStatus = matchedBed.status === BedStatus.OCCUPIED || matchedBed.status === BedStatus.RESERVED;
           
           await this.bedRepository.update(matchedBed.id, {
             gender: (position.gender as 'Male' | 'Female' | 'Any') || matchedBed.gender,
             monthlyRate: position.bedDetails?.monthlyRate || room.monthlyRate,
             description: `Bed ${matchedBed.bedNumber} in ${room.name}`,
-            status: matchedBed.status === BedStatus.OCCUPIED || matchedBed.status === BedStatus.RESERVED 
-              ? matchedBed.status 
-              : BedStatus.AVAILABLE
+            // PRESERVE the existing status for occupied/reserved beds
+            status: preserveStatus ? matchedBed.status : BedStatus.AVAILABLE
           });
+          
+          if (preserveStatus) {
+            this.logger.log(`🔒 PRESERVED ${matchedBed.status} status for bed ${matchedBed.bedIdentifier}`);
+          }
           
           processedBedIds.add(matchedBed.id);
           continue;
         }
 
-        // No exact match - try to reuse available bed
+        // No exact match - try to reuse ONLY available beds (not occupied/reserved)
         matchedBed = availableBeds.find(bed => !processedBedIds.has(bed.id));
         
         if (matchedBed) {
           // REUSE AVAILABLE BED - Safe to update bedIdentifier
-          this.logger.log(`🔄 Reusing bed ${matchedBed.bedIdentifier} → ${layoutBedId}`);
+          this.logger.log(`🔄 Reusing available bed ${matchedBed.bedIdentifier} → ${layoutBedId}`);
           
           await this.bedRepository.update(matchedBed.id, {
             bedIdentifier: layoutBedId,
