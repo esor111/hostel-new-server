@@ -401,23 +401,42 @@ export class RoomsNewService {
         continue;
       }
       // Find matching bed entity - try multiple matching strategies
-      let matchingBed = room.beds?.find(bed => bed.bedIdentifier === position.id);
-      
-      // If not found by exact match, try to find by ending with position.id
-      if (!matchingBed) {
-        matchingBed = room.beds?.find(bed => bed.bedIdentifier.endsWith(`-${position.id}`));
+      // STRATEGY 1: Match by UUID (most important for booking compatibility)
+      let matchingBed = room.beds?.find(bed => bed.id === position.id);
+      if (matchingBed) {
+        console.log(`✅ STRATEGY 1: UUID match for position ${position.id} → bed ${matchingBed.bedIdentifier} (${matchingBed.status})`);
       }
       
-      // If still not found, try to find by bed number
+      // STRATEGY 2: Match by exact bedIdentifier
       if (!matchingBed) {
-        const bedNumber = position.id.replace('bed', '');
-        matchingBed = room.beds?.find(bed => bed.bedNumber === bedNumber);
+        matchingBed = room.beds?.find(bed => bed.bedIdentifier === position.id);
+        if (matchingBed) {
+          console.log(`✅ STRATEGY 2: Exact bedIdentifier match for position ${position.id} → bed ${matchingBed.bedIdentifier} (${matchingBed.status})`);
+        }
+      }
+      
+      // STRATEGY 3: Match by bedIdentifier suffix (e.g., "R-127-bed1" matches "bed1")
+      if (!matchingBed) {
+        matchingBed = room.beds?.find(bed => bed.bedIdentifier.endsWith(`-${position.id}`));
+        if (matchingBed) {
+          console.log(`✅ STRATEGY 3: Suffix match for position ${position.id} → bed ${matchingBed.bedIdentifier} (${matchingBed.status})`);
+        }
+      }
+      
+      // STRATEGY 4: Match by bed number
+      if (!matchingBed) {
+        const bedNumber = position.id.replace('bed', '').replace(/[^0-9]/g, '');
+        if (bedNumber) {
+          matchingBed = room.beds?.find(bed => bed.bedNumber === bedNumber);
+          if (matchingBed) {
+            console.log(`✅ STRATEGY 4: Bed number match for position ${position.id} (bedNumber: ${bedNumber}) → bed ${matchingBed.bedIdentifier} (${matchingBed.status})`);
+          }
+        }
       }
 
       if (!matchingBed) {
-        console.log(`⚠️ No matching bed entity for position: ${position.id}`);
-        console.log(`⚠️ Available bed identifiers: ${room.beds?.map(b => b.bedIdentifier).join(', ') || 'none'}`);
-        // Don't create on-the-fly - beds should be created during room creation
+        console.log(`❌ NO MATCH for position: ${position.id}`);
+        console.log(`📋 Available beds: ${room.beds?.map(b => `${b.id}|${b.bedIdentifier}|${b.bedNumber}|${b.status}`).join(', ') || 'none'}`);
       }
 
       // Calculate orientation
