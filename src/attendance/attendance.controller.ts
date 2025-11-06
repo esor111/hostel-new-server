@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Body, Query, Param, UseGuards, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
-import { CheckInDto, CheckOutDto, AttendanceFiltersDto } from './dto';
+import { CheckInDto, CheckOutDto, StudentCheckInDto, StudentCheckOutDto, AttendanceFiltersDto } from './dto';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
@@ -27,7 +27,7 @@ export class AttendanceController {
   @ApiBearerAuth()
   async studentCheckIn(
     @CurrentUser() user: JwtPayload,
-    @Body() dto: { hostelId: string; notes?: string }
+    @Body() dto: StudentCheckInDto
   ) {
     // Auto-resolve student from userId in token
     const student = await this.studentsService.findByUserId(user.id, dto.hostelId);
@@ -67,7 +67,7 @@ export class AttendanceController {
   @ApiBearerAuth()
   async studentCheckOut(
     @CurrentUser() user: JwtPayload,
-    @Body() dto: { hostelId: string; notes?: string }
+    @Body() dto: StudentCheckOutDto
   ) {
     // Auto-resolve student from userId in token
     const student = await this.studentsService.findByUserId(user.id, dto.hostelId);

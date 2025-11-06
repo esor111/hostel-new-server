@@ -1,12 +1,26 @@
 import { IsString, IsUUID, IsOptional } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CheckInDto {
+  @ApiProperty({
+    description: 'Student UUID',
+    example: '123e4567-e89b-12d3-a456-426614174000'
+  })
   @IsUUID()
   studentId: string;
 
+  @ApiProperty({
+    description: 'Hostel UUID',
+    example: '123e4567-e89b-12d3-a456-426614174001'
+  })
   @IsUUID()
   hostelId: string;
 
+  @ApiProperty({
+    description: 'Optional notes for check-in',
+    example: 'Going to library',
+    required: false
+  })
   @IsOptional()
   @IsString()
   notes?: string;

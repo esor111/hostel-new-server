@@ -1000,11 +1000,16 @@ export class RoomsService extends HostelScopedService<Room> {
       // If no layoutData, construct from individual fields
       if (!enhancedLayout) {
         enhancedLayout = {
-          dimensions: activeLayout.dimensions,
+          // dimensions: activeLayout.dimensions, // 🔧 REMOVED: Don't include dimensions in room list
           bedPositions: activeLayout.bedPositions,
           furnitureLayout: activeLayout.furnitureLayout,
           layoutType: activeLayout.layoutType
         };
+      }
+
+      // 🔧 Remove dimensions from layout to clean up frontend display
+      if (enhancedLayout && enhancedLayout.dimensions) {
+        delete enhancedLayout.dimensions;
       }
 
       // Layout data retrieved successfully
