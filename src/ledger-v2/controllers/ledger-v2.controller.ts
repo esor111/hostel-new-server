@@ -31,10 +31,12 @@ import {
   ReconciliationResultV2Dto,
   ReversalResultV2Dto
 } from '../dto/ledger-response-v2.dto';
-import { HostelContext } from '../../hostel/decorators/hostel-context.decorator';
+import { HostelContext, GetHostelId } from '../../hostel/decorators/hostel-context.decorator';
+import { HostelAuthWithContextGuard } from '../../auth/guards/hostel-auth-with-context.guard';
 
 @ApiTags('ledger-v2')
 @Controller('ledger-v2')
+@UseGuards(HostelAuthWithContextGuard)
 @ApiBearerAuth()
 export class LedgerV2Controller {
   constructor(private readonly ledgerV2Service: LedgerV2Service) {}
@@ -59,7 +61,7 @@ export class LedgerV2Controller {
   @ApiQuery({ name: 'includeReversed', required: false, type: Boolean, description: 'Include reversed entries' })
   async getAllLedgerEntries(
     @Query(ValidationPipe) filters: LedgerFiltersV2Dto,
-    @HostelContext() hostelId?: string
+    @GetHostelId() hostelId?: string
   ) {
     const result = await this.ledgerV2Service.findAll(filters, hostelId);
     
@@ -80,7 +82,7 @@ export class LedgerV2Controller {
     description: 'Ledger statistics retrieved successfully',
     type: LedgerStatsResponseV2Dto
   })
-  async getLedgerStats(@HostelContext() hostelId?: string) {
+  async getLedgerStats(@GetHostelId() hostelId?: string) {
     const stats = await this.ledgerV2Service.getStats(hostelId);
     
     return {
@@ -131,6 +133,27 @@ export class LedgerV2Controller {
       status: HttpStatus.OK,
       message: 'Student balance retrieved successfully',
       data: balance
+    };
+  }
+
+  @Get('students/:studentId/financial-summary')
+  @ApiOperation({ 
+    summary: 'Get comprehensive financial summary for a student',
+    description: 'Retrieve complete financial summary including current balance, total payments, total invoiced, and initial advance (shown separately)'
+  })
+  @ApiParam({ name: 'studentId', description: 'Student ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Financial summary retrieved successfully'
+  })
+  @ApiResponse({ status: 404, description: 'Student not found' })
+  async getStudentFinancialSummary(@Param('studentId') studentId: string, @GetHostelId() hostelId?: string) {
+    const summary = await this.ledgerV2Service.getStudentFinancialSummary(studentId, hostelId);
+    
+    return {
+      status: HttpStatus.OK,
+      message: 'Financial summary retrieved successfully',
+      data: summary
     };
   }
 
@@ -262,7 +285,7 @@ export class LedgerV2Controller {
     description: 'Reconcile balances for all students (admin operation)'
   })
   @ApiResponse({ status: 200, description: 'Bulk reconciliation completed' })
-  async bulkReconcileBalances(@HostelContext() hostelId?: string) {
+  async bulkReconcileBalances(@GetHostelId() hostelId?: string) {
     // This would be implemented to reconcile all students
     // For now, return a placeholder response
     return {

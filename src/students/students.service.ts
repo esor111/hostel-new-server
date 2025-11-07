@@ -563,6 +563,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
         const ledgerV2Service = new LedgerV2Service(
           ledgerV2Repository as any,
           queryRunner.manager.getRepository('Student') as any,
+          queryRunner.manager.getRepository('Payment') as any,
+          queryRunner.manager.getRepository('Invoice') as any,
           null as any, // transactionService - will handle manually
           null as any  // calculationService - will handle manually
         );

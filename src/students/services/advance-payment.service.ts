@@ -167,13 +167,17 @@ export class AdvancePaymentService {
 
     const savedPayment = await this.paymentRepository.save(advancePayment);
 
-    // Create ledger entry as credit (no month association)
-    const ledgerEntry = await this.ledgerV2Service.createAdjustmentEntry({
-      studentId,
-      amount,
-      description: `Advance payment credit - ${student.name}`,
-      type: 'credit'
-    }, hostelId);
+    // ✅ FIX: Only create ledger entry for non-configuration advances
+    // Initial advance (isConfigurationAdvance=true) should NOT affect ledger balance
+    let ledgerEntry = null;
+    if (!isConfigurationAdvance) {
+      ledgerEntry = await this.ledgerV2Service.createAdjustmentEntry({
+        studentId,
+        amount,
+        description: `Advance payment credit - ${student.name}`,
+        type: 'credit'
+      }, hostelId);
+    }
 
     // NEW: Do NOT update student.advancePaymentMonth
 
@@ -181,8 +185,10 @@ export class AdvancePaymentService {
       success: true,
       paymentId: savedPayment.id,
       amount,
-      ledgerEntryId: ledgerEntry.id,
-      message: `Advance payment of NPR ${amount.toLocaleString()} processed as credit balance`
+      ledgerEntryId: ledgerEntry?.id || null,
+      message: isConfigurationAdvance
+        ? `Initial advance of NPR ${amount.toLocaleString()} recorded (checkout settlement only)`
+        : `Advance payment of NPR ${amount.toLocaleString()} processed as credit balance`
     };
   }
 

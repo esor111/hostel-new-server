@@ -12,9 +12,11 @@ import { AdminCharge } from '../admin-charges/entities/admin-charge.entity';
 import { Discount } from '../discounts/entities/discount.entity';
 import { Invoice } from '../invoices/entities/invoice.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
+import { HostelModule } from '../hostel/hostel.module';
 
 @Module({
   imports: [
+    HostelModule,
     TypeOrmModule.forFeature([
       // New V2 entities
       LedgerEntryV2,

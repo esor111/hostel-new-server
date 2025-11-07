@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LedgerEntryV2 } from '../entities/ledger-entry-v2.entity';
 import { Student } from '../../students/entities/student.entity';
-import { Payment } from '../../payments/entities/payment.entity';
+import { Payment, PaymentStatus } from '../../payments/entities/payment.entity';
 import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
 import { Discount } from '../../discounts/entities/discount.entity';
 import { Invoice } from '../../invoices/entities/invoice.entity';
@@ -19,6 +19,10 @@ export class LedgerV2Service {
     private ledgerRepository: Repository<LedgerEntryV2>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
+    @InjectRepository(Invoice)
+    private invoiceRepository: Repository<Invoice>,
     private transactionService: LedgerTransactionService,
     private calculationService: LedgerCalculationService,
   ) {}
@@ -138,6 +142,71 @@ export class LedgerV2Service {
       creditBalance: totalCredits,
       balanceType: this.calculationService.determineBalanceType(currentBalance),
       totalEntries: parseInt(result?.totalEntries) || 0
+    };
+  }
+
+  /**
+   * ✅ NEW: Get comprehensive financial summary including initial advance
+   */
+  async getStudentFinancialSummary(studentId: string, hostelId?: string) {
+    // Get regular balance (excludes initial advance automatically since no ledger entry)
+    const balance = await this.getStudentBalance(studentId, hostelId);
+
+    // Get initial advance separately from payments table
+    const initialAdvancePayment = await this.paymentRepository.findOne({
+      where: {
+        studentId,
+        isConfigurationAdvance: true,
+        status: PaymentStatus.COMPLETED
+      },
+      order: { createdAt: 'DESC' }
+    });
+
+    // Get all regular payments (exclude initial advance)
+    const regularPaymentsResult = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .select('SUM(payment.amount)', 'total')
+      .where('payment.studentId = :studentId', { studentId })
+      .andWhere('payment.isConfigurationAdvance = false')
+      .andWhere('payment.status = :status', { status: PaymentStatus.COMPLETED })
+      .getRawOne();
+
+    // Get all invoices
+    const invoicesResult = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .select('SUM(invoice.total)', 'total')
+      .where('invoice.studentId = :studentId', { studentId })
+      .getRawOne();
+
+    const totalPayments = parseFloat(regularPaymentsResult?.total) || 0;
+    const totalInvoiced = parseFloat(invoicesResult?.total) || 0;
+    const currentBalance = totalPayments - totalInvoiced;
+
+    return {
+      studentId,
+      
+      // Regular balance (excludes initial advance)
+      currentBalance,
+      totalInvoiced,
+      totalPayments,  // Excludes initial advance
+      balanceType: this.calculationService.determineBalanceType(currentBalance),
+      
+      // Initial advance (separate)
+      initialAdvance: {
+        amount: initialAdvancePayment ? parseFloat(initialAdvancePayment.amount.toString()) : 0,
+        paymentDate: initialAdvancePayment?.paymentDate || null,
+        paymentId: initialAdvancePayment?.id || null,
+        status: initialAdvancePayment ? 'active' : 'none',
+        note: 'Locked for checkout settlement'
+      },
+      
+      // Summary
+      amountDue: currentBalance > 0 ? currentBalance : 0,
+      advanceAvailable: currentBalance < 0 ? Math.abs(currentBalance) : 0,
+      
+      // Metadata
+      totalEntries: balance.totalEntries,
+      lastUpdated: new Date()
     };
   }
 

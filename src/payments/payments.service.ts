@@ -188,6 +188,13 @@ export class PaymentsService {
 
     const payment = await this.findOne(id, hostelId);
 
+    // ✅ PROTECTION: Prevent updates to initial configuration advance
+    if (payment.isConfigurationAdvance) {
+      throw new BadRequestException(
+        'Cannot modify initial configuration advance. This payment is locked for checkout settlement.'
+      );
+    }
+
     // Update main payment entity
     await this.paymentRepository.update(id, {
       amount: updatePaymentDto.amount,
@@ -374,6 +381,13 @@ export class PaymentsService {
     }
 
     const payment = await this.findOne(id, hostelId);
+
+    // ✅ PROTECTION: Prevent deletion of initial configuration advance
+    if (payment.isConfigurationAdvance) {
+      throw new BadRequestException(
+        'Cannot delete initial configuration advance. This payment is locked for checkout settlement.'
+      );
+    }
 
     // Soft delete - mark as cancelled
     await this.paymentRepository.update(id, {
