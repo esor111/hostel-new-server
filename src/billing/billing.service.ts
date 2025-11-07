@@ -136,8 +136,13 @@ export class BillingService {
 
     for (const financial of student.financialInfo.filter(f => f.isActive)) {
       totalAmount += parseFloat(financial.amount.toString());
+      // For ADDITIONAL charges, use the notes field as description (e.g., "Parking Fee", "Gym Access")
+      const description = financial.feeType === FeeType.ADDITIONAL && financial.notes
+        ? financial.notes
+        : this.getFeeTypeDescription(financial.feeType);
+      
       lineItems.push({
-        description: this.getFeeTypeDescription(financial.feeType),
+        description,
         amount: parseFloat(financial.amount.toString()),
         feeType: financial.feeType
       });
@@ -215,8 +220,14 @@ export class BillingService {
         return 'Laundry Service';
       case FeeType.FOOD:
         return 'Food Service';
-      default:
+      case FeeType.UTILITIES:
+        return 'Utilities (WiFi, etc.)';
+      case FeeType.MAINTENANCE:
+        return 'Maintenance Fee';
+      case FeeType.ADDITIONAL:
         return 'Additional Charge';
+      default:
+        return 'Other Charge';
     }
   }
 

@@ -7,7 +7,8 @@ export enum FeeType {
   LAUNDRY = 'laundry',
   FOOD = 'food',
   UTILITIES = 'utilities',
-  MAINTENANCE = 'maintenance'
+  MAINTENANCE = 'maintenance',
+  ADDITIONAL = 'additional'
 }
 
 @Entity('student_financial_info')

@@ -107,14 +107,19 @@ export class AdvancePaymentService {
             amount
           });
           break;
+        case FeeType.ADDITIONAL:
+          // Additional charges (parking, gym, etc.) - use description from notes
+          calculation.breakdown.push({
+            feeType: info.feeType,
+            description: info.notes || 'Additional Charge',
+            amount
+          });
+          break;
       }
     }
 
-    calculation.totalMonthlyFee = calculation.baseMonthlyFee + 
-                                  calculation.laundryFee + 
-                                  calculation.foodFee + 
-                                  calculation.utilitiesFee + 
-                                  calculation.maintenanceFee;
+    // Calculate total from all breakdown items
+    calculation.totalMonthlyFee = calculation.breakdown.reduce((sum, item) => sum + item.amount, 0);
 
     if (calculation.totalMonthlyFee <= 0) {
       throw new BadRequestException('Total monthly fee must be greater than zero');

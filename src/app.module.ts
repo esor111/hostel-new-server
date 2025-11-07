@@ -22,6 +22,7 @@ import { AdminChargesModule } from './admin-charges/admin-charges.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BillingModule } from './billing/billing.module';
 import { NotificationCommunicationModule } from './notification-communication/notification-communication.module';
+import { NotificationModule } from './notification/notification.module';
 import { AuthModule } from './auth/auth.module';
 import { MealPlansModule } from './meal-plans/meal-plans.module';
 import { AttendanceModule } from './attendance/attendance.module';
@@ -56,6 +57,7 @@ import { HostelContextMiddleware } from './hostel/middleware/hostel-context.midd
     DashboardModule,
     BillingModule,
     NotificationCommunicationModule,
+    NotificationModule,
     AuthModule,
     MealPlansModule,
     AttendanceModule,

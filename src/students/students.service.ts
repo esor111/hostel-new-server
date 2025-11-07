@@ -1087,7 +1087,23 @@ export class StudentsService { // Removed HostelScopedService extension for back
       });
     }
 
+    // NEW: Store additional charges as recurring monthly fees
+    if (configData.additionalCharges && configData.additionalCharges.length > 0) {
+      const validAdditionalCharges = configData.additionalCharges.filter(
+        charge => charge.description && charge.description.trim() !== '' && charge.amount > 0
+      );
 
+      for (const charge of validAdditionalCharges) {
+        financialEntries.push({
+          studentId,
+          feeType: FeeType.ADDITIONAL,
+          amount: charge.amount,
+          effectiveFrom: new Date(),
+          isActive: true,
+          notes: charge.description // Store description in notes field
+        });
+      }
+    }
 
     // Save financial entries
     if (financialEntries.length > 0) {
@@ -1124,24 +1140,17 @@ export class StudentsService { // Removed HostelScopedService extension for back
       throw new BadRequestException(`Configuration failed: ${error.message}`);
     }
 
-    // AUTO-CALCULATE ADVANCE PAYMENT: Monthly fees + Additional charges
+    // AUTO-CALCULATE ADVANCE PAYMENT: Use calculateMonthlyFee() for consistency
     let advancePaymentRecord = null;
     try {
-      // Calculate total monthly fee from financial entries
-      const totalMonthlyFee = financialEntries.reduce((sum, entry) => sum + entry.amount, 0);
-      
-      // Calculate total additional charges
-      const totalAdditionalCharges = (configData.additionalCharges || [])
-        .reduce((sum, charge) => sum + (charge.amount || 0), 0);
-      
-      // Total advance payment = Monthly fees + Additional charges
-      const totalAdvancePayment = totalMonthlyFee + totalAdditionalCharges;
+      // Use the same calculation method as monthly invoices for consistency
+      const feeCalculation = await this.advancePaymentService.calculateMonthlyFee(studentId);
+      const totalAdvancePayment = feeCalculation.totalMonthlyFee;
       
       if (totalAdvancePayment > 0) {
-        console.log(`💰 Auto-calculating advance payment:`);
-        console.log(`   - Monthly fees: NPR ${totalMonthlyFee.toLocaleString()}`);
-        console.log(`   - Additional charges: NPR ${totalAdditionalCharges.toLocaleString()}`);
-        console.log(`   - Total advance: NPR ${totalAdvancePayment.toLocaleString()}`);
+        console.log(`💰 Auto-calculating advance payment using calculateMonthlyFee():`);
+        console.log(`   - Total Monthly Fee (includes all charges): NPR ${totalAdvancePayment.toLocaleString()}`);
+        console.log(`   - Breakdown:`, feeCalculation.breakdown.map(b => `${b.description}: ${b.amount}`).join(', '));
         
         advancePaymentRecord = await this.advancePaymentService.processAdvancePayment(
           studentId,
@@ -1194,10 +1203,9 @@ export class StudentsService { // Removed HostelScopedService extension for back
       }
     }
 
-    const totalMonthlyFee = financialEntries.reduce((sum, entry) => sum + entry.amount, 0);
-    const totalAdditionalCharges = (configData.additionalCharges || [])
-      .reduce((sum, charge) => sum + (charge.amount || 0), 0);
-    const totalAdvancePayment = totalMonthlyFee + totalAdditionalCharges;
+    // Get final calculation for response
+    const finalFeeCalculation = await this.advancePaymentService.calculateMonthlyFee(studentId);
+    const totalMonthlyFee = finalFeeCalculation.totalMonthlyFee;
 
     return {
       success: true,
@@ -1205,8 +1213,7 @@ export class StudentsService { // Removed HostelScopedService extension for back
       studentId,
       configurationDate,
       totalMonthlyFee,
-      totalAdditionalCharges,
-      totalAdvancePayment,
+      feeBreakdown: finalFeeCalculation.breakdown,
       guardianConfigured: !!(configData.guardian?.name || configData.guardian?.phone),
       academicConfigured: !!(configData.course || configData.institution),
       firstInvoice: {
@@ -1220,11 +1227,8 @@ export class StudentsService { // Removed HostelScopedService extension for back
       },
       advancePayment: advancePaymentRecord ? {
         paymentId: advancePaymentRecord.paymentId,
-        amount: totalAdvancePayment,
-        breakdown: {
-          monthlyFees: totalMonthlyFee,
-          additionalCharges: totalAdditionalCharges
-        },
+        amount: totalMonthlyFee,
+        breakdown: finalFeeCalculation.breakdown,
         recorded: true
       } : null
     };
