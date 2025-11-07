@@ -1720,61 +1720,48 @@ export class MultiGuestBookingService {
       }
     }
 
-    // Generate unique email and phone for each guest to avoid unique constraint violations
-    let guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}@guest.booking`;
+  // ✅ FIX: Use real contact info from booking instead of generating random values
+  // All guests from the same booking share the booking's contact information
+  const guestEmail = booking.contactEmail;
+  const guestPhone = booking.contactPhone;
 
-    // Check if email already exists and modify if needed
-    const existingEmailStudent = await manager.findOne(Student, { where: { email: guestEmail } });
-    if (existingEmailStudent) {
-      const timestamp = Date.now().toString().slice(-6);
-      guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}.${guest.id}.${timestamp}@guest.booking`;
-      this.logger.warn(`Generated email already exists, using ${guestEmail} instead`);
-    }
+  // Check if a student with this email or phone already exists
+  const existingStudent = await manager.findOne(Student, {
+    where: [
+      { email: guestEmail },
+      { phone: guestPhone }
+    ]
+  });
 
-    // Generate unique phone number with strict 20-character limit
-    let guestPhone = booking.contactPhone; // Use booking contact phone as base
-    if (guestPhone) {
-      // Generate phone from booking contact phone with unique suffix
-      const basePhone = booking.contactPhone.replace(/[^0-9]/g, ''); // Keep only digits
-      const uniqueSuffix = guest.id.slice(-4); // Last 4 chars of guest ID
-      const timestamp = Date.now().toString().slice(-3); // Last 3 digits of timestamp
+  if (existingStudent) {
+    // Student already exists - link the guest to existing student instead of creating duplicate
+    this.logger.log(`✅ Guest "${guest.guestName}" linked to existing student ${existingStudent.id} (${existingStudent.name})`);
+    
+    // Update the guest's status to confirmed since student exists
+    guest.status = GuestStatus.CONFIRMED;
+    await manager.save(BookingGuest, guest);
+    
+    // Return existing student instead of creating new one
+    return existingStudent;
+  }
 
-      // Ensure total length stays under 20 characters
-      const maxBaseLength = 20 - uniqueSuffix.length - timestamp.length;
-      const truncatedBase = basePhone.slice(0, maxBaseLength);
-      guestPhone = `${truncatedBase}${uniqueSuffix}${timestamp}`;
-    } else {
-      // Since we don't have guest phone, use booking phone with uniqueness
-      const existingStudent = await manager.findOne(Student, { where: { phone: guestPhone } });
-      if (existingStudent) {
-        // Generate unique phone by modifying the existing one
-        const basePhone = guestPhone.replace(/[^0-9]/g, '').slice(0, 15); // Keep only digits, max 15
-        const timestamp = Date.now().toString().slice(-4); // Last 4 digits
-        guestPhone = `${basePhone}${timestamp}`;
-        this.logger.warn(`Phone already exists, using ${guestPhone} instead`);
-      }
-    }
+  // No existing student found - create new student with REAL contact info
+  this.logger.log(`✅ Creating new student for guest "${guest.guestName}" with real contact: ${guestEmail}, ${guestPhone}`);
 
-    // Final safety check: ensure phone is within 20 character limit
-    if (guestPhone.length > 20) {
-      guestPhone = guestPhone.slice(0, 20);
-      this.logger.warn(`Phone number truncated to fit database limit: ${guestPhone}`);
-    }
-
-    const student = manager.create(Student, {
-      userId: booking.userId, // Link student to the user who created the booking
-      name: guest.guestName,
-      phone: guestPhone,
-      email: guestEmail,
-      enrollmentDate: new Date(),
-      status: StudentStatus.PENDING_CONFIGURATION, // Fixed: Use correct status for pending configuration
-      address: booking.address, // Use booking address instead of guest address
-      bedNumber: guest.assignedBedNumber,
-      roomId: roomUuid, // Fixed: Use UUID instead of room number
-      hostelId: booking.hostelId, // Ensure student belongs to the same hostel as the booking
-      isConfigured: false, // Ensure this is false for pending configuration
-      // bookingRequestId: null // Removed: Don't reference deleted booking_requests
-    });
+  const student = manager.create(Student, {
+    userId: booking.userId, // Link student to the user who created the booking
+    name: guest.guestName,
+    phone: guestPhone,
+    email: guestEmail,
+    enrollmentDate: new Date(),
+    status: StudentStatus.PENDING_CONFIGURATION, // Fixed: Use correct status for pending configuration
+    address: booking.address, // Use booking address instead of guest address
+    bedNumber: guest.assignedBedNumber,
+    roomId: roomUuid, // Fixed: Use UUID instead of room number
+    hostelId: booking.hostelId, // Ensure student belongs to the same hostel as the booking
+    isConfigured: false, // Ensure this is false for pending configuration
+    // bookingRequestId: null // Removed: Don't reference deleted booking_requests
+  });
 
     const savedStudent = await manager.save(Student, student);
 
