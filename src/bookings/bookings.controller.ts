@@ -234,8 +234,17 @@ export class BookingsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Confirm multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking confirmed successfully' })
-  async confirmMultiGuestBooking(@Param('id') id: string, @Body() confirmDto: ConfirmBookingDto) {
-    const result = await this.multiGuestBookingService.confirmBooking(id, confirmDto.processedBy);
+  async confirmMultiGuestBooking(
+    @Param('id') id: string, 
+    @Body() confirmDto: ConfirmBookingDto,
+    @Request() req
+  ) {
+    const result = await this.multiGuestBookingService.confirmBooking(
+      id, 
+      confirmDto.processedBy,
+      undefined,
+      req.user
+    );
 
     return {
       status: HttpStatus.OK,

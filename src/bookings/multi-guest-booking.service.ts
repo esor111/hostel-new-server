@@ -10,9 +10,9 @@ import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
 import { CreateBookingDto, ApproveBookingDto, RejectBookingDto } from './dto/create-booking.dto';
 import { BedSyncService } from '../rooms/bed-sync.service';
 import { BookingValidationService } from './validation/booking-validation.service';
-import { NotificationCommunicationService } from '../notification-communication/notification-communication.service';
 import { ConfigService } from '@nestjs/config';
 import { BusinessIntegrationService } from '../hostel/services/business-integration.service';
+import { HostelNotificationService } from './hostel-notification.service';
 
 
 export interface BookingFilters {
@@ -94,9 +94,9 @@ export class MultiGuestBookingService {
     private dataSource: DataSource,
     private bedSyncService: BedSyncService,
     private validationService: BookingValidationService,
-    private notificationService: NotificationCommunicationService,
     private configService: ConfigService,
     private businessIntegrationService: BusinessIntegrationService,
+    private hostelNotificationService: HostelNotificationService,
   ) { }
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string, userId?: string): Promise<any> {
@@ -176,22 +176,6 @@ export class MultiGuestBookingService {
         );
 
         this.logger.log(`✅ Created multi-guest booking ${savedBooking.bookingReference} with ${guests.length} guests`);
-
-        // Trigger notification for new booking request (to hostel admins)
-        try {
-          await this.notificationService.sendBookingRequestNotification({
-            bookingId: savedBooking.id,
-            contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-            hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
-            checkInDate: bookingData.checkInDate,
-            contactName: bookingData.contactPerson.name,
-            hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
-            guestCount: bookingData.guests.length
-          });
-          this.logger.log(`📱 Notification sent for new booking: ${savedBooking.bookingReference}`);
-        } catch (notificationError) {
-          this.logger.warn(`⚠️ Failed to send booking request notification: ${notificationError.message}`);
-        }
 
         // Return complete booking with guests using transaction manager
         const bookingWithGuests = await manager.findOne(MultiGuestBooking, {
@@ -314,7 +298,7 @@ export class MultiGuestBookingService {
     });
   }
 
-  async confirmBooking(id: string, processedBy?: string, hostelId?: string): Promise<ConfirmationResult> {
+  async confirmBooking(id: string, processedBy?: string, hostelId?: string, adminJwt?: any): Promise<ConfirmationResult> {
     this.logger.log(`Confirming multi-guest booking ${id}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -322,14 +306,14 @@ export class MultiGuestBookingService {
         // Try to find booking by UUID first, then by booking reference
         let booking = await manager.findOne(MultiGuestBooking, {
           where: { id },
-          relations: ['guests']
+          relations: ['guests', 'guests.bed', 'guests.bed.room']
         });
 
         // If not found by UUID, try by booking reference
         if (!booking) {
           booking = await manager.findOne(MultiGuestBooking, {
             where: { bookingReference: id },
-            relations: ['guests']
+            relations: ['guests', 'guests.bed', 'guests.bed.room']
           });
         }
 
@@ -451,22 +435,16 @@ export class MultiGuestBookingService {
 
         this.logger.log(`✅ Confirmed multi-guest booking ${booking.bookingReference} (${confirmedGuestCount}/${booking.totalGuests} guests, ${createdStudents.length} students created)`);
 
-        // Trigger notification for booking confirmation (to contact person)
-        try {
-          this.logger.log(`📱 Attempting to send booking confirmation notification for: ${booking.bookingReference}`);
-          await this.notificationService.sendBookingConfirmedNotification({
-            bookingId: booking.id,
-            contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-            hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
-            checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            contactName: booking.contactName,
-            hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
-            guestCount: confirmedGuestCount
-          });
-          this.logger.log(`📱 Booking confirmation notification sent successfully: ${booking.bookingReference}`);
-        } catch (notificationError) {
-          this.logger.warn(`⚠️ Failed to send booking confirmation notification: ${notificationError.message}`);
-          // Don't let notification failure cause transaction rollback
+        // 🆕 NEW: Send notification via express server
+        if (adminJwt) {
+          try {
+            this.logger.log(`📱 Sending notification via express server for: ${booking.bookingReference}`);
+            await this.hostelNotificationService.notifyUserOfConfirmation(booking, adminJwt);
+            this.logger.log(`✅ Notification sent successfully`);
+          } catch (notifError) {
+            this.logger.warn(`⚠️ Failed to send notification: ${notifError.message}`);
+            // Don't let notification failure cause transaction rollback
+          }
         }
 
         this.logger.log(`🎯 About to return confirmation result for booking ${booking.bookingReference}`);
@@ -1308,22 +1286,6 @@ export class MultiGuestBookingService {
 
         this.logger.log(`✅ Approved booking ${booking.bookingReference}`);
 
-        // Trigger notification for booking approval (to contact person)
-        try {
-          await this.notificationService.sendBookingApprovedNotification({
-            bookingId: id,
-            contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-            hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
-            checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            contactName: booking.contactName,
-            hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
-            guestCount: booking.totalGuests
-          });
-          this.logger.log(`📱 Booking approval notification sent: ${booking.bookingReference}`);
-        } catch (notificationError) {
-          this.logger.warn(`⚠️ Failed to send booking approval notification: ${notificationError.message}`);
-        }
-
         return {
           success: true,
           message: 'Booking approved successfully',
@@ -1392,22 +1354,6 @@ export class MultiGuestBookingService {
       await this.bedSyncService.handleBookingCancellation(bedIds, reason);
 
       this.logger.log(`✅ Admin rejected booking ${bookingId}`);
-
-      // Send rejection notification
-      try {
-        await this.notificationService.sendBookingRejectedNotification({
-          bookingId: booking.id,
-          contactPersonId: 'placeholder-user-id', // TODO: Map contact person to actual user ID
-          hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
-          checkInDate: booking.checkInDate ? booking.checkInDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          contactName: booking.contactName,
-          hostelName: this.configService.get('HOSTEL_NAME', 'Kaha Hostel'),
-          reason: reason
-        });
-        this.logger.log(`📱 Rejection notification sent for booking: ${booking.bookingReference}`);
-      } catch (notificationError) {
-        this.logger.warn(`⚠️ Failed to send rejection notification: ${notificationError.message}`);
-      }
 
       return {
         success: true,
