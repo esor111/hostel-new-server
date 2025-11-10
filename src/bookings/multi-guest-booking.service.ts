@@ -436,16 +436,16 @@ export class MultiGuestBookingService {
         this.logger.log(`✅ Confirmed multi-guest booking ${booking.bookingReference} (${confirmedGuestCount}/${booking.totalGuests} guests, ${createdStudents.length} students created)`);
 
         // 🆕 NEW: Send notification via express server
-        if (adminJwt) {
-          try {
-            this.logger.log(`📱 Sending notification via express server for: ${booking.bookingReference}`);
-            await this.hostelNotificationService.notifyUserOfConfirmation(booking, adminJwt);
-            this.logger.log(`✅ Notification sent successfully`);
-          } catch (notifError) {
-            this.logger.warn(`⚠️ Failed to send notification: ${notifError.message}`);
-            // Don't let notification failure cause transaction rollback
-          }
-        }
+        // if (adminJwt) {
+        //   try {
+        //     this.logger.log(`📱 Sending notification via express server for: ${booking.bookingReference}`);
+        //     await this.hostelNotificationService.notifyUserOfConfirmation(booking, adminJwt);
+        //     this.logger.log(`✅ Notification sent successfully`);
+        //   } catch (notifError) {
+        //     this.logger.warn(`⚠️ Failed to send notification: ${notifError.message}`);
+        //     // Don't let notification failure cause transaction rollback
+        //   }
+        // }
 
         this.logger.log(`🎯 About to return confirmation result for booking ${booking.bookingReference}`);
 
