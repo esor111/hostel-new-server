@@ -100,6 +100,9 @@ export class BedService {
       const savedBed = await this.bedRepository.save(bed);
       this.logger.log(`✅ Created bed ${savedBed.bedIdentifier}`);
 
+      // 🔧 Sync room's bedCount with actual bed count
+      await this.syncRoomBedCount(createBedDto.roomId);
+
       return savedBed;
     } catch (error) {
       this.logger.error(`❌ Error creating bed ${createBedDto.bedIdentifier}:`, error);
@@ -217,6 +220,9 @@ export class BedService {
       await this.bedRepository.delete(id);
 
       this.logger.log(`✅ Deleted bed ${bed.bedIdentifier}`);
+
+      // 🔧 Sync room's bedCount with actual bed count
+      await this.syncRoomBedCount(bed.roomId);
     } catch (error) {
       this.logger.error(`❌ Error removing bed ${id}:`, error);
       throw error;
@@ -861,6 +867,27 @@ export class BedService {
   // ========================================
   // SYNC WITH BEDPOSITIONS
   // ========================================
+
+  /**
+   * Sync room's bedCount with actual bed count
+   * This ensures room.bedCount always matches the number of bed entities
+   */
+  private async syncRoomBedCount(roomId: string): Promise<void> {
+    try {
+      const actualBedCount = await this.bedRepository.count({
+        where: { roomId }
+      });
+
+      await this.roomRepository.update(roomId, {
+        bedCount: actualBedCount
+      });
+
+      this.logger.log(`🔄 Synced room ${roomId} bedCount to ${actualBedCount}`);
+    } catch (error) {
+      this.logger.error(`❌ Error syncing room bedCount for room ${roomId}:`, error);
+      // Don't throw error to avoid breaking bed operations
+    }
+  }
 
   /**
    * Trigger sync of bed status to bedPositions for specified rooms
