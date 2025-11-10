@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { Bed, BedStatus } from './entities/bed.entity';
 import { Room } from './entities/room.entity';
 import { BedSyncService } from './bed-sync.service';
+import { Hostel } from '../hostel/entities/hostel.entity';
 
 export interface CreateBedDto {
   roomId: string;
@@ -54,6 +55,8 @@ export class BedService {
     private bedRepository: Repository<Bed>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
+    @InjectRepository(Hostel)
+    private hostelRepository: Repository<Hostel>,
     private bedSyncService: BedSyncService,
   ) { }
 
@@ -110,6 +113,9 @@ export class BedService {
     }
   }
 
+
+
+  
   /**
    * Find all beds with optional filtering
    */
@@ -862,6 +868,24 @@ export class BedService {
     }
 
     return queryBuilder.getMany();
+  }
+
+  /**
+   * Get all beds with hostels
+   */
+  async getAllBedsWithHostels(): Promise<{
+    beds: Bed[];
+    hostels: Hostel[];
+  }> {
+    const [beds, hostels] = await Promise.all([
+      this.bedRepository.find({
+        relations: ['room', 'hostel'],
+        where: { status: BedStatus.AVAILABLE }
+      }),
+      this.hostelRepository.find()
+    ]);
+
+    return { beds, hostels };
   }
 
   // ========================================
