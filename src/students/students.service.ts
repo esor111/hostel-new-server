@@ -336,36 +336,10 @@ export class StudentsService { // Removed HostelScopedService extension for back
       currentBalance = netBalance > 0 ? netBalance : 0; // Dues
       const totalAdvanceFromLedger = netBalance < 0 ? Math.abs(netBalance) : 0;
 
-      // NEW: Get payment breakdown for display purposes only
-      // Get configuration advance (flag = true)
-      const configAdvanceResult = await this.paymentRepository
-        .createQueryBuilder('payment')
-        .select('SUM(payment.amount)', 'total')
-        .where('payment.studentId = :studentId', { studentId: student.id })
-        .andWhere('payment.isConfigurationAdvance = :isConfig', { isConfig: true })
-        .andWhere('payment.status = :status', { status: 'Completed' })
-        .getRawOne();
-
-      configurationAdvance = parseFloat(configAdvanceResult?.total) || 0;
-
-      // Get regular payments (flag = false)
-      const regularPaymentsResult = await this.paymentRepository
-        .createQueryBuilder('payment')
-        .select('SUM(payment.amount)', 'total')
-        .where('payment.studentId = :studentId', { studentId: student.id })
-        .andWhere('payment.isConfigurationAdvance = :isConfig', { isConfig: false })
-        .andWhere('payment.status = :status', { status: 'Completed' })
-        .getRawOne();
-
-      const regularPaymentsTotal = parseFloat(regularPaymentsResult?.total) || 0;
-
-      // Regular advance = Total advance from ledger - Config advance
-      // This shows how much advance is from regular payments vs config
-      advanceBalance = totalAdvanceFromLedger > configurationAdvance 
-        ? totalAdvanceFromLedger - configurationAdvance 
-        : 0;
-
-      // Total advance is from ledger (single source of truth)
+      // ✅ SIMPLIFIED: No configuration advance - all advance is regular advance
+      // Since configuration advance is no longer created, all advance is regular advance
+      advanceBalance = totalAdvanceFromLedger;
+      configurationAdvance = 0; // No longer used
       totalAdvance = totalAdvanceFromLedger;
 
     } catch (error) {
@@ -401,8 +375,6 @@ export class StudentsService { // Removed HostelScopedService extension for back
       status: student.status,
       currentBalance,          // Dues (from regular invoices vs regular payments)
       advanceBalance,          // Regular advance (from extra regular payments)
-      configurationAdvance,    // NEW: Configuration advance (from initial setup)
-      totalAdvance,            // NEW: Total advance (config + regular)
       emergencyContact: emergencyContact?.phone || null,
       course: currentAcademic?.course || null,
       institution: currentAcademic?.institution || null,
@@ -1142,36 +1114,19 @@ export class StudentsService { // Removed HostelScopedService extension for back
       throw new BadRequestException(`Configuration failed: ${error.message}`);
     }
 
-    // AUTO-CALCULATE ADVANCE PAYMENT: Use calculateMonthlyFee() for consistency
+    // CONFIGURATION AMOUNT IS NOW PURE CONFIGURATION - NO PAYMENT RECORD CREATED
+    // The monthly fee amount is stored only in student_financial_info table
+    // No advance payment record is created during configuration
+    const feeCalculation = await this.advancePaymentService.calculateMonthlyFee(studentId);
+    const totalMonthlyFee = feeCalculation.totalMonthlyFee;
+    
+    console.log(`✅ Student configured with monthly fee: NPR ${totalMonthlyFee.toLocaleString()}`);
+    console.log(`   - Breakdown:`, feeCalculation.breakdown.map(b => `${b.description}: ${b.amount}`).join(', '));
+    console.log(`   - Configuration amount stored in financial info only - no payment record created`);
+    console.log(`   - Student will pay this amount later as regular payments`);
+    
+    // No advancePaymentRecord created - configuration amount is pure configuration
     let advancePaymentRecord = null;
-    try {
-      // Use the same calculation method as monthly invoices for consistency
-      const feeCalculation = await this.advancePaymentService.calculateMonthlyFee(studentId);
-      const totalAdvancePayment = feeCalculation.totalMonthlyFee;
-      
-      if (totalAdvancePayment > 0) {
-        console.log(`💰 Auto-calculating advance payment using calculateMonthlyFee():`);
-        console.log(`   - Total Monthly Fee (includes all charges): NPR ${totalAdvancePayment.toLocaleString()}`);
-        console.log(`   - Breakdown:`, feeCalculation.breakdown.map(b => `${b.description}: ${b.amount}`).join(', '));
-        
-        advancePaymentRecord = await this.advancePaymentService.processAdvancePayment(
-          studentId,
-          totalAdvancePayment,
-          hostelId,
-          new Date(), // paymentDate
-          undefined, // paymentMethod (uses default CASH)
-          true // isConfigurationAdvance = TRUE for initial config advance
-        );
-        
-        console.log(`✅ Advance payment recorded: NPR ${totalAdvancePayment.toLocaleString()}`);
-      } else {
-        console.warn('⚠️ No advance payment calculated (total is 0)');
-      }
-    } catch (error) {
-      console.error('❌ Failed to record advance payment:', error);
-      // Don't fail configuration if advance payment fails, just log it
-      console.warn('⚠️ Configuration completed but advance payment failed');
-    }
 
     // Mark student as configured and active
     await this.studentRepository.update(studentId, {
@@ -1205,13 +1160,12 @@ export class StudentsService { // Removed HostelScopedService extension for back
       }
     }
 
-    // Get final calculation for response
-    const finalFeeCalculation = await this.advancePaymentService.calculateMonthlyFee(studentId);
-    const totalMonthlyFee = finalFeeCalculation.totalMonthlyFee;
+    // Get final calculation for response (reuse the calculation from above)
+    const finalFeeCalculation = feeCalculation;
 
     return {
       success: true,
-      message: 'Student configuration completed successfully with auto-calculated advance payment',
+      message: 'Student configuration completed successfully - fees configured, invoice generated',
       studentId,
       configurationDate,
       totalMonthlyFee,
@@ -1227,12 +1181,13 @@ export class StudentsService { // Removed HostelScopedService extension for back
         status: firstInvoice.status,
         billingType: firstInvoice.billingType
       },
-      advancePayment: advancePaymentRecord ? {
-        paymentId: advancePaymentRecord.paymentId,
-        amount: totalMonthlyFee,
+      configurationAmount: {
+        monthlyFee: totalMonthlyFee,
         breakdown: finalFeeCalculation.breakdown,
-        recorded: true
-      } : null
+        storedInFinancialInfo: true,
+        noPaymentRecordCreated: true,
+        note: 'Configuration amount is stored in financial info only - no payment record created'
+      }
     };
   }
 
