@@ -1465,6 +1465,32 @@ export class StudentsService { // Removed HostelScopedService extension for back
   }
 
   /**
+   * 💰 Get student advance balance from ledger
+   */
+  private async getStudentAdvanceBalance(studentId: string, hostelId: string): Promise<number> {
+    try {
+      // Import LedgerV2Service dynamically to avoid circular dependency
+      const { LedgerV2Service } = await import('../ledger-v2/services/ledger-v2.service');
+      const ledgerV2Repository = this.studentRepository.manager.getRepository('LedgerEntryV2');
+      
+      // Get current balance from ledger
+      const balanceResult = await ledgerV2Repository
+        .createQueryBuilder('ledger')
+        .select('SUM(ledger.credit) - SUM(ledger.debit)', 'netBalance')
+        .where('ledger.studentId = :studentId', { studentId })
+        .andWhere('ledger.hostelId = :hostelId', { hostelId })
+        .andWhere('ledger.isReversed = :isReversed', { isReversed: false })
+        .getRawOne();
+      
+      const netBalance = parseFloat(balanceResult?.netBalance) || 0;
+      return netBalance < 0 ? Math.abs(netBalance) : 0; // Return advance as positive number
+    } catch (error) {
+      console.error('Error getting student advance balance:', error);
+      return 0;
+    }
+  }
+
+  /**
    * 📅 BILLING TIMELINE: Get billing timeline for configuration-based billing (Legacy - no pagination)
    * Shows past events, current status, and upcoming billing cycles
    */
@@ -1550,15 +1576,14 @@ export class StudentsService { // Removed HostelScopedService extension for back
         });
       }
 
-      // Calculate upcoming billing cycles
-      // For each configured student, find their next billing date
+      // Calculate upcoming billing cycles with advance balance information
       const upcomingBillingDates = new Map<string, any[]>();
       
       for (const student of students) {
         if (student.enrollmentDate) {
           const configDate = new Date(student.enrollmentDate);
           
-          // Calculate next 2 billing cycles (reduced from 3 for cleaner UI)
+          // Calculate next 2 billing cycles
           for (let i = 1; i <= 2; i++) {
             const nextBillingDate = new Date(configDate);
             nextBillingDate.setMonth(nextBillingDate.getMonth() + i);
@@ -1571,16 +1596,45 @@ export class StudentsService { // Removed HostelScopedService extension for back
                 upcomingBillingDates.set(dateKey, []);
               }
               
-              upcomingBillingDates.get(dateKey)!.push(student);
+              // Get advance balance and monthly fee for this student
+              const [advanceBalance, monthlyFee] = await Promise.all([
+                this.getStudentAdvanceBalance(student.id, hostelId),
+                this.advancePaymentService.calculateMonthlyFee(student.id).then(result => result.totalMonthlyFee)
+              ]);
+              
+              const billingInfo = {
+                ...student,
+                advanceBalance,
+                monthlyFee,
+                needsPayment: advanceBalance < monthlyFee,
+                monthsCovered: Math.floor(advanceBalance / monthlyFee)
+              };
+              
+              upcomingBillingDates.get(dateKey)!.push(billingInfo);
             }
           }
         }
       }
 
-      // Add upcoming billing cycle events
+      // Add upcoming billing cycle events with enhanced advance balance information
       for (const [dateKey, studentsInCycle] of upcomingBillingDates.entries()) {
         const billingDate = new Date(dateKey);
         const daysUntil = Math.ceil((billingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Calculate coverage statistics
+        const studentsNeedingPayment = studentsInCycle.filter(s => s.needsPayment).length;
+        const studentsCoveredByAdvance = studentsInCycle.length - studentsNeedingPayment;
+        const totalMonthlyFees = studentsInCycle.reduce((sum, s) => sum + s.monthlyFee, 0);
+        const totalAdvanceCovered = studentsInCycle
+          .filter(s => !s.needsPayment)
+          .reduce((sum, s) => sum + s.monthlyFee, 0);
+        const netAmountDue = totalMonthlyFees - totalAdvanceCovered;
+        
+        // Create enhanced description
+        let description = `${studentsInCycle.length} invoice${studentsInCycle.length > 1 ? 's' : ''} will be generated`;
+        if (studentsCoveredByAdvance > 0) {
+          description += ` (${studentsCoveredByAdvance} covered by advance)`;
+        }
         
         timeline.push({
           id: `billing-${dateKey}`,
@@ -1588,11 +1642,24 @@ export class StudentsService { // Removed HostelScopedService extension for back
           type: 'UPCOMING_BILLING',
           status: 'UPCOMING',
           title: `Next billing cycle (${daysUntil} days)`,
-          description: `${studentsInCycle.length} invoice${studentsInCycle.length > 1 ? 's' : ''} will be generated`,
+          description,
           metadata: { 
             studentCount: studentsInCycle.length,
+            studentsNeedingPayment,
+            studentsCoveredByAdvance,
+            totalMonthlyFees,
+            totalAdvanceCovered,
+            netAmountDue,
             daysUntil,
-            students: studentsInCycle.map(s => ({ id: s.id, name: s.name }))
+            students: studentsInCycle.map(s => ({
+              id: s.id,
+              name: s.name,
+              monthlyFee: s.monthlyFee,
+              advanceBalance: s.advanceBalance,
+              needsPayment: s.needsPayment,
+              monthsCovered: s.monthsCovered,
+              status: s.needsPayment ? 'payment_needed' : 'covered_by_advance'
+            }))
           }
         });
       }
