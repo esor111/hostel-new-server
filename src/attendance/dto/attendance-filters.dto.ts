@@ -111,4 +111,13 @@ export class AttendanceFiltersDto {
   @IsOptional()
   @IsEnum(['ASC', 'DESC'])
   sortOrder?: 'ASC' | 'DESC' = 'DESC';
+
+  @ApiProperty({
+    description: 'Search term for filtering by student name, ID, or room number',
+    example: 'John',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

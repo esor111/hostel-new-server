@@ -254,14 +254,34 @@ export class AttendanceService {
   /**
    * Get current status - who's checked in right now
    */
-  async getCurrentStatus(hostelId: string) {
-    const activeCheckIns = await this.checkInOutRepository
+  async getCurrentStatus(hostelId: string, filters: any = {}) {
+    const { page = 1, limit = 20, search = '' } = filters;
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.checkInOutRepository
       .createQueryBuilder('checkin')
       .leftJoinAndSelect('checkin.student', 'student')
+      .leftJoinAndSelect('student.room', 'room')
       .where('checkin.hostelId = :hostelId', { hostelId })
       .andWhere('checkin.status = :status', { status: CheckInOutStatus.CHECKED_IN })
-      .andWhere('checkin.checkOutTime IS NULL')
+      .andWhere('checkin.checkOutTime IS NULL');
+
+    // Add search filter
+    if (search) {
+      queryBuilder.andWhere(
+        '(student.name ILIKE :search OR student.kahaId ILIKE :search OR room.roomNumber ILIKE :search)',
+        { search: `%${search}%` }
+      );
+    }
+
+    // Get total count
+    const total = await queryBuilder.getCount();
+
+    // Get paginated data
+    const activeCheckIns = await queryBuilder
       .orderBy('checkin.checkInTime', 'DESC')
+      .skip(skip)
+      .take(limit)
       .getMany();
 
     const now = new Date();
@@ -269,30 +289,68 @@ export class AttendanceService {
       studentId: checkin.studentId,
       studentName: checkin.student?.name || 'Unknown',
       checkInTime: checkin.checkInTime,
-      durationSoFar: this.calculateDuration(new Date(checkin.checkInTime), now)
+      durationSoFar: this.calculateDuration(new Date(checkin.checkInTime), now),
+      roomNumber: checkin.student?.room?.roomNumber
     }));
 
     return {
       hostelId,
       timestamp: now,
-      currentlyCheckedIn: students.length,
-      students
+      currentlyCheckedIn: total,
+      students,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1
+      }
     };
   }
 
   /**
    * Get daily attendance report
    */
-  async getDailyReport(hostelId: string, date: string) {
-    const attendanceRecords = await this.attendanceRepository.find({
-      where: { hostelId, date },
-      relations: ['student']
+  async getDailyReport(hostelId: string, date: string, filters: any = {}) {
+    const { page = 1, limit = 20, search = '' } = filters;
+    const skip = (page - 1) * limit;
+
+    // Get summary (always full, no pagination)
+    const allAttendanceRecords = await this.attendanceRepository.find({
+      where: { hostelId, date }
     });
+
+    const queryBuilder = this.attendanceRepository
+      .createQueryBuilder('attendance')
+      .leftJoinAndSelect('attendance.student', 'student')
+      .leftJoinAndSelect('student.room', 'room')
+      .where('attendance.hostelId = :hostelId', { hostelId })
+      .andWhere('attendance.date = :date', { date });
+
+    // Add search filter
+    if (search) {
+      queryBuilder.andWhere(
+        '(student.name ILIKE :search OR student.kahaId ILIKE :search OR room.roomNumber ILIKE :search)',
+        { search: `%${search}%` }
+      );
+    }
+
+    // Get total count for pagination
+    const total = await queryBuilder.getCount();
+
+    // Get paginated data
+    const attendanceRecords = await queryBuilder
+      .orderBy('attendance.firstCheckInTime', 'ASC')
+      .skip(skip)
+      .take(limit)
+      .getMany();
 
     const presentStudents = attendanceRecords.map(record => ({
       studentId: record.studentId,
       studentName: record.student?.name || 'Unknown',
-      firstCheckInTime: record.firstCheckInTime
+      firstCheckInTime: record.firstCheckInTime,
+      roomNumber: record.student?.room?.roomNumber
     }));
 
     // Get total students in hostel
@@ -305,11 +363,19 @@ export class AttendanceService {
       date,
       summary: {
         totalStudents,
-        totalPresent: presentStudents.length,
-        totalAbsent: totalStudents - presentStudents.length,
-        attendanceRate: totalStudents > 0 ? `${((presentStudents.length / totalStudents) * 100).toFixed(1)}%` : '0%'
+        totalPresent: allAttendanceRecords.length,
+        totalAbsent: totalStudents - allAttendanceRecords.length,
+        attendanceRate: totalStudents > 0 ? `${((allAttendanceRecords.length / totalStudents) * 100).toFixed(1)}%` : '0%'
       },
-      presentStudents
+      presentStudents,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1
+      }
     };
   }
 
@@ -317,11 +383,12 @@ export class AttendanceService {
    * Get activity report (check-in/out movements)
    */
   async getActivityReport(hostelId: string, filters: AttendanceFiltersDto) {
-    const { dateFrom, dateTo, studentId, page = 1, limit = 50 } = filters;
+    const { dateFrom, dateTo, studentId, page = 1, limit = 50, search = '' } = filters;
 
     const query = this.checkInOutRepository
       .createQueryBuilder('checkin')
       .leftJoinAndSelect('checkin.student', 'student')
+      .leftJoinAndSelect('student.room', 'room')
       .where('checkin.hostelId = :hostelId', { hostelId });
 
     if (dateFrom) {
@@ -332,6 +399,12 @@ export class AttendanceService {
     }
     if (studentId) {
       query.andWhere('checkin.studentId = :studentId', { studentId });
+    }
+    if (search) {
+      query.andWhere(
+        '(student.name ILIKE :search OR student.kahaId ILIKE :search OR room.roomNumber ILIKE :search)',
+        { search: `%${search}%` }
+      );
     }
 
     const [records, total] = await query
@@ -370,7 +443,9 @@ export class AttendanceService {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1
       }
     };
   }

@@ -13,13 +13,18 @@ import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { HostelService } from '../hostel/hostel.service';
 
 @ApiTags('students')
 @Controller('students')
 @UseGuards(HostelAuthWithContextGuard)
 @ApiBearerAuth()
 export class StudentsController {
-  constructor(private readonly studentsService: StudentsService) { }
+  constructor(
+    private readonly studentsService: StudentsService,
+    private readonly hostelService: HostelService
+  ) { }
 
   @Get()
   @ApiOperation({ summary: 'Get all students' })
@@ -325,11 +330,39 @@ export class StudentsController {
     };
   }
 
-  @Post(':id/configure')
-  @ApiOperation({ summary: 'Configure student charges with advance payment (Nepalese billing)' })
+  @Post('configure')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Configure student charges with advance payment (uses Business Token)' })
   @ApiResponse({ status: 200, description: 'Student configured successfully with advance payment' })
-  async configureStudent(@Param('id') id: string, @Body(ValidationPipe) configData: any, @GetHostelId() hostelId: string) {
-    const result = await this.studentsService.configureStudent(id, configData, hostelId);
+  async configureStudent(
+    @CurrentUser() user: JwtPayload,
+    @Body(ValidationPipe) configData: any
+  ) {
+    // Validate Business Token
+    if (!user.businessId) {
+      throw new NotFoundException(
+        'Business token required. Please switch to hostel profile before configuring.'
+      );
+    }
+
+    // Step 1: Find hostelId from businessId
+    const hostel = await this.hostelService.findByBusinessId(user.businessId);
+    if (!hostel) {
+      throw new NotFoundException(
+        `Hostel not found for businessId: ${user.businessId}`
+      );
+    }
+
+    // Step 2: Find studentId from userId + hostelId
+    const student = await this.studentsService.findByUserId(user.id, hostel.id);
+    if (!student) {
+      throw new NotFoundException(
+        `No student found for user ${user.kahaId} in this hostel. Please contact admin.`
+      );
+    }
+
+    // Step 3: Configure student with resolved IDs
+    const result = await this.studentsService.configureStudent(student.id, configData, hostel.id);
 
     // Return EXACT same format as current Express API
     return {

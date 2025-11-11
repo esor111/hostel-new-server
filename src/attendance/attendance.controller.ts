@@ -8,19 +8,21 @@ import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { StudentsService } from '../students/students.service';
+import { HostelService } from '../hostel/hostel.service';
 
 @ApiTags('attendance')
 @Controller('attendance')
 export class AttendanceController {
   constructor(
     private readonly attendanceService: AttendanceService,
-    private readonly studentsService: StudentsService
+    private readonly studentsService: StudentsService,
+    private readonly hostelService: HostelService
   ) {}
 
   /**
-   * STUDENT: Check in using JWT token (auto-resolves studentId from userId)
+   * STUDENT: Check in using Business Token (auto-resolves studentId and hostelId)
    * POST /attendance/student/check-in
-   * Only requires hostelId in body - studentId is auto-resolved from token
+   * Requires Business Token with userId and businessId - both IDs auto-resolved
    */
   @Post('student/check-in')
   @UseGuards(JwtAuthGuard)
@@ -29,19 +31,33 @@ export class AttendanceController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: StudentCheckInDto
   ) {
-    // Auto-resolve student from userId in token
-    const student = await this.studentsService.findByUserId(user.id, dto.hostelId);
-    
+    // Validate Business Token
+    if (!user.businessId) {
+      throw new BadRequestException(
+        'Business token required. Please switch to hostel profile before checking in.'
+      );
+    }
+
+    // Step 1: Find hostelId from businessId
+    const hostel = await this.hostelService.findByBusinessId(user.businessId);
+    if (!hostel) {
+      throw new NotFoundException(
+        `Hostel not found for businessId: ${user.businessId}`
+      );
+    }
+
+    // Step 2: Find studentId from userId + hostelId
+    const student = await this.studentsService.findByUserId(user.id, hostel.id);
     if (!student) {
       throw new NotFoundException(
         `No student found for user ${user.kahaId} in this hostel. Please contact admin.`
       );
     }
 
-    // Check in using auto-resolved studentId
+    // Step 3: Check in using auto-resolved IDs
     return this.attendanceService.checkIn({
       studentId: student.id,
-      hostelId: dto.hostelId,
+      hostelId: hostel.id,
       notes: dto.notes
     });
   }
@@ -58,9 +74,9 @@ export class AttendanceController {
   }
 
   /**
-   * STUDENT: Check out using JWT token (auto-resolves studentId from userId)
+   * STUDENT: Check out using Business Token (auto-resolves studentId and hostelId)
    * POST /attendance/student/check-out
-   * Only requires hostelId in body - studentId is auto-resolved from token
+   * Requires Business Token with userId and businessId - both IDs auto-resolved
    */
   @Post('student/check-out')
   @UseGuards(JwtAuthGuard)
@@ -69,19 +85,33 @@ export class AttendanceController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: StudentCheckOutDto
   ) {
-    // Auto-resolve student from userId in token
-    const student = await this.studentsService.findByUserId(user.id, dto.hostelId);
-    
+    // Validate Business Token
+    if (!user.businessId) {
+      throw new BadRequestException(
+        'Business token required. Please switch to hostel profile before checking out.'
+      );
+    }
+
+    // Step 1: Find hostelId from businessId
+    const hostel = await this.hostelService.findByBusinessId(user.businessId);
+    if (!hostel) {
+      throw new NotFoundException(
+        `Hostel not found for businessId: ${user.businessId}`
+      );
+    }
+
+    // Step 2: Find studentId from userId + hostelId
+    const student = await this.studentsService.findByUserId(user.id, hostel.id);
     if (!student) {
       throw new NotFoundException(
         `No student found for user ${user.kahaId} in this hostel. Please contact admin.`
       );
     }
 
-    // Check out using auto-resolved studentId
+    // Step 3: Check out using auto-resolved IDs
     return this.attendanceService.checkOut({
       studentId: student.id,
-      hostelId: dto.hostelId,
+      hostelId: hostel.id,
       notes: dto.notes
     });
   }
@@ -112,30 +142,34 @@ export class AttendanceController {
 
   /**
    * Get current status - who's checked in right now
-   * GET /attendance/current-status?hostelId=xxx
+   * GET /attendance/current-status?page=1&limit=20&search=John
    */
   @Get('current-status')
   @UseGuards(HostelAuthWithContextGuard)
   @ApiBearerAuth()
-  async getCurrentStatus(@GetHostelId() hostelId: string) {
-    return this.attendanceService.getCurrentStatus(hostelId);
+  async getCurrentStatus(
+    @GetHostelId() hostelId: string,
+    @Query() filters: AttendanceFiltersDto
+  ) {
+    return this.attendanceService.getCurrentStatus(hostelId, filters);
   }
 
   /**
    * Get daily attendance report
-   * GET /attendance/reports/daily?hostelId=xxx&date=2025-10-31
+   * GET /attendance/reports/daily?date=2025-10-31&page=1&limit=20&search=John
    */
   @Get('reports/daily')
   @UseGuards(HostelAuthWithContextGuard)
   @ApiBearerAuth()
   async getDailyReport(
     @GetHostelId() hostelId: string,
-    @Query('date') date: string
+    @Query('date') date: string,
+    @Query() filters: AttendanceFiltersDto
   ) {
     if (!date) {
       throw new Error('date is required');
     }
-    return this.attendanceService.getDailyReport(hostelId, date);
+    return this.attendanceService.getDailyReport(hostelId, date, filters);
   }
 
   /**
