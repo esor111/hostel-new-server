@@ -81,6 +81,20 @@ export class RoomsController {
     };
   }
 
+@Get('beds/with-hostels')
+@ApiOperation({ summary: 'Get all available beds with hostel information' })
+@ApiResponse({ 
+  status: 200, 
+  description: 'Available beds and hostels retrieved successfully'
+})
+async getBedsWithHostels() {
+  const data = await this.bedService.getAllBedsWithHostels();
+  return {
+    status: HttpStatus.OK,
+    data
+  };
+}
+
   @Get(':id')
   @ApiOperation({ summary: 'Get room by ID' })
   @ApiResponse({ status: 200, description: 'Room retrieved successfully' })

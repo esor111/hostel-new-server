@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { Bed, BedStatus } from './entities/bed.entity';
 import { Room } from './entities/room.entity';
 import { BedSyncService } from './bed-sync.service';
+import { Hostel } from '../hostel/entities/hostel.entity';
 
 export interface CreateBedDto {
   roomId: string;
@@ -54,6 +55,8 @@ export class BedService {
     private bedRepository: Repository<Bed>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
+    @InjectRepository(Hostel)
+    private hostelRepository: Repository<Hostel>,
     private bedSyncService: BedSyncService,
   ) { }
 
@@ -100,6 +103,9 @@ export class BedService {
       const savedBed = await this.bedRepository.save(bed);
       this.logger.log(`✅ Created bed ${savedBed.bedIdentifier}`);
 
+      // 🔧 Sync room's bedCount with actual bed count
+      await this.syncRoomBedCount(createBedDto.roomId);
+
       return savedBed;
     } catch (error) {
       this.logger.error(`❌ Error creating bed ${createBedDto.bedIdentifier}:`, error);
@@ -107,6 +113,9 @@ export class BedService {
     }
   }
 
+
+
+  
   /**
    * Find all beds with optional filtering
    */
@@ -217,6 +226,9 @@ export class BedService {
       await this.bedRepository.delete(id);
 
       this.logger.log(`✅ Deleted bed ${bed.bedIdentifier}`);
+
+      // 🔧 Sync room's bedCount with actual bed count
+      await this.syncRoomBedCount(bed.roomId);
     } catch (error) {
       this.logger.error(`❌ Error removing bed ${id}:`, error);
       throw error;
@@ -858,9 +870,48 @@ export class BedService {
     return queryBuilder.getMany();
   }
 
+  /**
+   * Get all beds with hostels
+   */
+  async getAllBedsWithHostels(): Promise<{
+    beds: Bed[];
+    hostels: Hostel[];
+  }> {
+    const [beds, hostels] = await Promise.all([
+      this.bedRepository.find({
+        relations: ['room', 'hostel'],
+        where: { status: BedStatus.AVAILABLE }
+      }),
+      this.hostelRepository.find()
+    ]);
+
+    return { beds, hostels };
+  }
+
   // ========================================
   // SYNC WITH BEDPOSITIONS
   // ========================================
+
+  /**
+   * Sync room's bedCount with actual bed count
+   * This ensures room.bedCount always matches the number of bed entities
+   */
+  private async syncRoomBedCount(roomId: string): Promise<void> {
+    try {
+      const actualBedCount = await this.bedRepository.count({
+        where: { roomId }
+      });
+
+      await this.roomRepository.update(roomId, {
+        bedCount: actualBedCount
+      });
+
+      this.logger.log(`🔄 Synced room ${roomId} bedCount to ${actualBedCount}`);
+    } catch (error) {
+      this.logger.error(`❌ Error syncing room bedCount for room ${roomId}:`, error);
+      // Don't throw error to avoid breaking bed operations
+    }
+  }
 
   /**
    * Trigger sync of bed status to bedPositions for specified rooms
