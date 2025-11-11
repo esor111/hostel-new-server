@@ -18,10 +18,11 @@ import { AdvancePaymentService } from './services/advance-payment.service';
 import { CheckoutSettlementService } from './services/checkout-settlement.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { Payment } from '../payments/entities/payment.entity';
-// import { HostelScopedService } from '../common/services/hostel-scoped.service'; // Commented out for backward compatibility
+import { AttendanceService } from '../attendance/attendance.service';
+import { Inject, forwardRef } from '@nestjs/common';
 
 @Injectable()
-export class StudentsService { // Removed HostelScopedService extension for backward compatibility
+export class StudentsService { 
   constructor(
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
@@ -47,8 +48,10 @@ export class StudentsService { // Removed HostelScopedService extension for back
     private advancePaymentService: AdvancePaymentService,
     private checkoutSettlementService: CheckoutSettlementService,
     private invoicesService: InvoicesService,
+    @Inject(forwardRef(() => AttendanceService))
+    private attendanceService: AttendanceService,
   ) {
-    // super(studentRepository, 'Student'); // Commented out for backward compatibility
+    // super(studentRepository, 'Student'); 
   }
 
   async findAll(filters: any = {}, hostelId: string) {
@@ -1162,6 +1165,16 @@ export class StudentsService { // Removed HostelScopedService extension for back
 
     // Get final calculation for response (reuse the calculation from above)
     const finalFeeCalculation = feeCalculation;
+
+    // 🆕 AUTO CHECK-IN: Create initial check-in after configuration
+    try {
+      await this.attendanceService.createInitialCheckIn(studentId, hostelId);
+      console.log(`✅ Initial check-in created for student ${studentId}`);
+    } catch (error) {
+      console.error('❌ Failed to create initial check-in:', error);
+      // Don't fail configuration if check-in fails
+      console.warn('⚠️ Configuration completed but initial check-in failed');
+    }
 
     return {
       success: true,
