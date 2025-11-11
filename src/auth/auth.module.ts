@@ -8,6 +8,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { HostelAuthGuard } from './guards/hostel-auth.guard';
 import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
 import { HostelAuthWithContextGuard } from './guards/hostel-auth-with-context.guard';
+import { FlexibleHostelAuthGuard } from './guards/flexible-hostel-auth.guard';
+import { PublicBusinessIdGuard } from './guards/public-business-id.guard';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { HostelAuthWithContextGuard } from './guards/hostel-auth-with-context.gu
     HostelAuthGuard,
     OptionalJwtAuthGuard,
     HostelAuthWithContextGuard,
+    FlexibleHostelAuthGuard,
+    PublicBusinessIdGuard,
   ],
   exports: [
     JwtTokenModule,
@@ -29,6 +33,8 @@ import { HostelAuthWithContextGuard } from './guards/hostel-auth-with-context.gu
     HostelAuthGuard,
     OptionalJwtAuthGuard,
     HostelAuthWithContextGuard,
+    FlexibleHostelAuthGuard,
+    PublicBusinessIdGuard,
     PassportModule,
   ],
 })

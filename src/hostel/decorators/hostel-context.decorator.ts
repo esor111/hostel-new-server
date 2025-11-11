@@ -30,3 +30,10 @@ export const GetHostelId = createParamDecorator(
     return request.hostelContext.hostelId;
   },
 );
+
+export const GetOptionalHostelId = createParamDecorator(
+  (data: unknown, ctx: ExecutionContext): string | undefined => {
+    const request = ctx.switchToHttp().getRequest();
+    return request.hostelContext?.hostelId;
+  },
+);
