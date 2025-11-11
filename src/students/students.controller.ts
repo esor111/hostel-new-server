@@ -330,6 +330,25 @@ export class StudentsController {
     };
   }
 
+  @Post(':id/configure')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiOperation({ summary: 'Configure student charges with advance payment (Admin)' })
+  @ApiResponse({ status: 200, description: 'Student configured successfully with advance payment' })
+  async configureStudentById(
+    @Param('id') studentId: string,
+    @GetHostelId() hostelId: string,
+    @Body(ValidationPipe) configData: any
+  ) {
+    // Configure student with provided IDs
+    const result = await this.studentsService.configureStudent(studentId, configData, hostelId);
+
+    // Return EXACT same format as current Express API
+    return {
+      status: HttpStatus.OK,
+      data: result
+    };
+  }
+
   @Post('configure')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Configure student charges with advance payment (uses Business Token)' })

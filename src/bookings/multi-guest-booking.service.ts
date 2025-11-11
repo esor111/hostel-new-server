@@ -1680,15 +1680,25 @@ export class MultiGuestBookingService {
   });
 
   if (existingStudent) {
-    // Student already exists - link the guest to existing student instead of creating duplicate
-    this.logger.log(`✅ Guest "${guest.guestName}" linked to existing student ${existingStudent.id} (${existingStudent.name})`);
+    // Student already exists - reset to pending configuration for new booking
+    this.logger.log(`✅ Found existing student ${existingStudent.id} (${existingStudent.name}) - resetting to pending configuration`);
     
-    // Update the guest's status to confirmed since student exists
+    // Reset student to pending configuration status
+    await manager.update(Student, existingStudent.id, {
+      status: StudentStatus.PENDING_CONFIGURATION,
+      isConfigured: false,
+      roomId: roomUuid || existingStudent.roomId, // Update room if provided
+      bedNumber: guest.assignedBedNumber || existingStudent.bedNumber // Update bed if provided
+    });
+    
+    // Update the guest's status to confirmed
     guest.status = GuestStatus.CONFIRMED;
     await manager.save(BookingGuest, guest);
     
-    // Return existing student instead of creating new one
-    return existingStudent;
+    // Return updated student
+    const updatedStudent = await manager.findOne(Student, { where: { id: existingStudent.id } });
+    this.logger.log(`✅ Reset existing student to pending configuration: status=${updatedStudent?.status}, isConfigured=${updatedStudent?.isConfigured}`);
+    return updatedStudent || existingStudent;
   }
 
   // No existing student found - create new student with REAL contact info
@@ -1712,6 +1722,11 @@ export class MultiGuestBookingService {
     const savedStudent = await manager.save(Student, student);
 
     this.logger.log(`✅ Created student profile for ${guest.guestName} (ID: ${savedStudent.id}) with room UUID: ${roomUuid}`);
+    this.logger.log(`🔍 Student created with status: ${savedStudent.status}, isConfigured: ${savedStudent.isConfigured}, hostelId: ${savedStudent.hostelId}`);
+    
+    // Verify student was created correctly
+    const verifyStudent = await manager.findOne(Student, { where: { id: savedStudent.id } });
+    this.logger.log(`🔍 Verification - Student exists in DB: ${!!verifyStudent}, Status: ${verifyStudent?.status}, isConfigured: ${verifyStudent?.isConfigured}`);
 
     // Create RoomOccupant record if room is assigned
     if (roomUuid) {

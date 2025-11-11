@@ -94,6 +94,15 @@ export class StudentsService {
 
     const [students, total] = await queryBuilder.getManyAndCount();
 
+    // Debug: Log students found
+    console.log(`🔍 StudentsService.findAll - Found ${students.length} students for hostelId: ${hostelId}`);
+    console.log(`🔍 Students status breakdown:`, {
+      total: students.length,
+      pendingConfig: students.filter(s => s.status === StudentStatus.PENDING_CONFIGURATION).length,
+      active: students.filter(s => s.status === StudentStatus.ACTIVE).length,
+      unconfigured: students.filter(s => !s.isConfigured).length
+    });
+
     // Transform to API response format (EXACT same as current JSON structure)
     const transformedItems = await Promise.all(
       students.map(student => this.transformToApiResponse(student))

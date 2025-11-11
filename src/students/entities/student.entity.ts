@@ -47,7 +47,7 @@ export class Student extends BaseEntity {
   @Column({
     type: 'enum',
     enum: StudentStatus,
-    default: StudentStatus.ACTIVE
+    default: StudentStatus.PENDING_CONFIGURATION
   })
   status: StudentStatus;
 
