@@ -2084,14 +2084,16 @@ export class StudentsService {
 
     const floorStats = await this.roomRepository
       .createQueryBuilder('room')
+      .leftJoin('room.beds', 'bed')
       .select('room.floor', 'floorNumber')
-      .addSelect('COUNT(room.id)', 'totalRooms')
-      .addSelect('COUNT(CASE WHEN room.availableBeds > 0 THEN 1 END)', 'availableRooms')
-      .addSelect('SUM(room.bedCount)', 'totalBeds')
-      .addSelect('SUM(room.availableBeds)', 'availableBeds')
+      .addSelect('COUNT(DISTINCT room.id)', 'totalRooms')
+      .addSelect('COUNT(DISTINCT CASE WHEN bed.status = :availableStatus THEN room.id END)', 'availableRooms')
+      .addSelect('COUNT(bed.id)', 'totalBeds')
+      .addSelect('COUNT(CASE WHEN bed.status = :availableStatus THEN bed.id END)', 'availableBeds')
       .where('room.hostelId = :hostelId', { hostelId })
       .andWhere('room.status = :status', { status: 'ACTIVE' })
       .andWhere('room.floor IS NOT NULL')
+      .setParameter('availableStatus', 'Available')
       .groupBy('room.floor')
       .orderBy('room.floor', 'ASC')
       .getRawMany();
@@ -2113,28 +2115,95 @@ export class StudentsService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
-    const rooms = await this.roomRepository.find({
-      where: {
-        hostelId,
-        floor,
-        status: 'ACTIVE'
-      },
-      order: { roomNumber: 'ASC' }
-    });
+    // Query rooms with actual bed counts from beds table (without JSON fields in GROUP BY)
+    const roomsWithBedCounts = await this.roomRepository
+      .createQueryBuilder('room')
+      .leftJoin('room.beds', 'bed')
+      .select('room.id', 'roomId')
+      .addSelect('room.roomNumber', 'roomNumber')
+      .addSelect('room.name', 'name')
+      .addSelect('room.floor', 'floor')
+      .addSelect('room.monthlyRate', 'monthlyRate')
+      .addSelect('room.status', 'status')
+      .addSelect('room.gender', 'gender')
+      .addSelect('room.description', 'description')
+      .addSelect('COUNT(bed.id)', 'totalBeds')
+      .addSelect('COUNT(CASE WHEN bed.status = :availableStatus THEN bed.id END)', 'availableBeds')
+      .addSelect('COUNT(CASE WHEN bed.status = :occupiedStatus THEN bed.id END)', 'occupiedBeds')
+      .where('room.hostelId = :hostelId', { hostelId })
+      .andWhere('room.floor = :floor', { floor })
+      .andWhere('room.status = :roomStatus', { roomStatus: 'ACTIVE' })
+      .setParameter('availableStatus', 'Available')
+      .setParameter('occupiedStatus', 'Occupied')
+      .groupBy('room.id, room.roomNumber, room.name, room.floor, room.monthlyRate, room.status, room.gender, room.description')
+      .orderBy('room.roomNumber', 'ASC')
+      .getRawMany();
 
-    return rooms
-      .filter(room => room.availableBeds > 0)
+    // Get room images separately to avoid JSON GROUP BY issues
+    const roomIds = roomsWithBedCounts.map(room => room.roomId);
+    const roomImagesMap = new Map();
+    
+    if (roomIds.length > 0) {
+      const roomsWithImages = await this.roomRepository
+        .createQueryBuilder('room')
+        .select('room.id', 'roomId')
+        .addSelect('room.images', 'images')
+        .where('room.id IN (:...roomIds)', { roomIds })
+        .getRawMany();
+      
+      roomsWithImages.forEach(room => {
+        roomImagesMap.set(room.roomId, room.images || []);
+      });
+    }
+
+    // Get amenities separately for each room to avoid complex grouping
+    const amenitiesMap = new Map();
+    
+    if (roomIds.length > 0) {
+      const roomAmenities = await this.roomRepository
+        .createQueryBuilder('room')
+        .leftJoin('room.amenities', 'roomAmenity')
+        .leftJoin('roomAmenity.amenity', 'amenity')
+        .select('room.id', 'roomId')
+        .addSelect('amenity.id', 'amenityId')
+        .addSelect('amenity.name', 'amenityName')
+        .addSelect('amenity.description', 'amenityDescription')
+        .where('room.id IN (:...roomIds)', { roomIds })
+        .andWhere('roomAmenity.isActive = :isActive', { isActive: true })
+        .getRawMany();
+
+      // Group amenities by room
+      roomAmenities.forEach(ra => {
+        if (!amenitiesMap.has(ra.roomId)) {
+          amenitiesMap.set(ra.roomId, []);
+        }
+        if (ra.amenityId) {
+          amenitiesMap.get(ra.roomId).push({
+            id: ra.amenityId,
+            name: ra.amenityName,
+            description: ra.amenityDescription
+          });
+        }
+      });
+    }
+
+    // Filter rooms with available beds and format response
+    return roomsWithBedCounts
+      .filter(room => parseInt(room.availableBeds) > 0)
       .map(room => ({
-        roomId: room.id,
+        roomId: room.roomId,
         roomNumber: room.roomNumber,
         name: room.name,
-        floor: room.floor,
-        bedCount: room.bedCount,
-        occupancy: room.occupancy,
-        availableBeds: room.availableBeds,
-        monthlyRate: room.monthlyRate || 0,
+        floor: parseInt(room.floor),
+        bedCount: parseInt(room.totalBeds),
+        occupancy: parseInt(room.occupiedBeds),
+        availableBeds: parseInt(room.availableBeds),
+        monthlyRate: parseFloat(room.monthlyRate) || 0,
         status: room.status,
-        gender: room.gender
+        gender: room.gender,
+        images: roomImagesMap.get(room.roomId) || [],
+        description: room.description,
+        amenities: amenitiesMap.get(room.roomId) || []
       }));
   }
 
@@ -2146,14 +2215,19 @@ export class StudentsService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
+    // Get ALL beds in the room for debugging, not just available ones
     const beds = await this.bedRepository.find({
       where: {
         roomId,
-        hostelId,
-        status: BedStatus.AVAILABLE
+        hostelId
       },
       relations: ['room'],
       order: { bedNumber: 'ASC' }
+    });
+
+    console.log(`🛏️ Found ${beds.length} beds in room ${roomId}`);
+    beds.forEach(bed => {
+      console.log(`🛏️ Bed ${bed.bedIdentifier}: status="${bed.status}" (type: ${typeof bed.status})`);
     });
 
     return beds.map(bed => ({

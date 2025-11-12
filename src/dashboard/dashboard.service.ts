@@ -50,10 +50,11 @@ export class DashboardService {
       where: { status: 'ACTIVE', hostelId }
     });
 
-    // Get accurate bed counts and occupancy
+    // Get accurate bed counts from actual bed entities (FIXED)
     const bedCountResult = await this.roomRepository
       .createQueryBuilder('room')
-      .select('SUM(room.bedCount)', 'totalBeds')
+      .leftJoin('room.beds', 'bed')
+      .select('COUNT(bed.id)', 'totalBeds')
       .where('room.status = :status', { status: 'ACTIVE' })
       .andWhere('room.hostelId = :hostelId', { hostelId })
       .getRawOne();
@@ -73,17 +74,18 @@ export class DashboardService {
     const occupiedBeds = parseInt(occupiedBedsResult?.occupiedBeds) || 0;
     const availableBeds = totalBeds - occupiedBeds;
 
-    // Calculate rooms with available beds
+    // Calculate rooms with available beds using actual bed counts (FIXED)
     const roomsWithAvailableBedsResult = await this.roomRepository
       .createQueryBuilder('room')
+      .leftJoin('room.beds', 'bed')
       .leftJoin('room.occupants', 'occupant', 'occupant.status = :occupantStatus', { occupantStatus: 'Active' })
       .select('room.id')
-      .addSelect('room.bedCount')
+      .addSelect('COUNT(bed.id)', 'totalBeds')
       .addSelect('COUNT(occupant.id)', 'currentOccupancy')
       .where('room.status = :status', { status: 'ACTIVE' })
       .andWhere('room.hostelId = :hostelId', { hostelId })
-      .groupBy('room.id, room.bedCount')
-      .having('room.bedCount > COUNT(occupant.id)')
+      .groupBy('room.id')
+      .having('COUNT(bed.id) > COUNT(occupant.id)')
       .getRawMany();
 
     const availableRooms = roomsWithAvailableBedsResult.length;

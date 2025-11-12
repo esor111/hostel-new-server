@@ -173,7 +173,7 @@ export class RoomsService extends HostelScopedService<Room> {
         dailyRate: room.roomType?.baseDailyRate || Math.round((room.monthlyRate || 0) / 30) || 0,
         status: room.status,
         roomNumber: room.roomNumber,
-        availableBeds: room.bedCount - room.occupancy, // Simple calculation
+        availableBeds: Number(room.availableBeds) || (room.bedCount - room.occupancy), // Use calculated or fallback
         maintenanceStatus: room.maintenanceStatus,
         createdAt: room.createdAt,
         updatedAt: room.updatedAt,
@@ -798,10 +798,11 @@ export class RoomsService extends HostelScopedService<Room> {
       where: { ...baseWhere, status: 'MAINTENANCE' }
     });
 
-    // Get accurate occupancy data from RoomOccupant records
+    // Get accurate occupancy data from actual bed entities (FIXED)
     const occupancyQueryBuilder = this.roomRepository
       .createQueryBuilder('room')
-      .select('SUM(room.bedCount)', 'totalBeds')
+      .leftJoin('room.beds', 'bed')
+      .select('COUNT(bed.id)', 'totalBeds')
       .where('room.status = :status', { status: 'ACTIVE' });
 
     if (hostelId) {
@@ -1086,16 +1087,20 @@ export class RoomsService extends HostelScopedService<Room> {
       }
     }
 
-    // 🔧 FIXED: Calculate bed count using unified rule (bed elements, not sleeping spots)
-    let calculatedBedCount = room.bedCount;
+    // 🔧 FIXED: Use actual bed count from bed entities, not room.bedCount
+    let calculatedBedCount = room.beds?.length || room.bedCount;
     let calculatedAvailableBeds = availableBeds;
 
-    if (enhancedLayout?.bedPositions) {
-      // 🎯 KEY FIX: Count bed ELEMENTS (not sleeping spots)
+    // If we have actual bed entities, use them as source of truth
+    if (room.beds && room.beds.length > 0) {
+      calculatedBedCount = room.beds.length;
+      calculatedAvailableBeds = room.beds.filter(bed => bed.status === 'Available').length;
+    } else if (enhancedLayout?.bedPositions) {
+      // Fallback to layout-based calculation if no bed entities
       const bedElements = enhancedLayout.bedPositions.filter((pos: any) =>
         pos.type === 'single-bed' || pos.type === 'bunk-bed'
       );
-      calculatedBedCount = bedElements.length; // Each bed element = 1 bookable unit
+      calculatedBedCount = bedElements.length;
       calculatedAvailableBeds = Math.max(0, calculatedBedCount - actualOccupancy);
     }
 

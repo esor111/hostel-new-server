@@ -163,11 +163,15 @@ export class BedSyncService {
         matchedBed = availableBeds.find(bed => !processedBedIds.has(bed.id));
         
         if (matchedBed) {
-          // REUSE AVAILABLE BED - Safe to update bedIdentifier
+          // REUSE AVAILABLE BED - Generate globally unique bedIdentifier
           this.logger.log(`🔄 Reusing available bed ${matchedBed.bedIdentifier} → ${layoutBedId}`);
           
+          // Generate globally unique bedIdentifier to avoid constraint violations
+          const uniqueBedIdentifier = await this.generateUniqueBedIdentifier(layoutBedId, roomId);
+          this.logger.log(`🔧 Generated unique identifier: ${layoutBedId} → ${uniqueBedIdentifier}`);
+          
           await this.bedRepository.update(matchedBed.id, {
-            bedIdentifier: layoutBedId,
+            bedIdentifier: uniqueBedIdentifier,
             gender: (position.gender as 'Male' | 'Female' | 'Any') || matchedBed.gender,
             monthlyRate: position.bedDetails?.monthlyRate || room.monthlyRate,
             description: `Bed ${matchedBed.bedNumber} in ${room.name}`,
@@ -548,9 +552,8 @@ export class BedSyncService {
       description = `${position.bunkLevel.charAt(0).toUpperCase() + position.bunkLevel.slice(1)} bunk bed ${bedNumber} in ${room.name}`;
     }
 
-    // Generate unique bed identifier using room number as prefix
-    const roomPrefix = room.roomNumber || `R-${room.id.substring(0, 8)}`;
-    const uniqueBedIdentifier = `${roomPrefix}-${position.id}`;
+    // Generate globally unique bed identifier to avoid constraint violations
+    const uniqueBedIdentifier = await this.generateUniqueBedIdentifier(position.id, roomId);
     
     const bedData = {
       roomId,
@@ -589,10 +592,13 @@ export class BedSyncService {
     const beds: Bed[] = [];
 
     for (let i = 1; i <= bedCount; i++) {
+      // Generate globally unique bed identifier
+      const uniqueBedIdentifier = await this.generateUniqueBedIdentifier(`bed${i}`, roomId);
+      
       const bed = this.bedRepository.create({
         roomId,
         hostelId: room.hostelId, // CRITICAL FIX: Add missing hostelId
-        bedIdentifier: `bed${i}`,
+        bedIdentifier: uniqueBedIdentifier,
         bedNumber: i.toString(),
         status: BedStatus.AVAILABLE,
         gender: room.gender as 'Male' | 'Female' | 'Any' || 'Any',

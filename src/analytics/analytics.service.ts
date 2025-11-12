@@ -61,9 +61,29 @@ export class AnalyticsService {
     const totalRooms = await this.roomRepository.count({
       where: { hostelId }
     });
-    const occupiedRooms = await this.roomRepository.count({
-      where: { occupancy: 1, hostelId },
-    });
+
+    // Get total beds from actual bed entities (FIXED)
+    const totalBedsResult = await this.roomRepository
+      .createQueryBuilder('room')
+      .leftJoin('room.beds', 'bed')
+      .select('COUNT(bed.id)', 'totalBeds')
+      .where('room.hostelId = :hostelId', { hostelId })
+      .andWhere('room.status = :status', { status: 'ACTIVE' })
+      .getRawOne();
+
+    const totalBeds = parseInt(totalBedsResult?.totalBeds) || 0;
+
+    // Count occupied beds from bed entities (FIXED)
+    const occupiedBedsResult = await this.roomRepository
+      .createQueryBuilder('room')
+      .leftJoin('room.beds', 'bed')
+      .select('COUNT(bed.id)', 'occupiedBeds')
+      .where('room.hostelId = :hostelId', { hostelId })
+      .andWhere('room.status = :status', { status: 'ACTIVE' })
+      .andWhere('bed.status IN (:...statuses)', { statuses: ['Occupied', 'Reserved'] })
+      .getRawOne();
+
+    const occupiedBeds = parseInt(occupiedBedsResult?.occupiedBeds) || 0;
 
     const totalRevenue = await this.paymentRepository
       .createQueryBuilder("payment")
@@ -82,13 +102,15 @@ export class AnalyticsService {
       .andWhere("student.hostelId = :hostelId", { hostelId })
       .getRawOne();
 
+    // Calculate occupancy rate based on beds, not rooms (FIXED)
     const occupancyRate =
-      totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
+      totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
 
     return {
       totalStudents,
       totalRooms,
-      occupiedRooms,
+      totalBeds,
+      occupiedBeds,
       occupancyRate,
       totalRevenue: parseFloat(totalRevenue?.total || "0"),
       monthlyRevenue: parseFloat(monthlyRevenue?.total || "0"),

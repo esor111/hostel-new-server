@@ -224,7 +224,7 @@ export class RoomsOptimizedService {
           id: room.id,
           name: room.name,
           type: room.roomType?.name || 'Private',
-          bedCount: room.bedCount,
+          bedCount: room.beds?.length || room.bedCount, // Use actual bed count if available
           occupancy: room.occupancy,
           gender: room.gender,
           monthlyRate: room.monthlyRate || room.roomType?.baseMonthlyRate || 0,
@@ -235,7 +235,7 @@ export class RoomsOptimizedService {
           floor: room.floor || 1, // Use actual floor number
           roomNumber: room.roomNumber,
           occupants: [], // No occupants in lightweight mode for performance
-          availableBeds: room.bedCount - room.occupancy,
+          availableBeds: room.beds?.filter(bed => bed.status === 'Available').length || (room.bedCount - room.occupancy),
           lastCleaned: null,
           maintenanceStatus: room.maintenanceStatus,
           pricingModel: 'monthly',

@@ -189,4 +189,17 @@ export class RoomSelectionResponseDto {
 
   @ApiProperty({ description: 'Gender preference' })
   gender?: string;
+
+  @ApiProperty({ description: 'Room images', type: [String] })
+  images?: string[];
+
+  @ApiProperty({ description: 'Room description' })
+  description?: string;
+
+  @ApiProperty({ description: 'Room amenities' })
+  amenities?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+  }>;
 }

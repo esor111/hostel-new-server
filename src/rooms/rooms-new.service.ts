@@ -173,9 +173,12 @@ export class RoomsNewService {
       description: ra.amenity.description || ra.amenity.name
     })) || [];
 
-    // Calculate availability from beds
+    // Calculate availability from actual beds (FIXED)
     let availableBeds = room.bedCount - room.occupancy;
+    let actualBedCount = room.bedCount;
+    
     if (room.beds && room.beds.length > 0) {
+      actualBedCount = room.beds.length; // Use actual bed count
       availableBeds = room.beds.filter(bed => bed.status === 'Available').length;
     }
 
@@ -184,7 +187,7 @@ export class RoomsNewService {
       name: room.name,
       roomNumber: room.roomNumber,
       type: room.roomType?.name || 'Private',
-      bedCount: room.bedCount,
+      bedCount: actualBedCount,
       occupancy: room.occupancy,
       gender: room.gender,
       monthlyRate: room.monthlyRate?.toString() || '0',
