@@ -45,6 +45,9 @@ export class HostelNotificationService {
     adminJwt: JwtPayload
   ): Promise<void> {
     try {
+      console.log(`🔔 BOOKING NOTIFICATION START - Booking ID: ${booking.id}`);
+      console.log(`📋 Booking userId: ${booking.userId}`);
+      console.log(`👤 Admin JWT ID: ${adminJwt.id}`);
       this.logger.log(`📱 Sending confirmation notification for booking ${booking.id}`);
       
       // 1. Get user FCM token
@@ -223,7 +226,7 @@ export class HostelNotificationService {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.EXPRESS_NOTIFICATION_URL}/send-hostel-booking-notification`,
+          `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`,
           payload
         )
       );

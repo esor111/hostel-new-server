@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from '@nestjs/axios';
 import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
 import { Student } from './entities/student.entity';
@@ -20,6 +21,7 @@ import { LedgerV2Module } from '../ledger-v2/ledger-v2.module';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { AdvancePaymentService } from './services/advance-payment.service';
 import { CheckoutSettlementService } from './services/checkout-settlement.service';
+import { StudentNotificationService } from './student-notification.service';
 import { InvoicesModule } from '../invoices/invoices.module';
 
 @Module({
@@ -37,6 +39,7 @@ import { InvoicesModule } from '../invoices/invoices.module';
       Bed,
       Hostel
     ]),
+    HttpModule, // Import HttpModule for notification service
     RoomsModule,
     AuthModule,
     HostelModule,
@@ -48,12 +51,14 @@ import { InvoicesModule } from '../invoices/invoices.module';
   providers: [
     StudentsService,
     AdvancePaymentService,
-    CheckoutSettlementService
+    CheckoutSettlementService,
+    StudentNotificationService
   ],
   exports: [
     StudentsService,
     AdvancePaymentService,
-    CheckoutSettlementService
+    CheckoutSettlementService,
+    StudentNotificationService
   ],
 })
 export class StudentsModule { }

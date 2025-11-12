@@ -436,16 +436,16 @@ export class MultiGuestBookingService {
         this.logger.log(`✅ Confirmed multi-guest booking ${booking.bookingReference} (${confirmedGuestCount}/${booking.totalGuests} guests, ${createdStudents.length} students created)`);
 
         // 🆕 NEW: Send notification via express server
-        // if (adminJwt) {
-        //   try {
-        //     this.logger.log(`📱 Sending notification via express server for: ${booking.bookingReference}`);
-        //     await this.hostelNotificationService.notifyUserOfConfirmation(booking, adminJwt);
-        //     this.logger.log(`✅ Notification sent successfully`);
-        //   } catch (notifError) {
-        //     this.logger.warn(`⚠️ Failed to send notification: ${notifError.message}`);
-        //     // Don't let notification failure cause transaction rollback
-        //   }
-        // }
+        if (adminJwt) {
+          try {
+            this.logger.log(`📱 Sending notification via express server for: ${booking.bookingReference}`);
+            await this.hostelNotificationService.notifyUserOfConfirmation(booking, adminJwt);
+            this.logger.log(`✅ Notification sent successfully`);
+          } catch (notifError) {
+            this.logger.warn(`⚠️ Failed to send notification: ${notifError.message}`);
+            // Don't let notification failure cause transaction rollback
+          }
+        }
 
         this.logger.log(`🎯 About to return confirmation result for booking ${booking.bookingReference}`);
 
@@ -1666,40 +1666,44 @@ export class MultiGuestBookingService {
       }
     }
 
-  // ✅ FIX: Use real contact info from booking instead of generating random values
-  // All guests from the same booking share the booking's contact information
-  const guestEmail = booking.contactEmail;
-  const guestPhone = booking.contactPhone;
+    // 🔧 FIXED: Generate unique contact info for each guest to avoid conflicts
+    // Each guest gets their own unique email and phone to prevent student reuse
+    const guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}@${booking.contactEmail.split('@')[1]}`;
+    const guestPhone = `${booking.contactPhone.slice(0, -2)}${Math.floor(Math.random() * 90) + 10}`; // Modify last 2 digits
 
-  // Check if a student with this email or phone already exists
-  const existingStudent = await manager.findOne(Student, {
-    where: [
-      { email: guestEmail },
-      { phone: guestPhone }
-    ]
-  });
+    this.logger.log(`🔧 Creating unique contact for guest "${guest.guestName}": ${guestEmail}, ${guestPhone}`);
+    console.log(`🔧 BUG FIX: Guest "${guest.guestName}" gets unique contact: ${guestEmail}, ${guestPhone}`);
 
-  if (existingStudent) {
-    // Student already exists - reset to pending configuration for new booking
-    this.logger.log(`✅ Found existing student ${existingStudent.id} (${existingStudent.name}) - resetting to pending configuration`);
-    
-    // Reset student to pending configuration status
-    await manager.update(Student, existingStudent.id, {
-      status: StudentStatus.PENDING_CONFIGURATION,
-      isConfigured: false,
-      roomId: roomUuid || existingStudent.roomId, // Update room if provided
-      bedNumber: guest.assignedBedNumber || existingStudent.bedNumber // Update bed if provided
+    // Check if a student with this EXACT guest name already exists (more specific check)
+    const existingStudent = await manager.findOne(Student, {
+      where: [
+        { name: guest.guestName, hostelId: booking.hostelId }, // Check by name + hostel
+        { email: guestEmail }, // Check by generated email
+        { phone: guestPhone }  // Check by generated phone
+      ]
     });
-    
-    // Update the guest's status to confirmed
-    guest.status = GuestStatus.CONFIRMED;
-    await manager.save(BookingGuest, guest);
-    
-    // Return updated student
-    const updatedStudent = await manager.findOne(Student, { where: { id: existingStudent.id } });
-    this.logger.log(`✅ Reset existing student to pending configuration: status=${updatedStudent?.status}, isConfigured=${updatedStudent?.isConfigured}`);
-    return updatedStudent || existingStudent;
-  }
+
+    if (existingStudent) {
+      // Student already exists - reset to pending configuration for new booking
+      this.logger.log(`✅ Found existing student ${existingStudent.id} (${existingStudent.name}) - resetting to pending configuration`);
+      
+      // Reset student to pending configuration status
+      await manager.update(Student, existingStudent.id, {
+        status: StudentStatus.PENDING_CONFIGURATION,
+        isConfigured: false,
+        roomId: roomUuid || existingStudent.roomId, // Update room if provided
+        bedNumber: guest.assignedBedNumber || existingStudent.bedNumber // Update bed if provided
+      });
+      
+      // Update the guest's status to confirmed
+      guest.status = GuestStatus.CONFIRMED;
+      await manager.save(BookingGuest, guest);
+      
+      // Return updated student
+      const updatedStudent = await manager.findOne(Student, { where: { id: existingStudent.id } });
+      this.logger.log(`✅ Reset existing student to pending configuration: status=${updatedStudent?.status}, isConfigured=${updatedStudent?.isConfigured}`);
+      return updatedStudent || existingStudent;
+    }
 
   // No existing student found - create new student with REAL contact info
   this.logger.log(`✅ Creating new student for guest "${guest.guestName}" with real contact: ${guestEmail}, ${guestPhone}`);

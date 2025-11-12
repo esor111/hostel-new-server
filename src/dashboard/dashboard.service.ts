@@ -10,6 +10,8 @@ import { MultiGuestBooking, MultiGuestBookingStatus } from '../bookings/entities
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
 import { PaginationDto, PaginationResponse } from '../common/dto/pagination.dto';
+import { StudentAttendance } from '../attendance/entities/student-attendance.entity';
+import { StudentCheckInOut, CheckInOutStatus } from '../attendance/entities/student-checkin-checkout.entity';
 
 @Injectable()
 export class DashboardService {
@@ -29,6 +31,10 @@ export class DashboardService {
     private roomRepository: Repository<Room>,
     @InjectRepository(RoomOccupant)
     private roomOccupantRepository: Repository<RoomOccupant>,
+    @InjectRepository(StudentAttendance)
+    private attendanceRepository: Repository<StudentAttendance>,
+    @InjectRepository(StudentCheckInOut)
+    private checkInOutRepository: Repository<StudentCheckInOut>,
   ) {}
 
   async getDashboardStats(hostelId: string) {
@@ -169,11 +175,15 @@ export class DashboardService {
     // Calculate occupancy percentage based on beds, not rooms
     const occupancyPercentage = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
 
+    // Get today's attendance counters
+    const attendanceCounters = await this.getTodayAttendanceCounters(hostelId);
+
     console.log('📊 Dashboard Stats:', {
       totalStudents,
       outstandingDues,
       monthlyRevenue: thisMonthRevenue,
-      occupancyPercentage
+      occupancyPercentage,
+      attendanceCounters
     });
 
     return {
@@ -189,7 +199,66 @@ export class DashboardService {
         amount: thisMonthRevenue
       },
       outstandingDues,
-      occupancyPercentage
+      occupancyPercentage,
+      attendanceCounters
+    };
+  }
+
+  /**
+   * Get today's attendance counters (check-ins and check-outs)
+   */
+  async getTodayAttendanceCounters(hostelId: string) {
+    // Validate hostelId is present
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date();
+    const todayString = today.toISOString().split('T')[0];
+
+    // Get today's attendance (students who checked in today)
+    const todayAttendance = await this.attendanceRepository.count({
+      where: {
+        hostelId,
+        date: todayString
+      }
+    });
+
+    // Get today's check-ins (total check-in events today)
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 0, 0, 0);
+
+    const todayCheckIns = await this.checkInOutRepository
+      .createQueryBuilder('checkin')
+      .where('checkin.hostelId = :hostelId', { hostelId })
+      .andWhere('checkin.checkInTime >= :startOfDay', { startOfDay })
+      .andWhere('checkin.checkInTime < :endOfDay', { endOfDay })
+      .getCount();
+
+    // Get today's check-outs (total check-out events today)
+    const todayCheckOuts = await this.checkInOutRepository
+      .createQueryBuilder('checkout')
+      .where('checkout.hostelId = :hostelId', { hostelId })
+      .andWhere('checkout.status = :status', { status: CheckInOutStatus.CHECKED_OUT })
+      .andWhere('checkout.checkOutTime >= :startOfDay', { startOfDay })
+      .andWhere('checkout.checkOutTime < :endOfDay', { endOfDay })
+      .getCount();
+
+    // Get currently checked in students
+    const currentlyCheckedIn = await this.checkInOutRepository.count({
+      where: {
+        hostelId,
+        status: CheckInOutStatus.CHECKED_IN,
+        checkOutTime: null as any
+      }
+    });
+
+    return {
+      todayAttendance,
+      checkIn: todayCheckIns,
+      checkOut: todayCheckOuts,
+      currentlyCheckedIn
     };
   }
 

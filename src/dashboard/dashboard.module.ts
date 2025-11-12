@@ -10,6 +10,8 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { MultiGuestBooking } from '../bookings/entities/multi-guest-booking.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
+import { StudentAttendance } from '../attendance/entities/student-attendance.entity';
+import { StudentCheckInOut } from '../attendance/entities/student-checkin-checkout.entity';
 import { AuthModule } from '../auth/auth.module';
 import { HostelModule } from '../hostel/hostel.module';
 
@@ -22,7 +24,9 @@ import { HostelModule } from '../hostel/hostel.module';
       Invoice,
       MultiGuestBooking,
       Room,
-      RoomOccupant
+      RoomOccupant,
+      StudentAttendance,
+      StudentCheckInOut
     ]),
     AuthModule,
     HostelModule,

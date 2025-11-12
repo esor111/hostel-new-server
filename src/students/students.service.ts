@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryRunner, DataSource } from 'typeorm';
 import { Student, StudentStatus } from './entities/student.entity';
@@ -20,11 +20,15 @@ import { CheckoutSettlementService } from './services/checkout-settlement.servic
 import { InvoicesService } from '../invoices/invoices.service';
 import { Payment } from '../payments/entities/payment.entity';
 import { AttendanceService } from '../attendance/attendance.service';
+import { StudentNotificationService } from './student-notification.service';
 import { Inject, forwardRef } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @Injectable()
 export class StudentsService { 
+  private readonly logger = new Logger(StudentsService.name);
+
   constructor(
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
@@ -52,6 +56,7 @@ export class StudentsService {
     private invoicesService: InvoicesService,
     @Inject(forwardRef(() => AttendanceService))
     private attendanceService: AttendanceService,
+    private studentNotificationService: StudentNotificationService,
     private dataSource: DataSource,
   ) {
     // super(studentRepository, 'Student'); 
@@ -974,7 +979,7 @@ export class StudentsService {
     };
   }
 
-  async configureStudent(studentId: string, configData: any, hostelId: string) {
+  async configureStudent(studentId: string, configData: any, hostelId: string, adminJwt?: JwtPayload) {
     const student = await this.findOne(studentId, hostelId);
 
     // ✅ PROTECTION: Prevent re-configuration if student is already configured
@@ -1188,7 +1193,7 @@ export class StudentsService {
       console.warn('⚠️ Configuration completed but initial check-in failed');
     }
 
-    return {
+    const result = {
       success: true,
       message: 'Student configuration completed successfully - fees configured, invoice generated',
       studentId,
@@ -1214,6 +1219,30 @@ export class StudentsService {
         note: 'Configuration amount is stored in financial info only - no payment record created'
       }
     };
+
+    // 🆕 NEW: Send notification to student about configuration completion
+    console.log(`🔔 CHECKING NOTIFICATION CONDITIONS:`);
+    console.log(`   - adminJwt exists: ${!!adminJwt}`);
+    console.log(`   - student.userId exists: ${!!student.userId}`);
+    console.log(`   - student.name: ${student.name}`);
+    
+    if (adminJwt && student.userId) {
+      try {
+        console.log(`📱 STARTING CONFIGURATION NOTIFICATION for ${student.name}`);
+        this.logger.log(`📱 Sending configuration notification to student ${student.name}`);
+        await this.studentNotificationService.notifyStudentOfConfiguration(student, result, adminJwt);
+        console.log(`✅ CONFIGURATION NOTIFICATION COMPLETED SUCCESSFULLY`);
+        this.logger.log(`✅ Configuration notification sent successfully`);
+      } catch (notifError) {
+        console.log(`❌ CONFIGURATION NOTIFICATION FAILED: ${notifError.message}`);
+        this.logger.warn(`⚠️ Failed to send configuration notification: ${notifError.message}`);
+        // Don't let notification failure cause configuration rollback
+      }
+    } else {
+      console.log(`⚠️ SKIPPING NOTIFICATION - Missing adminJwt or student.userId`);
+    }
+
+    return result;
   }
 
   private async updateRelatedEntities(studentId: string, dto: any) {

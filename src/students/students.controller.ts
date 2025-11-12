@@ -338,10 +338,11 @@ export class StudentsController {
   async configureStudentById(
     @Param('id') studentId: string,
     @GetHostelId() hostelId: string,
+    @CurrentUser() adminUser: JwtPayload,
     @Body(ValidationPipe) configData: any
   ) {
-    // Configure student with provided IDs
-    const result = await this.studentsService.configureStudent(studentId, configData, hostelId);
+    // Configure student with provided IDs and admin JWT for notifications
+    const result = await this.studentsService.configureStudent(studentId, configData, hostelId, adminUser);
 
     // Return EXACT same format as current Express API
     return {
@@ -381,8 +382,8 @@ export class StudentsController {
       );
     }
 
-    // Step 3: Configure student with resolved IDs
-    const result = await this.studentsService.configureStudent(student.id, configData, hostel.id);
+    // Step 3: Configure student with resolved IDs and user JWT for notifications
+    const result = await this.studentsService.configureStudent(student.id, configData, hostel.id, user);
 
     // Return EXACT same format as current Express API
     return {
