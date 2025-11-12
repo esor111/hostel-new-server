@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, QueryRunner } from 'typeorm';
+import { Repository, QueryRunner, DataSource } from 'typeorm';
 import { Student, StudentStatus } from './entities/student.entity';
 import { StudentContact, ContactType } from './entities/student-contact.entity';
 import { StudentAcademicInfo } from './entities/student-academic-info.entity';
@@ -9,6 +9,7 @@ import { BedSwitchAudit } from './entities/bed-switch-audit.entity';
 import { LedgerEntry, BalanceType, LedgerEntryType } from '../ledger/entities/ledger-entry.entity';
 import { ConfigureStudentDto } from './dto/configure-student.dto';
 import { SwitchBedDto } from './dto/switch-bed.dto';
+import { CreateManualStudentDto, FloorSelectionResponseDto, RoomSelectionResponseDto, BedSelectionResponseDto } from './dto/create-manual-student.dto';
 import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { Room } from '../rooms/entities/room.entity';
@@ -20,6 +21,7 @@ import { InvoicesService } from '../invoices/invoices.service';
 import { Payment } from '../payments/entities/payment.entity';
 import { AttendanceService } from '../attendance/attendance.service';
 import { Inject, forwardRef } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class StudentsService { 
@@ -50,6 +52,7 @@ export class StudentsService {
     private invoicesService: InvoicesService,
     @Inject(forwardRef(() => AttendanceService))
     private attendanceService: AttendanceService,
+    private dataSource: DataSource,
   ) {
     // super(studentRepository, 'Student'); 
   }
@@ -2067,5 +2070,231 @@ export class StudentsService {
     const totalDebits = parseFloat(result?.totalDebits || '0');
     const totalCredits = parseFloat(result?.totalCredits || '0');
     return totalDebits - totalCredits;
+  }
+
+  // ==================== MANUAL STUDENT CREATION METHODS ====================
+
+  /**
+   * Get available floors with bed availability statistics
+   */
+  async getAvailableFloors(hostelId: string): Promise<FloorSelectionResponseDto[]> {
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const floorStats = await this.roomRepository
+      .createQueryBuilder('room')
+      .select('room.floor', 'floorNumber')
+      .addSelect('COUNT(room.id)', 'totalRooms')
+      .addSelect('COUNT(CASE WHEN room.availableBeds > 0 THEN 1 END)', 'availableRooms')
+      .addSelect('SUM(room.bedCount)', 'totalBeds')
+      .addSelect('SUM(room.availableBeds)', 'availableBeds')
+      .where('room.hostelId = :hostelId', { hostelId })
+      .andWhere('room.status = :status', { status: 'ACTIVE' })
+      .andWhere('room.floor IS NOT NULL')
+      .groupBy('room.floor')
+      .orderBy('room.floor', 'ASC')
+      .getRawMany();
+
+    return floorStats.map(stat => ({
+      floorNumber: parseInt(stat.floorNumber),
+      totalRooms: parseInt(stat.totalRooms),
+      availableRooms: parseInt(stat.availableRooms),
+      totalBeds: parseInt(stat.totalBeds),
+      availableBeds: parseInt(stat.availableBeds)
+    }));
+  }
+
+  /**
+   * Get available rooms on a specific floor
+   */
+  async getAvailableRoomsOnFloor(hostelId: string, floor: number): Promise<RoomSelectionResponseDto[]> {
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const rooms = await this.roomRepository.find({
+      where: {
+        hostelId,
+        floor,
+        status: 'ACTIVE'
+      },
+      order: { roomNumber: 'ASC' }
+    });
+
+    return rooms
+      .filter(room => room.availableBeds > 0)
+      .map(room => ({
+        roomId: room.id,
+        roomNumber: room.roomNumber,
+        name: room.name,
+        floor: room.floor,
+        bedCount: room.bedCount,
+        occupancy: room.occupancy,
+        availableBeds: room.availableBeds,
+        monthlyRate: room.monthlyRate || 0,
+        status: room.status,
+        gender: room.gender
+      }));
+  }
+
+  /**
+   * Get available beds in a specific room
+   */
+  async getAvailableBedsInRoom(hostelId: string, roomId: string): Promise<BedSelectionResponseDto[]> {
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    const beds = await this.bedRepository.find({
+      where: {
+        roomId,
+        hostelId,
+        status: BedStatus.AVAILABLE
+      },
+      relations: ['room'],
+      order: { bedNumber: 'ASC' }
+    });
+
+    return beds.map(bed => ({
+      bedId: bed.id,
+      bedNumber: bed.bedNumber,
+      bedIdentifier: bed.bedIdentifier,
+      status: bed.status,
+      monthlyRate: bed.monthlyRate || 0,
+      description: bed.description,
+      room: {
+        roomId: bed.room.id,
+        roomNumber: bed.room.roomNumber,
+        floor: bed.room.floor
+      }
+    }));
+  }
+
+  /**
+   * Generate random userId for manual student creation
+   */
+  private generateRandomUserId(): string {
+    return uuidv4();
+  }
+
+  /**
+   * Create student manually with bed assignment
+   */
+  async createManualStudent(dto: CreateManualStudentDto, hostelId: string): Promise<any> {
+    if (!hostelId) {
+      throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    return await this.dataSource.transaction(async manager => {
+      // 1. Validate bed is available
+      const bed = await manager.findOne(Bed, {
+        where: { id: dto.bedId, status: BedStatus.AVAILABLE },
+        relations: ['room']
+      });
+
+      if (!bed) {
+        throw new BadRequestException('Selected bed is not available');
+      }
+
+      if (bed.hostelId !== hostelId) {
+        throw new BadRequestException('Bed does not belong to this hostel');
+      }
+
+      // 2. Check if student with same email/phone exists
+      const existingStudent = await manager.findOne(Student, {
+        where: [
+          { email: dto.email, hostelId },
+          { phone: dto.phone, hostelId }
+        ]
+      });
+
+      if (existingStudent) {
+        throw new BadRequestException('Student with this email or phone already exists in this hostel');
+      }
+
+      // 3. Generate random userId
+      const userId = this.generateRandomUserId();
+
+      // 4. Create student with PENDING_CONFIGURATION status
+      const student = manager.create(Student, {
+        userId,
+        name: dto.name,
+        phone: dto.phone,
+        email: dto.email,
+        address: dto.address,
+        enrollmentDate: dto.checkInDate ? new Date(dto.checkInDate) : new Date(),
+        status: StudentStatus.PENDING_CONFIGURATION,
+        isConfigured: false,
+        roomId: bed.roomId,
+        bedNumber: bed.bedIdentifier,
+        hostelId
+      });
+
+      const savedStudent = await manager.save(Student, student);
+
+      // 5. Reserve the bed (not occupied yet - that happens during configuration)
+      await manager.update(Bed, bed.id, {
+        status: BedStatus.RESERVED,
+        currentOccupantId: savedStudent.id,
+        currentOccupantName: savedStudent.name,
+        occupiedSince: dto.checkInDate ? new Date(dto.checkInDate) : new Date(),
+        notes: `Reserved for manual student: ${savedStudent.name}`
+      });
+
+      // 6. Create RoomOccupant record
+      const roomOccupant = manager.create(RoomOccupant, {
+        roomId: bed.roomId,
+        studentId: savedStudent.id,
+        checkInDate: dto.checkInDate ? new Date(dto.checkInDate) : new Date(),
+        bedNumber: bed.bedIdentifier,
+        status: 'Active',
+        assignedBy: 'manual-admin',
+        notes: `Manually created student: ${savedStudent.name}`
+      });
+
+      await manager.save(RoomOccupant, roomOccupant);
+
+      // 7. Update room occupancy
+      await manager.increment(Room, { id: bed.roomId }, 'occupancy', 1);
+
+      // 8. Save optional information if provided
+      if (dto.guardianName || dto.guardianPhone) {
+        const guardianContact = manager.create(StudentContact, {
+          studentId: savedStudent.id,
+          type: ContactType.GUARDIAN,
+          name: dto.guardianName,
+          phone: dto.guardianPhone,
+          isPrimary: true,
+          isActive: true
+        });
+        await manager.save(StudentContact, guardianContact);
+      }
+
+      if (dto.emergencyContact) {
+        const emergencyContactRecord = manager.create(StudentContact, {
+          studentId: savedStudent.id,
+          type: ContactType.EMERGENCY,
+          phone: dto.emergencyContact,
+          isPrimary: true,
+          isActive: true
+        });
+        await manager.save(StudentContact, emergencyContactRecord);
+      }
+
+      if (dto.course || dto.institution) {
+        const academicInfo = manager.create(StudentAcademicInfo, {
+          studentId: savedStudent.id,
+          course: dto.course,
+          institution: dto.institution,
+          academicYear: new Date().getFullYear().toString(),
+          isActive: true
+        });
+        await manager.save(StudentAcademicInfo, academicInfo);
+      }
+
+      // Return the created student in API format
+      return this.transformToApiResponse(savedStudent);
+    });
   }
 }

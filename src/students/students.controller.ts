@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, NotFoundException, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, NotFoundException, BadRequestException, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import {
@@ -7,7 +7,8 @@ import {
   SearchStudentDto,
   CheckoutStudentDto,
   BulkUpdateStudentDto,
-  SwitchBedDto
+  SwitchBedDto,
+  CreateManualStudentDto
 } from './dto';
 import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -415,6 +416,72 @@ export class StudentsController {
     return {
       status: HttpStatus.OK,
       data: settlement
+    };
+  }
+
+  // ==================== MANUAL STUDENT CREATION ENDPOINTS ====================
+
+  @Get('manual-create/floors')
+  @ApiOperation({ summary: 'Get available floors for manual student creation' })
+  @ApiResponse({ status: 200, description: 'Available floors retrieved successfully' })
+  async getAvailableFloors(@GetHostelId() hostelId: string) {
+    const floors = await this.studentsService.getAvailableFloors(hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      data: floors
+    };
+  }
+
+  @Get('manual-create/floors/:floor/rooms')
+  @ApiOperation({ summary: 'Get available rooms on specific floor' })
+  @ApiResponse({ status: 200, description: 'Available rooms retrieved successfully' })
+  async getAvailableRoomsOnFloor(
+    @Param('floor') floor: string,
+    @GetHostelId() hostelId: string
+  ) {
+    const floorNumber = parseInt(floor);
+    if (isNaN(floorNumber)) {
+      throw new BadRequestException('Invalid floor number');
+    }
+
+    const rooms = await this.studentsService.getAvailableRoomsOnFloor(hostelId, floorNumber);
+
+    return {
+      status: HttpStatus.OK,
+      data: rooms
+    };
+  }
+
+  @Get('manual-create/rooms/:roomId/beds')
+  @ApiOperation({ summary: 'Get available beds in specific room' })
+  @ApiResponse({ status: 200, description: 'Available beds retrieved successfully' })
+  async getAvailableBedsInRoom(
+    @Param('roomId') roomId: string,
+    @GetHostelId() hostelId: string
+  ) {
+    const beds = await this.studentsService.getAvailableBedsInRoom(hostelId, roomId);
+
+    return {
+      status: HttpStatus.OK,
+      data: beds
+    };
+  }
+
+  @Post('manual-create')
+  @ApiOperation({ summary: 'Create student manually with bed assignment' })
+  @ApiResponse({ status: 201, description: 'Manual student created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid data or bed not available' })
+  async createManualStudent(
+    @Body(ValidationPipe) createManualStudentDto: CreateManualStudentDto,
+    @GetHostelId() hostelId: string
+  ) {
+    const student = await this.studentsService.createManualStudent(createManualStudentDto, hostelId);
+
+    return {
+      status: HttpStatus.CREATED,
+      data: student,
+      message: 'Manual student created successfully. Student will appear in pending configuration list.'
     };
   }
 }

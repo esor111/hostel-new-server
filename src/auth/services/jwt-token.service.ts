@@ -22,7 +22,7 @@ export class JwtTokenService {
       if (!secret) {
         throw new UnauthorizedException('JWT secret not configured');
       }
-
+      
       const payload = this.jwtService.verify<JwtPayload>(token, { secret });
       
       // Validate required fields

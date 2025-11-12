@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Student Creation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .step-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            font-weight: bold;
+        }
+        .step.active {
+            background-color: #2563eb;
+            color: white;
+        }
+        .step.inactive {
+            background-color: #e5e7eb;
+            color: #6b7280;
+        }
+        .step-connector {
+            width: 3rem;
+            height: 0.25rem;
+        }
+        .step-connector.active {
+            background-color: #2563eb;
+        }
+        .step-connector.inactive {
+            background-color: #e5e7eb;
+        }
+        .card {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+        }
+        .card:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-color: #93c5fd;
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background-color: #2563eb;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #1d4ed8;
+        }
+        .btn-outline {
+            border: 1px solid #d1d5db;
+            background: white;
+            color: #374151;
+        }
+        .btn-outline:hover {
+            background-color: #f9fafb;
+        }
+        .hidden {
+            display: none;
+        }
+        .grid {
+            display: grid;
+        }
+        .grid-cols-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .grid-cols-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .gap-4 {
+            gap: 1rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            color: #374151;
+        }
+        .form-input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto p-6">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold mb-2 text-gray-900">Manual Student Creation</h1>
+            <p class="text-gray-600">
+                Create a student manually with direct bed assignment. The student will appear in the pending configuration list.
+            </p>
+        </div>
+
+        <!-- Step Indicator -->
+        <div class="step-indicator">
+            <div class="step active" id="step-1">1</div>
+            <div class="step-connector inactive" id="connector-1"></div>
+            <div class="step inactive" id="step-2">2</div>
+            <div class="step-connector inactive" id="connector-2"></div>
+            <div class="step inactive" id="step-3">3</div>
+            <div class="step-connector inactive" id="connector-3"></div>
+            <div class="step inactive" id="step-4">4</div>
+        </div>
+
+        <!-- Alert Messages -->
+        <div id="error-alert" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-circle mr-2"></i>
+                <span id="error-message"></span>
+            </div>
+        </div>
+
+        <div id="success-alert" class="hidden bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-6">
+            <div class="flex items-center">
+                <i class="fas fa-check-circle mr-2"></i>
+                <span id="success-message"></span>
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="loading" class="hidden flex justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+
+        <!-- Step 1: Floor Selection -->
+        <div id="floor-selection" class="card p-6">
+            <div class="mb-4">
+                <h2 class="text-xl font-semibold flex items-center mb-2">
+                    <i class="fas fa-building mr-2 text-blue-600"></i>
+                    Select Floor
+                </h2>
+                <p class="text-gray-600">Choose a floor with available beds</p>
+            </div>
+            <div id="floors-grid" class="grid grid-cols-3 gap-4">
+                <!-- Floors will be populated here -->
+            </div>
+        </div>
+
+        <!-- Step 2: Room Selection -->
+        <div id="room-selection" class="card p-6 hidden">
+            <div class="mb-4">
+                <h2 class="text-xl font-semibold flex items-center mb-2">
+                    <i class="fas fa-users mr-2 text-blue-600"></i>
+                    Select Room - <span id="selected-floor-text">Floor</span>
+                </h2>
+                <p class="text-gray-600">Choose a room with available beds</p>
+            </div>
+            <div class="mb-4">
+                <button class="btn btn-outline" onclick="goToStep(1)">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Back to Floors
+                </button>
+            </div>
+            <div id="rooms-grid" class="grid grid-cols-3 gap-4">
+                <!-- Rooms will be populated here -->
+            </div>
+        </div>
+
+        <!-- Step 3: Bed Selection -->
+        <div id="bed-selection" class="card p-6 hidden">
+            <div class="mb-4">
+                <h2 class="text-xl font-semibold flex items-center mb-2">
+                    <i class="fas fa-bed mr-2 text-blue-600"></i>
+                    Select Bed - <span id="selected-room-text">Room</span>
+                </h2>
+                <p class="text-gray-600">Choose an available bed for the student</p>
+            </div>
+            <div class="mb-4">
+                <button class="btn btn-outline" onclick="goToStep(2)">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Back to Rooms
+                </button>
+            </div>
+            <div id="beds-grid" class="grid grid-cols-4 gap-4">
+                <!-- Beds will be populated here -->
+            </div>
+        </div>
+
+        <!-- Step 4: Student Form -->
+        <div id="student-form" class="card p-6 hidden">
+            <div class="mb-4">
+                <h2 class="text-xl font-semibold flex items-center mb-2">
+                    <i class="fas fa-user mr-2 text-blue-600"></i>
+                    Student Information
+                </h2>
+                <p class="text-gray-600">Enter student details for <span id="selected-bed-text">selected bed</span></p>
+            </div>
+            <div class="mb-4">
+                <button class="btn btn-outline" onclick="goToStep(3)">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Back to Beds
+                </button>
+            </div>
+
+            <!-- Selected Bed Summary -->
+            <div class="bg-blue-50 p-4 rounded-lg mb-6">
+                <h4 class="font-medium mb-2">Selected Bed</h4>
+                <div class="grid grid-cols-2 gap-4 text-sm" id="bed-summary">
+                    <!-- Bed summary will be populated here -->
+                </div>
+            </div>
+
+            <form id="student-creation-form">
+                <!-- Basic Information -->
+                <div class="mb-6">
+                    <h4 class="font-medium mb-4 flex items-center">
+                        <i class="fas fa-user mr-2"></i>
+                        Basic Information
+                    </h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label class="form-label" for="name">Full Name *</label>
+                            <input class="form-input" type="text" id="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="phone">Phone Number *</label>
+                            <input class="form-input" type="tel" id="phone" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="email">Email Address *</label>
+                            <input class="form-input" type="email" id="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="checkInDate">Check-in Date</label>
+                            <input class="form-input" type="date" id="checkInDate">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="address">Address</label>
+                        <textarea class="form-input" id="address" rows="2"></textarea>
+                    </div>
+                </div>
+
+                <!-- Guardian Information -->
+                <div class="mb-6">
+                    <h4 class="font-medium mb-4 flex items-center">
+                        <i class="fas fa-user-check mr-2"></i>
+                        Guardian Information
+                    </h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label class="form-label" for="guardianName">Guardian Name</label>
+                            <input class="form-input" type="text" id="guardianName">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="guardianPhone">Guardian Phone</label>
+                            <input class="form-input" type="tel" id="guardianPhone">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="emergencyContact">Emergency Contact</label>
+                            <input class="form-input" type="tel" id="emergencyContact">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Academic Information -->
+                <div class="mb-6">
+                    <h4 class="font-medium mb-4 flex items-center">
+                        <i class="fas fa-graduation-cap mr-2"></i>
+                        Academic Information
+                    </h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label class="form-label" for="course">Course/Program</label>
+                            <input class="form-input" type="text" id="course">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="institution">Institution</label>
+                            <input class="form-input" type="text" id="institution">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ID Proof -->
+                <div class="mb-6">
+                    <h4 class="font-medium mb-4">ID Proof Information</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label class="form-label" for="idProofType">ID Proof Type</label>
+                            <input class="form-input" type="text" id="idProofType" placeholder="e.g., Citizenship, Passport">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="idProofNumber">ID Proof Number</label>
+                            <input class="form-input" type="text" id="idProofNumber">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-4">
+                    <button type="button" class="btn btn-outline" onclick="goToStep(3)">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="submit-btn">Create Student</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let currentStep = 1;
+        let selectedFloor = null;
+        let selectedRoom = null;
+        let selectedBed = null;
+
+        // API base URL - update this to match your backend
+        const API_BASE = '/api/students/manual-create';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set default check-in date to today
+            document.getElementById('checkInDate').value = new Date().toISOString().split('T')[0];
+            
+            // Load floors
+            loadFloors();
+
+            // Form submission
+            document.getElementById('student-creation-form').addEventListener('submit', handleFormSubmit);
+        });
+
+        // API functions
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(API_BASE + endpoint, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Add your authentication headers here
+                        // 'Authorization': 'Bearer ' + token,
+                        // 'X-Hostel-Id': hostelId
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return data.data;
+            } catch (error) {
+                console.error('API call failed:', error);
+                showError('Failed to load data: ' + error.message);
+                throw error;
+            }
+        }
+
+        // Load floors
+        async function loadFloors() {
+            try {
+                showLoading(true);
+                const floors = await apiCall('/floors');
+                renderFloors(floors);
+            } catch (error) {
+                // Handle error
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load rooms
+        async function loadRooms(floorNumber) {
+            try {
+                showLoading(true);
+                const rooms = await apiCall(`/floors/${floorNumber}/rooms`);
+                renderRooms(rooms);
+            } catch (error) {
+                // Handle error
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Load beds
+        async function loadBeds(roomId) {
+            try {
+                showLoading(true);
+                const beds = await apiCall(`/rooms/${roomId}/beds`);
+                renderBeds(beds);
+            } catch (error) {
+                // Handle error
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Render functions
+        function renderFloors(floors) {
+            const grid = document.getElementById('floors-grid');
+            grid.innerHTML = floors.map(floor => `
+                <div class="card p-4 cursor-pointer" onclick="selectFloor(${JSON.stringify(floor).replace(/"/g, '&quot;')})">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-blue-600 mb-2">Floor ${floor.floorNumber}</div>
+                        <div class="space-y-1 text-sm text-gray-600">
+                            <div class="flex justify-between">
+                                <span>Rooms:</span>
+                                <span>${floor.availableRooms}/${floor.totalRooms}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Beds:</span>
+                                <span class="text-green-600 font-medium">${floor.availableBeds} available</span>
+                            </div>
+                        </div>
+                        <span class="inline-block mt-2 px-2 py-1 text-xs rounded ${floor.availableBeds > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
+                            ${floor.availableBeds > 0 ? 'Available' : 'Full'}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderRooms(rooms) {
+            const grid = document.getElementById('rooms-grid');
+            grid.innerHTML = rooms.map(room => `
+                <div class="card p-4 cursor-pointer" onclick="selectRoom(${JSON.stringify(room).replace(/"/g, '&quot;')})">
+                    <div class="text-center">
+                        <div class="text-lg font-bold text-blue-600 mb-2">${room.roomNumber}</div>
+                        <div class="text-sm text-gray-600 mb-2">${room.name}</div>
+                        <div class="space-y-1 text-sm text-gray-600">
+                            <div class="flex justify-between">
+                                <span>Occupancy:</span>
+                                <span>${room.occupancy}/${room.bedCount}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Available:</span>
+                                <span class="text-green-600 font-medium">${room.availableBeds} beds</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Rate:</span>
+                                <span>NPR ${room.monthlyRate.toLocaleString()}</span>
+                            </div>
+                        </div>
+                        ${room.gender ? `<span class="inline-block mt-2 px-2 py-1 text-xs rounded bg-gray-100 text-gray-800">${room.gender}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderBeds(beds) {
+            const grid = document.getElementById('beds-grid');
+            grid.innerHTML = beds.map(bed => `
+                <div class="card p-4 cursor-pointer text-center" onclick="selectBed(${JSON.stringify(bed).replace(/"/g, '&quot;')})">
+                    <i class="fas fa-bed text-2xl text-blue-600 mb-2"></i>
+                    <div class="font-medium">${bed.bedNumber}</div>
+                    <div class="text-sm text-gray-600">${bed.bedIdentifier}</div>
+                    <div class="text-sm font-medium text-green-600 mt-1">NPR ${bed.monthlyRate.toLocaleString()}</div>
+                    <span class="inline-block mt-2 px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">Available</span>
+                </div>
+            `).join('');
+        }
+
+        // Selection handlers
+        async function selectFloor(floor) {
+            selectedFloor = floor;
+            document.getElementById('selected-floor-text').textContent = `Floor ${floor.floorNumber}`;
+            await loadRooms(floor.floorNumber);
+            goToStep(2);
+        }
+
+        async function selectRoom(room) {
+            selectedRoom = room;
+            document.getElementById('selected-room-text').textContent = room.roomNumber;
+            await loadBeds(room.roomId);
+            goToStep(3);
+        }
+
+        function selectBed(bed) {
+            selectedBed = bed;
+            document.getElementById('selected-bed-text').textContent = `${bed.bedIdentifier} in ${bed.room.roomNumber}`;
+            
+            // Update bed summary
+            document.getElementById('bed-summary').innerHTML = `
+                <div>Floor: ${bed.room.floor}</div>
+                <div>Room: ${bed.room.roomNumber}</div>
+                <div>Bed: ${bed.bedIdentifier}</div>
+                <div>Rate: NPR ${bed.monthlyRate.toLocaleString()}/month</div>
+            `;
+            
+            goToStep(4);
+        }
+
+        // Navigation
+        function goToStep(step) {
+            // Hide all steps
+            document.getElementById('floor-selection').classList.add('hidden');
+            document.getElementById('room-selection').classList.add('hidden');
+            document.getElementById('bed-selection').classList.add('hidden');
+            document.getElementById('student-form').classList.add('hidden');
+
+            // Show current step
+            const stepElements = {
+                1: 'floor-selection',
+                2: 'room-selection',
+                3: 'bed-selection',
+                4: 'student-form'
+            };
+            
+            document.getElementById(stepElements[step]).classList.remove('hidden');
+            currentStep = step;
+            updateStepIndicator();
+        }
+
+        function updateStepIndicator() {
+            for (let i = 1; i <= 4; i++) {
+                const stepEl = document.getElementById(`step-${i}`);
+                const connectorEl = document.getElementById(`connector-${i}`);
+                
+                if (i <= currentStep) {
+                    stepEl.classList.remove('inactive');
+                    stepEl.classList.add('active');
+                } else {
+                    stepEl.classList.remove('active');
+                    stepEl.classList.add('inactive');
+                }
+                
+                if (connectorEl) {
+                    if (i < currentStep) {
+                        connectorEl.classList.remove('inactive');
+                        connectorEl.classList.add('active');
+                    } else {
+                        connectorEl.classList.remove('active');
+                        connectorEl.classList.add('inactive');
+                    }
+                }
+            }
+        }
+
+        // Form submission
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            
+            if (!selectedBed) {
+                showError('Please select a bed first');
+                return;
+            }
+
+            const formData = {
+                name: document.getElementById('name').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                address: document.getElementById('address').value,
+                guardianName: document.getElementById('guardianName').value,
+                guardianPhone: document.getElementById('guardianPhone').value,
+                emergencyContact: document.getElementById('emergencyContact').value,
+                course: document.getElementById('course').value,
+                institution: document.getElementById('institution').value,
+                idProofType: document.getElementById('idProofType').value,
+                idProofNumber: document.getElementById('idProofNumber').value,
+                checkInDate: document.getElementById('checkInDate').value,
+                bedId: selectedBed.bedId
+            };
+
+            try {
+                showLoading(true);
+                const result = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Add your authentication headers here
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await result.json();
+
+                if (result.ok) {
+                    showSuccess('Student created successfully! They will appear in the pending configuration list.');
+                    resetForm();
+                } else {
+                    showError(data.message || 'Failed to create student');
+                }
+            } catch (error) {
+                showError('Failed to create student: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Utility functions
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('hidden', !show);
+        }
+
+        function showError(message) {
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error-alert').classList.remove('hidden');
+            document.getElementById('success-alert').classList.add('hidden');
+        }
+
+        function showSuccess(message) {
+            document.getElementById('success-message').textContent = message;
+            document.getElementById('success-alert').classList.remove('hidden');
+            document.getElementById('error-alert').classList.add('hidden');
+        }
+
+        function resetForm() {
+            // Reset form
+            document.getElementById('student-creation-form').reset();
+            document.getElementById('checkInDate').value = new Date().toISOString().split('T')[0];
+            
+            // Reset selections
+            selectedFloor = null;
+            selectedRoom = null;
+            selectedBed = null;
+            
+            // Go back to step 1
+            goToStep(1);
+            loadFloors();
+        }
+    </script>
+</body>
+</html>
