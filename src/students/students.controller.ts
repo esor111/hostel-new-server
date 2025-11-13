@@ -341,6 +341,11 @@ export class StudentsController {
     @CurrentUser() adminUser: JwtPayload,
     @Body(ValidationPipe) configData: any
   ) {
+    console.error(`🚨🚨🚨 CONFIGURE STUDENT ENDPOINT HIT - ID: ${studentId} 🚨🚨🚨`);
+    console.log(`🎯 CONTROLLER: configureStudentById called - studentId: ${studentId}`);
+    console.log(`🎯 CONTROLLER: hostelId: ${hostelId}`);
+    console.log(`🎯 CONTROLLER: adminUser:`, adminUser ? { id: adminUser.id, businessId: adminUser.businessId } : 'NULL');
+    
     // Configure student with provided IDs and admin JWT for notifications
     const result = await this.studentsService.configureStudent(studentId, configData, hostelId, adminUser);
 

@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryRunner, DataSource } from 'typeorm';
 import { Student, StudentStatus } from './entities/student.entity';
@@ -58,6 +60,7 @@ export class StudentsService {
     private attendanceService: AttendanceService,
     private studentNotificationService: StudentNotificationService,
     private dataSource: DataSource,
+    private httpService: HttpService,
   ) {
     // super(studentRepository, 'Student'); 
   }
@@ -374,6 +377,7 @@ export class StudentsService {
     // Return EXACT same structure as current JSON with NEW balance breakdown fields
     return {
       id: student.id,
+      userId: student.userId, // Include userId for notifications
       name: student.name,
       phone: student.phone,
       email: student.email,
@@ -980,13 +984,17 @@ export class StudentsService {
   }
 
   async configureStudent(studentId: string, configData: any, hostelId: string, adminJwt?: JwtPayload) {
+    console.log(`🔧 CONFIGURE STUDENT START - ID: ${studentId}`);
+    console.log(`🔧 AdminJwt received:`, adminJwt ? { id: adminJwt.id, businessId: adminJwt.businessId } : 'NULL');
+    
     const student = await this.findOne(studentId, hostelId);
+    console.log(`🔧 Student found:`, { id: student.id, name: student.name, userId: student.userId });
 
     // ✅ PROTECTION: Prevent re-configuration if student is already configured
     if (student.isConfigured) {
-      throw new BadRequestException('Student is already configured. Cannot configure again.');
+      throw new BadRequestException('Student is already configured. Use update endpoint to modify configuration.');
     }
-
+    
     // ✅ CRITICAL FIX: Save guardian information
     if (configData.guardian) {
       // First, deactivate any existing guardian contacts
@@ -1226,7 +1234,7 @@ export class StudentsService {
     console.log(`   - student.userId exists: ${!!student.userId}`);
     console.log(`   - student.name: ${student.name}`);
     
-    if (adminJwt && student.userId) {
+    if (adminJwt && student?.userId) {
       try {
         console.log(`📱 STARTING CONFIGURATION NOTIFICATION for ${student.name}`);
         this.logger.log(`📱 Sending configuration notification to student ${student.name}`);
@@ -2316,8 +2324,9 @@ export class StudentsService {
         throw new BadRequestException('Student with this email or phone already exists in this hostel');
       }
 
-      // 3. Generate random userId
-      const userId = this.generateRandomUserId();
+      // 3. Get real userId by checking phone number against Kaha API
+      const userId = await this.getRealUserId(dto.phone);
+      console.log(`🔍 Manual creation - Real userId for phone ${dto.phone}: ${userId}`);
 
       // 4. Create student with PENDING_CONFIGURATION status
       const student = manager.create(Student, {
@@ -2399,5 +2408,34 @@ export class StudentsService {
       // Return the created student in API format
       return this.transformToApiResponse(savedStudent);
     });
+  }
+
+  /**
+   * Get real userId by checking phone number against Kaha API
+   * If not found, use random UUID as fallback
+   */
+  private async getRealUserId(phoneNumber: string): Promise<string> {
+    const fallbackUserId = 'a635c2da-6fe0-4d10-9dec-e85ddaced067';
+    
+    try {
+      console.log(`🔍 Checking phone ${phoneNumber} against Kaha API...`);
+      
+      const response = await firstValueFrom(
+        this.httpService.get(`https://dev.kaha.com.np/main/api/v3/users/check-contact/${phoneNumber}`)
+      );
+      
+      if (response.data && response.data.id) {
+        console.log(`✅ Found user: ${response.data.fullName} (${response.data.kahaId})`);
+        console.log(`   Real userId: ${response.data.id}`);
+        return response.data.id;
+      } else {
+        console.log(`⚠️ No user found for phone ${phoneNumber}, using fallback`);
+        return fallbackUserId;
+      }
+    } catch (error) {
+      console.log(`❌ Error checking phone ${phoneNumber}: ${error.message}`);
+      console.log(`   Using fallback userId: ${fallbackUserId}`);
+      return fallbackUserId;
+    }
   }
 }

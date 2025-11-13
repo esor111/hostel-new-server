@@ -28,7 +28,7 @@ export class StudentNotificationService {
     );
     this.EXPRESS_NOTIFICATION_URL = this.configService.get<string>(
       'EXPRESS_NOTIFICATION_URL',
-      'http://localhost:3008'
+      'https://dev.kaha.com.np'
     );
     
     this.logger.log(`📱 Student Notification service initialized`);
@@ -51,37 +51,34 @@ export class StudentNotificationService {
       console.log(`👨‍🎓 Student name: ${student.name}`);
       console.log(`👤 Admin JWT ID: ${adminJwt.id}`);
       console.log(`💰 Monthly fee: NPR ${configurationResult.totalMonthlyFee?.toLocaleString()}`);
-      this.logger.log(`📱 Sending configuration notification for student ${student.id}`);
+      console.log(`📱 Sending configuration notification for student ${student.id}`);
       
-      // 1. Get student FCM token using their userId (same as booking confirmation)
-      const studentFcmTokens = await this.getFcmTokens(student.userId, false);
-      if (!studentFcmTokens.length) {
-        this.logger.warn(`⚠️ No FCM token found for student user ${student.userId}`);
-        return;
-      }
+      // 1. Get real userId by checking student's phone number against Kaha API
+      const realUserId = await this.getRealUserId(student.phone);
+      console.log(`🔍 Real userId for phone ${student.phone}: ${realUserId}`);
+      
+      // 2. Get student FCM token using the real userId
+      const studentFcmTokens = await this.getFcmTokens(realUserId, false);
       
       // 2. Get business name (hardcoded for now)
       const businessName = await this.getBusinessName(adminJwt.id);
       
-      // 3. Compose payload for student configuration notification
+      // 3. Compose payload for student configuration notification (booking notification format)
       const payload = {
         fcmToken: studentFcmTokens[0],
-        notificationType: 'STUDENT_CONFIGURATION',
-        title: 'Configuration Complete! 🎉',
-        message: `Your hostel configuration is complete. Monthly fee: NPR ${configurationResult.totalMonthlyFee?.toLocaleString() || 'N/A'}`,
+        bookingStatus: 'Confirmed', // Required field for booking endpoint
         senderName: businessName,
-        recipientId: student.userId,
+        recipientId: realUserId,
         recipientType: 'USER',
-        configurationDetails: {
+        bookingDetails: {
+          bookingId: `config_${student.id}`, // Use student config as booking ID
+          roomName: student.room ? (student.room.name || student.room.roomNumber || 'Your Room') : 'Your Room',
+          roomId: student.roomId || student.id,
+          // Additional configuration details
           studentId: student.id,
           studentName: student.name,
           totalMonthlyFee: configurationResult.totalMonthlyFee,
           configurationDate: configurationResult.configurationDate,
-          roomInfo: student.room ? {
-            roomId: student.roomId,
-            roomName: student.room.name || student.room.roomNumber,
-            bedNumber: student.bedNumber
-          } : null,
           firstInvoice: configurationResult.firstInvoice ? {
             invoiceId: configurationResult.firstInvoice.invoiceId,
             amount: configurationResult.firstInvoice.amount,
@@ -92,14 +89,19 @@ export class StudentNotificationService {
       
       console.log(`📤 CONFIGURATION PAYLOAD:`);
       console.log(JSON.stringify(payload, null, 2));
-      this.logger.log(`📤 Sending configuration payload:`, JSON.stringify(payload, null, 2));
       
-      // 4. Send to express server
+      // 4. Check if we have FCM tokens before sending
+      if (!studentFcmTokens.length) {
+        this.logger.warn(`⚠️ No FCM token found for user ${realUserId}`);
+        console.log(`⚠️ SKIPPING NOTIFICATION SEND - No FCM tokens available for userId: ${realUserId}`);
+        return;
+      }
+      
+      // 5. Send to express server
       console.log(`🚀 Sending to Express server: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
       await this.sendNotification(payload);
       
       console.log(`✅ CONFIGURATION NOTIFICATION SENT SUCCESSFULLY to ${student.name}`);
-      this.logger.log(`✅ Configuration notification sent successfully to student ${student.name}`);
     } catch (error) {
       this.logger.error(`❌ Failed to send configuration notification: ${error.message}`);
       this.logger.error(error.stack);
@@ -129,16 +131,18 @@ export class StudentNotificationService {
       // 2. Get business name
       const businessName = adminJwt ? await this.getBusinessName(adminJwt.id) : 'Your Hostel';
       
-      // 3. Compose payload for invoice notification
+      // 3. Compose payload for invoice notification (booking notification format)
       const payload = {
         fcmToken: studentFcmTokens[0],
-        notificationType: 'INVOICE_GENERATED',
-        title: 'New Invoice Generated 📄',
-        message: `Your invoice for NPR ${invoiceDetails.amount?.toLocaleString() || 'N/A'} is ready. Due: ${invoiceDetails.dueDate || 'N/A'}`,
+        bookingStatus: 'Confirmed', // Required field for booking endpoint
         senderName: businessName,
         recipientId: student.userId,
         recipientType: 'USER',
-        invoiceDetails: {
+        bookingDetails: {
+          bookingId: `invoice_${invoiceDetails.invoiceId}`, // Use invoice as booking ID
+          roomName: 'Invoice Notification',
+          roomId: invoiceDetails.invoiceId,
+          // Additional invoice details
           studentId: student.id,
           studentName: student.name,
           invoiceId: invoiceDetails.invoiceId,
@@ -203,7 +207,7 @@ export class StudentNotificationService {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `https://dev.kaha.com.np/hostelno/api/v1/send-hostel-booking-notification`,
+          `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`,
           payload
         )
       );
@@ -216,6 +220,35 @@ export class StudentNotificationService {
         this.logger.error(`   Data:`, error.response.data);
       }
       throw error;
+    }
+  }
+
+  /**
+   * Get real userId by checking phone number against Kaha API
+   * If not found, use hardcoded fallback userId
+   */
+  private async getRealUserId(phoneNumber: string): Promise<string> {
+    const fallbackUserId = 'a635c2da-6fe0-4d10-9dec-e85ddaced067';
+    
+    try {
+      console.log(`🔍 Checking phone ${phoneNumber} against Kaha API...`);
+      
+      const response = await firstValueFrom(
+        this.httpService.get(`https://dev.kaha.com.np/main/api/v3/users/check-contact/${phoneNumber}`)
+      );
+      
+      if (response.data && response.data.id) {
+        console.log(`✅ Found user: ${response.data.fullName} (${response.data.kahaId})`);
+        console.log(`   Real userId: ${response.data.id}`);
+        return response.data.id;
+      } else {
+        console.log(`⚠️ No user found for phone ${phoneNumber}, using fallback`);
+        return fallbackUserId;
+      }
+    } catch (error) {
+      console.log(`❌ Error checking phone ${phoneNumber}: ${error.message}`);
+      console.log(`   Using fallback userId: ${fallbackUserId}`);
+      return fallbackUserId;
     }
   }
 
