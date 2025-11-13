@@ -28,7 +28,7 @@ export class StudentNotificationService {
     );
     this.EXPRESS_NOTIFICATION_URL = this.configService.get<string>(
       'EXPRESS_NOTIFICATION_URL',
-      'http://localhost:3007'
+      'https://dev.kaha.com.np'
     );
     
     this.logger.log(`📱 Student Notification service initialized`);
