@@ -4,6 +4,7 @@ import { AttendanceService } from './attendance.service';
 import { CheckInDto, CheckOutDto, StudentCheckInDto, StudentCheckOutDto, AttendanceFiltersDto } from './dto';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
