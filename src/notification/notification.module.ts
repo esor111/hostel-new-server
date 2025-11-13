@@ -6,6 +6,7 @@ import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { UnifiedNotificationService } from './unified-notification.service';
 import { Student } from '../students/entities/student.entity';
+import { HostelModule } from '../hostel/hostel.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { Student } from '../students/entities/student.entity';
     }),
     ConfigModule,
     TypeOrmModule.forFeature([Student]),
+    HostelModule, // 🔔 Add HostelModule to provide HostelService for the guard
   ],
   controllers: [NotificationController],
   providers: [NotificationService, UnifiedNotificationService],

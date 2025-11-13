@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationService } from './notification.service';
 import { SendToStudentsDto } from './dto/send-to-students.dto';
@@ -17,7 +17,7 @@ export class NotificationController {
     summary: 'Send notification to multiple students',
     description:
       'Admin can send custom notifications to selected students. ' +
-      'This endpoint forwards the request to the notification microservice which handles FCM token lookup and Firebase messaging.',
+      'Uses the unified notification system for consistent delivery and fallback handling.',
   })
   @ApiResponse({
     status: 200,
@@ -47,7 +47,9 @@ export class NotificationController {
     status: 503,
     description: 'Notification server unavailable',
   })
-  async sendToStudents(@Body() dto: SendToStudentsDto) {
-    return this.notificationService.sendToStudents(dto);
+  async sendToStudents(@Body() dto: SendToStudentsDto, @Req() req: any) {
+    // 🔔 NEW: Use unified notification approach with admin JWT
+    const adminJwt = req.user; // JWT payload from auth guard
+    return this.notificationService.sendToStudentsUnified(dto, adminJwt);
   }
 }
