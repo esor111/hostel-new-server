@@ -211,14 +211,36 @@ export class StudentsController {
   @Post(':id/checkout')
   @ApiOperation({ summary: 'Process student checkout' })
   @ApiResponse({ status: 200, description: 'Checkout processed successfully' })
+  @ApiResponse({ status: 400, description: 'Checkout validation failed' })
   async processCheckout(@Param('id') id: string, @Body(ValidationPipe) checkoutDetails: CheckoutStudentDto, @GetHostelId() hostelId: string) {
-    const result = await this.studentsService.processCheckout(id, checkoutDetails, hostelId);
+    try {
+      const result = await this.studentsService.processCheckout(id, checkoutDetails, hostelId);
 
-    // Return EXACT same format as current Express API
-    return {
-      status: HttpStatus.OK,
-      data: result
-    };
+      // Return EXACT same format as current Express API
+      return {
+        status: HttpStatus.OK,
+        data: result
+      };
+    } catch (error) {
+      // Handle structured error responses for better user experience
+      if (error instanceof BadRequestException) {
+        const errorResponse = error.getResponse();
+        
+        // If it's a structured error with userMessage, format it properly
+        if (typeof errorResponse === 'object' && errorResponse['userMessage']) {
+          throw new BadRequestException({
+            message: errorResponse['userMessage'],
+            error: 'Checkout Failed',
+            statusCode: 400,
+            details: errorResponse['details'] || null,
+            code: errorResponse['code'] || 'CHECKOUT_ERROR'
+          });
+        }
+      }
+      
+      // Re-throw the original error if not structured
+      throw error;
+    }
   }
 
   @Post(':id/switch-bed')

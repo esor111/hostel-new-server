@@ -1782,56 +1782,37 @@ export class StudentsService {
   }
 
   /**
-   * 👁️ CHECKOUT PREVIEW: Get checkout preview without processing
-   * Shows what will happen when student checks out
+   * 👁️ CHECKOUT PREVIEW: Get simplified checkout preview without detailed financial information
+   * Shows essential checkout information only
    */
   async getCheckoutPreview(studentId: string, hostelId: string) {
     try {
       // Get student details
       const student = await this.studentRepository.findOne({
-        where: { id: studentId, hostelId }
+        where: { id: studentId, hostelId },
+        relations: ['room']
       });
 
       if (!student) {
         throw new NotFoundException('Student not found');
       }
 
-      // Get outstanding invoices
+      // Get outstanding invoices for final settlement calculation only
       const outstandingInvoices = await this.invoicesService.getOutstandingDues(studentId, hostelId);
-
-      // Calculate total dues
       const totalDues = outstandingInvoices.reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
 
-      // Get advance payments (payments with type ADVANCE)
+      // Get advance payments for final settlement calculation only
       const advancePayments = await this.paymentRepository.find({
         where: {
           studentId,
           paymentType: 'ADVANCE' as any,
           status: 'Completed' as any
-        },
-        order: { paymentDate: 'DESC' }
+        }
       });
-
-      // Calculate total advance
       const totalAdvance = advancePayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
 
-      // Calculate final amount (positive = student owes, negative = refund due)
+      // Calculate final settlement amount only
       const finalAmount = totalDues - totalAdvance;
-
-      // Determine status
-      let status: 'AMOUNT_DUE' | 'REFUND_DUE' | 'SETTLED';
-      let summary: string;
-
-      if (finalAmount > 0) {
-        status = 'AMOUNT_DUE';
-        summary = `NPR ${finalAmount.toLocaleString()} due from student`;
-      } else if (finalAmount < 0) {
-        status = 'REFUND_DUE';
-        summary = `NPR ${Math.abs(finalAmount).toLocaleString()} refund due to student`;
-      } else {
-        status = 'SETTLED';
-        summary = 'Account fully settled';
-      }
 
       // Format response with safe date handling
       const formatDate = (date: any): string | null => {
@@ -1849,27 +1830,14 @@ export class StudentsService {
         }
       };
 
+      // Return simplified checkout preview - no detailed financial breakdown
       return {
         studentId: student.id,
         studentName: student.name,
-        configurationDate: formatDate(student.enrollmentDate),
-        outstandingInvoices: outstandingInvoices.map(inv => ({
-          id: inv.id,
-          periodLabel: inv.periodLabel || inv.month,
-          amount: inv.balanceDue || 0,
-          dueDate: formatDate(inv.dueDate)
-        })),
-        totalDues,
-        advancePayments: advancePayments.map(payment => ({
-          id: payment.id,
-          amount: Number(payment.amount),
-          date: formatDate(payment.paymentDate),
-          type: payment.paymentType
-        })),
-        totalAdvance,
-        finalAmount,
-        status,
-        summary
+        roomNumber: student.room?.roomNumber || 'Not assigned',
+        enrollmentDate: formatDate(student.enrollmentDate),
+        finalSettlement: Math.round(finalAmount * 100) / 100,
+        settlementStatus: finalAmount > 0 ? 'Outstanding' : finalAmount < 0 ? 'Refund Due' : 'Settled'
       };
     } catch (error) {
       console.error('Error getting checkout preview:', error);

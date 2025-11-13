@@ -70,18 +70,47 @@ export class CheckoutSettlementService {
     });
 
     if (!student) {
-      throw new BadRequestException('Student not found');
+      throw new BadRequestException({
+        message: 'Student not found',
+        userMessage: 'Student not found in this hostel. Please verify the student ID and try again.',
+        code: 'STUDENT_NOT_FOUND'
+      });
     }
 
     if (!student.enrollmentDate) {
-      throw new BadRequestException('Student enrollment date not found');
+      throw new BadRequestException({
+        message: 'Cannot process checkout: Student enrollment date is missing',
+        userMessage: 'Unable to process checkout. Please contact admin to update student enrollment date.',
+        code: 'MISSING_ENROLLMENT_DATE'
+      });
     }
 
     const enrollmentDateObj = new Date(student.enrollmentDate);
     const checkoutDateObj = new Date(checkoutDate);
 
+    // Format dates for user-friendly display
+    const enrollmentDateFormatted = enrollmentDateObj.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const checkoutDateFormatted = checkoutDateObj.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+
     if (checkoutDateObj <= enrollmentDateObj) {
-      throw new BadRequestException('Checkout date must be after enrollment date');
+      throw new BadRequestException({
+        message: 'Checkout date must be after enrollment date',
+        userMessage: `Invalid checkout date. The checkout date (${checkoutDateFormatted}) must be after the student's enrollment date (${enrollmentDateFormatted}). Please select a valid checkout date.`,
+        code: 'INVALID_CHECKOUT_DATE',
+        details: {
+          enrollmentDate: enrollmentDateFormatted,
+          checkoutDate: checkoutDateFormatted,
+          studentName: student.name
+        }
+      });
     }
 
     // Get all payments made by student
