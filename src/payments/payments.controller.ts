@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpStatus, ValidationPipe, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto';
@@ -64,8 +64,10 @@ export class PaymentsController {
   @Post()
   @ApiOperation({ summary: 'Record new payment' })
   @ApiResponse({ status: 201, description: 'Payment recorded successfully' })
-  async recordPayment(@GetHostelId() hostelId: string, @Body(ValidationPipe) createPaymentDto: CreatePaymentDto) {
-    const payment = await this.paymentsService.create(createPaymentDto, hostelId);
+  async recordPayment(@GetHostelId() hostelId: string, @Body(ValidationPipe) createPaymentDto: CreatePaymentDto, @Req() req: any) {
+    // 🔔 NEW: Pass admin JWT for payment notifications
+    const adminJwt = req.user; // JWT payload from auth guard
+    const payment = await this.paymentsService.create(createPaymentDto, hostelId, adminJwt);
     
     return {
       status: HttpStatus.CREATED,

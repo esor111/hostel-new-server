@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
+import { UnifiedNotificationService } from './unified-notification.service';
+import { Student } from '../students/entities/student.entity';
 
 @Module({
   imports: [
@@ -11,9 +14,10 @@ import { NotificationController } from './notification.controller';
       maxRedirects: 5,
     }),
     ConfigModule,
+    TypeOrmModule.forFeature([Student]),
   ],
   controllers: [NotificationController],
-  providers: [NotificationService],
-  exports: [NotificationService], // Export so other modules can use it
+  providers: [NotificationService, UnifiedNotificationService],
+  exports: [NotificationService, UnifiedNotificationService], // Export both services
 })
 export class NotificationModule {}

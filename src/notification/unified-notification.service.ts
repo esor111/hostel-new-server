@@ -1,0 +1,373 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Student } from '../students/entities/student.entity';
+
+export interface NotificationPayload {
+  userId: string;
+  title: string;
+  message: string;
+  type: 'PAYMENT' | 'BOOKING' | 'CONFIGURATION' | 'INVOICE' | 'GENERAL';
+  metadata?: any;
+  imageUrl?: string;
+}
+
+export interface BulkNotificationPayload {
+  studentIds: string[];
+  title: string;
+  message: string;
+  type: 'BULK_MESSAGE' | 'BULK_PAYMENT' | 'BULK_INVOICE';
+  metadata?: any;
+  imageUrl?: string;
+}
+
+/**
+ * Unified Notification Service
+ * Handles all types of notifications using the same pattern as configuration notifications
+ */
+@Injectable()
+export class UnifiedNotificationService {
+  private readonly logger = new Logger(UnifiedNotificationService.name);
+  
+  // Notification servers
+  private readonly KAHA_NOTIFICATION_URL: string;
+  private readonly EXPRESS_NOTIFICATION_URL: string;
+
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+    @InjectRepository(Student)
+    private readonly studentRepository: Repository<Student>,
+  ) {
+    // Get URLs from environment or use defaults
+    this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
+      'KAHA_NOTIFICATION_URL',
+      'https://dev.kaha.com.np/notifications'
+    );
+    this.EXPRESS_NOTIFICATION_URL = this.configService.get<string>(
+      'EXPRESS_NOTIFICATION_URL',
+      'http://localhost:3007'
+    );
+    
+    this.logger.log(`🔔 Unified Notification Service initialized`);
+    this.logger.log(`   Kaha Notification: ${this.KAHA_NOTIFICATION_URL}`);
+    this.logger.log(`   Express Notification: ${this.EXPRESS_NOTIFICATION_URL}`);
+  }
+
+  /**
+   * Send notification to a single user
+   * Uses the same pattern as configuration notifications
+   */
+  async sendToUser(
+    payload: NotificationPayload,
+    adminJwt?: JwtPayload
+  ): Promise<void> {
+    try {
+      console.log(`🔔 UNIFIED NOTIFICATION START - Type: ${payload.type}`);
+      console.log(`👤 Target userId: ${payload.userId}`);
+      console.log(`📧 Title: ${payload.title}`);
+      console.log(`💬 Message: ${payload.message}`);
+      
+      // 1. Get user FCM tokens
+      const userFcmTokens = await this.getFcmTokens(payload.userId, false);
+      if (!userFcmTokens.length) {
+        this.logger.warn(`⚠️ No FCM token found for user ${payload.userId}`);
+        console.log(`⚠️ SKIPPING NOTIFICATION - No FCM tokens for userId: ${payload.userId}`);
+        return;
+      }
+      
+      // 2. Get business name
+      const businessName = adminJwt ? await this.getBusinessName(adminJwt.id) : 'Your Hostel';
+      
+      // 3. Compose payload for express server (using booking notification format)
+      const expressPayload = {
+        fcmToken: userFcmTokens[0],
+        bookingStatus: 'Confirmed', // Required field for booking endpoint
+        senderName: businessName,
+        recipientId: payload.userId,
+        recipientType: 'USER',
+        bookingDetails: {
+          bookingId: `${payload.type.toLowerCase()}_${Date.now()}`, // Unique ID
+          roomName: payload.title, // Use title as room name
+          roomId: payload.type.toLowerCase(),
+          // Additional notification details
+          notificationType: payload.type,
+          title: payload.title,
+          message: payload.message,
+          metadata: payload.metadata,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      console.log(`📤 UNIFIED NOTIFICATION PAYLOAD:`);
+      console.log(JSON.stringify(expressPayload, null, 2));
+      
+      // 4. Send to express server
+      console.log(`🚀 Sending to Express server: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
+      await this.sendNotification(expressPayload);
+      
+      console.log(`✅ UNIFIED NOTIFICATION SENT SUCCESSFULLY - Type: ${payload.type}`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to send unified notification: ${error.message}`);
+      this.logger.error(error.stack);
+      // Don't throw - notification failure shouldn't break main flow
+    }
+  }
+
+  /**
+   * Send bulk notifications to multiple students
+   * Loops through each student and sends individual notifications
+   */
+  async sendBulkNotification(
+    payload: BulkNotificationPayload,
+    adminJwt: JwtPayload
+  ): Promise<{ sent: number; failed: number; skipped: number; details: any }> {
+    console.log(`🔔 BULK NOTIFICATION START - Type: ${payload.type}`);
+    console.log(`👥 Target students: ${payload.studentIds.length}`);
+    console.log(`📧 Title: ${payload.title}`);
+    
+    const results = {
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      details: {
+        sentTo: [] as any[],
+        failed: [] as any[],
+        skipped: [] as any[]
+      }
+    };
+
+    // Loop through each student and send individual notification
+    for (const studentId of payload.studentIds) {
+      try {
+        console.log(`📤 Processing student: ${studentId}`);
+        
+        // Get student info to get userId
+        const student = await this.getStudentInfo(studentId);
+        if (!student || !student.userId) {
+          console.log(`⚠️ Skipping student ${studentId} - No userId found`);
+          results.skipped++;
+          results.details.skipped.push({
+            studentId,
+            reason: 'No userId found'
+          });
+          continue;
+        }
+
+        // Send individual notification using unified approach
+        await this.sendToUser({
+          userId: student.userId,
+          title: payload.title,
+          message: payload.message,
+          type: payload.type as any,
+          metadata: {
+            ...payload.metadata,
+            studentId: studentId,
+            studentName: student.name
+          }
+        }, adminJwt);
+
+        results.sent++;
+        results.details.sentTo.push({
+          studentId,
+          userId: student.userId,
+          name: student.name
+        });
+        
+        console.log(`✅ Sent to student: ${student.name} (${studentId})`);
+        
+      } catch (error) {
+        console.log(`❌ Failed to send to student ${studentId}: ${error.message}`);
+        results.failed++;
+        results.details.failed.push({
+          studentId,
+          error: error.message
+        });
+      }
+    }
+
+    console.log(`🏁 BULK NOTIFICATION COMPLETED:`);
+    console.log(`   ✅ Sent: ${results.sent}`);
+    console.log(`   ❌ Failed: ${results.failed}`);
+    console.log(`   ⚠️ Skipped: ${results.skipped}`);
+
+    return results;
+  }
+
+  /**
+   * Get FCM token from kaha-notification server
+   * Same as existing implementation
+   */
+  private async getFcmTokens(id: string, isBusiness: boolean): Promise<string[]> {
+    const endpoint = `${this.KAHA_NOTIFICATION_URL}/api/v3/notification-devices/tokens`;
+    const params = { [isBusiness ? 'businessIds' : 'userIds']: id };
+
+    try {
+      this.logger.log(`🔍 Fetching FCM tokens for ${isBusiness ? 'business' : 'user'}: ${id}`);
+      
+      const response = await firstValueFrom(
+        this.httpService.get(endpoint, { params })
+      );
+      
+      const tokenObjects = response.data?.tokens || [];
+      const fcmTokens = tokenObjects.map(obj => obj.fcmToken).filter(token => token);
+      
+      this.logger.log(`✅ Retrieved ${fcmTokens.length} FCM token(s)`);
+      
+      return fcmTokens;
+    } catch (error) {
+      this.logger.error(`❌ Failed to fetch FCM tokens: ${error.message}`);
+      if (error.response?.data) {
+        this.logger.error('Error details:', error.response.data);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Send notification to express server (booking endpoint)
+   * Uses booking-specific endpoint with hardcoded messages
+   */
+  private async sendNotification(payload: any): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`,
+          payload
+        )
+      );
+      
+      this.logger.log(`✅ Express server response:`, response.data);
+    } catch (error) {
+      this.logger.error(`❌ Failed to send to express server: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`   Status: ${error.response.status}`);
+        this.logger.error(`   Data:`, error.response.data);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Send general notification to express server
+   * Uses general endpoint that preserves custom title/message
+   */
+  private async sendGeneralNotification(payload: any): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-general-notification`,
+          payload
+        )
+      );
+      
+      this.logger.log(`✅ Express server (general) response:`, response.data);
+    } catch (error) {
+      this.logger.error(`❌ Failed to send to express server (general): ${error.message}`);
+      if (error.response) {
+        this.logger.error(`   Status: ${error.response.status}`);
+        this.logger.error(`   Data:`, error.response.data);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get business name (same as existing implementation)
+   */
+  private async getBusinessName(businessId: string): Promise<string> {
+    this.logger.log(`📝 Using hardcoded business name for: ${businessId}`);
+    return 'Your Hostel';
+    
+    // TODO: Later implementation
+    // const business = await this.businessIntegrationService.getBusinessData(businessId);
+    // return business.name;
+  }
+
+  /**
+   * Get student info including userId
+   * Fetches student data from database with fallback userId
+   */
+  private async getStudentInfo(studentId: string): Promise<{ userId: string; name: string } | null> {
+    const fallbackUserId = 'a635c2da-6fe0-4d10-9dec-e85ddaced067'; // Same fallback as student notification service
+    
+    try {
+      console.log(`🔍 Looking up student info for studentId: ${studentId}`);
+      
+      const student = await this.studentRepository.findOne({ 
+        where: { id: studentId },
+        select: ['id', 'userId', 'name', 'phone']
+      });
+      
+      if (student && student.userId) {
+        console.log(`✅ Found student: ${student.name} with userId: ${student.userId}`);
+        return { 
+          userId: student.userId, 
+          name: student.name 
+        };
+      } else if (student && student.phone) {
+        // Try to get real userId from phone number (same as student notification service)
+        console.log(`🔍 Student found but no userId, checking phone ${student.phone} against Kaha API...`);
+        const realUserId = await this.getRealUserId(student.phone);
+        console.log(`✅ Using real userId: ${realUserId} for student: ${student.name}`);
+        return {
+          userId: realUserId,
+          name: student.name
+        };
+      } else if (student) {
+        // Student exists but no phone, use fallback
+        console.log(`⚠️ Student ${student.name} found but no userId or phone, using fallback`);
+        return {
+          userId: fallbackUserId,
+          name: student.name
+        };
+      } else {
+        console.log(`⚠️ Student ${studentId} not found, using fallback userId`);
+        return {
+          userId: fallbackUserId,
+          name: 'Student' // Default name
+        };
+      }
+    } catch (error) {
+      this.logger.error(`❌ Error fetching student info for ${studentId}: ${error.message}`);
+      console.log(`   Using fallback userId: ${fallbackUserId}`);
+      return {
+        userId: fallbackUserId,
+        name: 'Student' // Default name
+      };
+    }
+  }
+
+  /**
+   * Get real userId by checking phone number against Kaha API
+   * Same logic as student notification service
+   */
+  private async getRealUserId(phoneNumber: string): Promise<string> {
+    const fallbackUserId = 'a635c2da-6fe0-4d10-9dec-e85ddaced067';
+    
+    try {
+      console.log(`🔍 Checking phone ${phoneNumber} against Kaha API...`);
+      
+      const response = await firstValueFrom(
+        this.httpService.get(`https://dev.kaha.com.np/main/api/v3/users/check-contact/${phoneNumber}`)
+      );
+      
+      if (response.data && response.data.id) {
+        console.log(`✅ Found user: ${response.data.fullName} (${response.data.kahaId})`);
+        console.log(`   Real userId: ${response.data.id}`);
+        return response.data.id;
+      } else {
+        console.log(`⚠️ No user found for phone ${phoneNumber}, using fallback`);
+        return fallbackUserId;
+      }
+    } catch (error) {
+      console.log(`❌ Error checking phone ${phoneNumber}: ${error.message}`);
+      console.log(`   Using fallback userId: ${fallbackUserId}`);
+      return fallbackUserId;
+    }
+  }
+}

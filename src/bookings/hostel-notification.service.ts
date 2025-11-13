@@ -28,7 +28,7 @@ export class HostelNotificationService {
     );
     this.EXPRESS_NOTIFICATION_URL = this.configService.get<string>(
       'EXPRESS_NOTIFICATION_URL',
-      'http://localhost:3008'
+      'http://localhost:3007'
     );
     
     this.logger.log(`📱 Notification service initialized`);

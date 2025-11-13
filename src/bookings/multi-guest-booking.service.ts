@@ -13,7 +13,7 @@ import { BookingValidationService } from './validation/booking-validation.servic
 import { ConfigService } from '@nestjs/config';
 import { BusinessIntegrationService } from '../hostel/services/business-integration.service';
 import { HostelNotificationService } from './hostel-notification.service';
-
+import { UnifiedNotificationService } from '../notification/unified-notification.service';
 
 export interface BookingFilters {
   page?: number;
@@ -97,6 +97,7 @@ export class MultiGuestBookingService {
     private configService: ConfigService,
     private businessIntegrationService: BusinessIntegrationService,
     private hostelNotificationService: HostelNotificationService,
+    private unifiedNotificationService: UnifiedNotificationService,
   ) { }
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string, userId?: string): Promise<any> {
@@ -1303,7 +1304,7 @@ export class MultiGuestBookingService {
   /**
    * Reject booking (updated for new rejection flow)
    */
-  async rejectBooking(bookingId: string, reason: string, processedBy: string, hostelId?: string) {
+  async rejectBooking(bookingId: string, reason: string, processedBy: string, hostelId?: string, adminJwt?: any) {
     this.logger.log(`Admin ${processedBy} rejecting booking ${bookingId} with reason: ${reason}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -1354,6 +1355,35 @@ export class MultiGuestBookingService {
       await this.bedSyncService.handleBookingCancellation(bedIds, reason);
 
       this.logger.log(`✅ Admin rejected booking ${bookingId}`);
+
+      // 🔔 NEW: Send rejection notification to user
+      if (adminJwt && booking.userId) {
+        try {
+          console.log(`❌ BOOKING REJECTION NOTIFICATION START - Booking ID: ${booking.id}`);
+          console.log(`👤 User: ${booking.contactName} (${booking.userId})`);
+          console.log(`📝 Reason: ${reason}`);
+          
+          await this.unifiedNotificationService.sendToUser({
+            userId: booking.userId,
+            title: 'Booking Rejected',
+            message: `Your booking request has been rejected. Reason: ${reason}`,
+            type: 'BOOKING',
+            metadata: {
+              bookingId: booking.id,
+              bookingReference: booking.bookingReference,
+              contactName: booking.contactName,
+              rejectionReason: reason,
+              processedBy: processedBy,
+              processedDate: new Date().toISOString()
+            }
+          }, adminJwt);
+          
+          console.log(`✅ BOOKING REJECTION NOTIFICATION SENT SUCCESSFULLY`);
+        } catch (notifError) {
+          console.log(`❌ BOOKING REJECTION NOTIFICATION FAILED: ${notifError.message}`);
+          // Don't let notification failure cause rejection rollback
+        }
+      }
 
       return {
         success: true,

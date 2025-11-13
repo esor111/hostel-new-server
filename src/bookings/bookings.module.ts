@@ -16,7 +16,7 @@ import { Bed } from '../rooms/entities/bed.entity';
 import { RoomsModule } from '../rooms/rooms.module';
 import { HostelModule } from '../hostel/hostel.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
-
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -32,6 +32,7 @@ import { Hostel } from '../hostel/entities/hostel.entity';
     HttpModule, // Import HttpModule for notification service
     RoomsModule, // Import RoomsModule to access BedSyncService
     HostelModule, // Import HostelModule to access BusinessIntegrationService
+    NotificationModule, // Import NotificationModule for unified notifications
   ],
   controllers: [BookingsController],
   providers: [/* Removed: BookingsService, */ MultiGuestBookingService, /* Removed: BookingTransformationService, */ BookingValidationService, HostelNotificationService],

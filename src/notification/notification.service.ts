@@ -3,6 +3,8 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { SendToStudentsDto } from './dto/send-to-students.dto';
+import { UnifiedNotificationService } from './unified-notification.service';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @Injectable()
 export class NotificationService {
@@ -12,6 +14,7 @@ export class NotificationService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly unifiedNotificationService: UnifiedNotificationService,
   ) {
     this.notificationServerUrl = this.configService.get<string>(
       'NOTIFICATION_SERVER_URL',
@@ -21,11 +24,52 @@ export class NotificationService {
   }
 
   /**
-   * Send notification to multiple students
+   * Send notification to multiple students using unified approach
+   * NEW: Uses the same pattern as configuration notifications
+   */
+  async sendToStudentsUnified(dto: SendToStudentsDto, adminJwt: JwtPayload): Promise<any> {
+    this.logger.log(
+      `🔔 Sending UNIFIED bulk notification to ${dto.studentIds.length} students: "${dto.title}"`,
+    );
+
+    try {
+      const result = await this.unifiedNotificationService.sendBulkNotification({
+        studentIds: dto.studentIds,
+        title: dto.title,
+        message: dto.message,
+        type: 'BULK_MESSAGE',
+        imageUrl: dto.imageUrl,
+        metadata: {
+          source: 'admin_bulk_message',
+          timestamp: new Date().toISOString()
+        }
+      }, adminJwt);
+
+      this.logger.log(`✅ Unified bulk notification completed: ${JSON.stringify(result)}`);
+      return {
+        success: true,
+        ...result
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to send unified bulk notification: ${error.message}`, error.stack);
+      throw new HttpException(
+        {
+          message: 'Failed to send notification',
+          details: error.message,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Send notification to multiple students (LEGACY)
    * This calls the Express notification server which handles:
    * - Getting userIds from studentIds
    * - Getting FCM tokens
    * - Sending to Firebase
+   * 
+   * NOTE: Consider using sendToStudentsUnified instead for consistency
    */
   async sendToStudents(dto: SendToStudentsDto): Promise<any> {
     this.logger.log(

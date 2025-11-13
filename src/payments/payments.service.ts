@@ -5,6 +5,8 @@ import { Payment, PaymentStatus, PaymentMethod, PaymentType } from './entities/p
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
 import { Student } from '../students/entities/student.entity';
 import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
+import { UnifiedNotificationService } from '../notification/unified-notification.service';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @Injectable()
 export class PaymentsService {
@@ -16,6 +18,7 @@ export class PaymentsService {
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
     private ledgerService: LedgerV2Service,
+    private unifiedNotificationService: UnifiedNotificationService,
   ) { }
 
   async findAll(filters: any = {}, hostelId: string) {
@@ -128,7 +131,7 @@ export class PaymentsService {
     return payments.map(payment => this.transformToApiResponse(payment));
   }
 
-  async create(createPaymentDto: any, hostelId: string) {
+  async create(createPaymentDto: any, hostelId: string, adminJwt?: JwtPayload) {
     // Validate hostelId is present
     if (!hostelId) {
       throw new BadRequestException('Hostel context required');
@@ -175,6 +178,36 @@ export class PaymentsService {
     // Create invoice allocations if provided
     if (createPaymentDto.invoiceIds && createPaymentDto.invoiceIds.length > 0) {
       await this.allocatePaymentToInvoices(savedPayment.id, createPaymentDto.invoiceIds);
+    }
+
+    // 🔔 NEW: Send payment notification to student
+    if (adminJwt && student.userId && savedPayment.status === PaymentStatus.COMPLETED) {
+      try {
+        console.log(`💰 PAYMENT NOTIFICATION START - Payment ID: ${savedPayment.id}`);
+        console.log(`👤 Student: ${student.name} (${student.id})`);
+        console.log(`💵 Amount: NPR ${savedPayment.amount}`);
+        
+        await this.unifiedNotificationService.sendToUser({
+          userId: student.userId,
+          title: 'Payment Received',
+          message: `Your payment of NPR ${Number(savedPayment.amount).toLocaleString()} has been received and processed successfully.`,
+          type: 'PAYMENT',
+          metadata: {
+            paymentId: savedPayment.id,
+            amount: savedPayment.amount,
+            paymentMethod: savedPayment.paymentMethod,
+            paymentDate: savedPayment.paymentDate,
+            receiptNumber: savedPayment.receiptNumber,
+            studentId: student.id,
+            studentName: student.name
+          }
+        }, adminJwt);
+        
+        console.log(`✅ PAYMENT NOTIFICATION SENT SUCCESSFULLY`);
+      } catch (notifError) {
+        console.log(`❌ PAYMENT NOTIFICATION FAILED: ${notifError.message}`);
+        // Don't let notification failure cause payment creation rollback
+      }
     }
 
     return this.findOne(savedPayment.id, hostelId);
