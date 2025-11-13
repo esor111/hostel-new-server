@@ -5,11 +5,22 @@ import { CheckInOutStatus, CheckInOutType } from '../entities/student-checkin-ch
 
 export class AttendanceFiltersDto {
   @ApiProperty({
-    description: 'Hostel UUID',
-    example: '123e4567-e89b-12d3-a456-426614174001'
+    description: 'Hostel UUID (use this for web frontend)',
+    example: '123e4567-e89b-12d3-a456-426614174001',
+    required: false
   })
+  @IsOptional()
   @IsUUID()
-  hostelId: string;
+  hostelId?: string;
+
+  @ApiProperty({
+    description: 'Business ID (use this for mobile app) - Alternative to hostelId. Either hostelId or businessId must be provided.',
+    example: 'business-123',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  businessId?: string;
 
   @ApiProperty({
     description: 'Student UUID (optional)',

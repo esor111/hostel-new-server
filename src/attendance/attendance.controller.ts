@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Body, Query, Param, UseGuards, NotFoundException, BadRequestException } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
 import { CheckInDto, CheckOutDto, StudentCheckInDto, StudentCheckOutDto, AttendanceFiltersDto } from './dto';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
@@ -130,14 +130,46 @@ export class AttendanceController {
   /**
    * Get student's own attendance history
    * GET /attendance/my-history?studentId=xxx&hostelId=xxx&dateFrom=xxx&dateTo=xxx
+   * OR /attendance/my-history?studentId=xxx&businessId=xxx&dateFrom=xxx&dateTo=xxx
+   * Works with or without authentication token
    */
   @Get('my-history')
+  @ApiOperation({
+    summary: 'Get student attendance history',
+    description: 'Get attendance history for a student. Requires either hostelId (web) or businessId (mobile).'
+  })
+  @ApiQuery({
+    name: 'businessId',
+    required: false,
+    description: 'Business ID (use this for mobile app) - Alternative to hostelId',
+    example: 'business-123'
+  })
   async getMyHistory(@Query() filters: AttendanceFiltersDto) {
-    const { studentId, hostelId } = filters;
-    if (!studentId || !hostelId) {
-      throw new Error('studentId and hostelId are required');
+    const { studentId, hostelId, businessId } = filters;
+    
+    if (!studentId) {
+      throw new BadRequestException('studentId is required');
     }
-    return this.attendanceService.getMyHistory(studentId, hostelId, filters);
+
+    // Check for valid hostelId or businessId
+    const hasHostelId = hostelId && hostelId.trim().length > 0;
+    const hasBusinessId = businessId && businessId.trim().length > 0;
+    
+    if (!hasHostelId && !hasBusinessId) {
+      throw new BadRequestException('Either hostelId or businessId is required');
+    }
+
+    // Resolve actual hostelId if businessId is provided
+    let resolvedHostelId = hostelId;
+    if (hasBusinessId && !hasHostelId) {
+      const hostel = await this.hostelService.findByBusinessId(businessId);
+      if (!hostel) {
+        throw new NotFoundException(`Hostel not found for businessId: ${businessId}`);
+      }
+      resolvedHostelId = hostel.id;
+    }
+
+    return this.attendanceService.getMyHistory(studentId, resolvedHostelId, filters);
   }
 
   /**
