@@ -18,7 +18,7 @@ export class NotificationService {
   ) {
     this.notificationServerUrl = this.configService.get<string>(
       'NOTIFICATION_SERVER_URL',
-      'http://localhost:3007',
+      'dev.kaha.com.np',
     );
     this.logger.log(`Notification server URL: ${this.notificationServerUrl}`);
   }
