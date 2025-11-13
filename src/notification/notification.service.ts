@@ -27,7 +27,7 @@ export class NotificationService {
    * Send notification to multiple students using unified approach
    * NEW: Uses the same pattern as configuration notifications
    */
-  async sendToStudentsUnified(dto: SendToStudentsDto, adminJwt: JwtPayload): Promise<any> {
+  async sendToStudentsUnified(dto: SendToStudentsDto, adminJwt: JwtPayload, hostelContext?: any): Promise<any> {
     this.logger.log(
       `🔔 Sending UNIFIED bulk notification to ${dto.studentIds.length} students: "${dto.title}"`,
     );
@@ -43,7 +43,7 @@ export class NotificationService {
           source: 'admin_bulk_message',
           timestamp: new Date().toISOString()
         }
-      }, adminJwt);
+      }, adminJwt, hostelContext);
 
       this.logger.log(`✅ Unified bulk notification completed: ${JSON.stringify(result)}`);
       return {

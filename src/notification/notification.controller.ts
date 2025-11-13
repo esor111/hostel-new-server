@@ -48,8 +48,9 @@ export class NotificationController {
     description: 'Notification server unavailable',
   })
   async sendToStudents(@Body() dto: SendToStudentsDto, @Req() req: any) {
-    // 🔔 NEW: Use unified notification approach with admin JWT
+    // 🔔 NEW: Use unified notification approach with admin JWT and hostel context
     const adminJwt = req.user; // JWT payload from auth guard
-    return this.notificationService.sendToStudentsUnified(dto, adminJwt);
+    const hostelContext = req.hostelContext; // Hostel context from guard
+    return this.notificationService.sendToStudentsUnified(dto, adminJwt, hostelContext);
   }
 }

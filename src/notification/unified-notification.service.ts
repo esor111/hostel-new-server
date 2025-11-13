@@ -6,6 +6,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Student } from '../students/entities/student.entity';
+import { HostelService } from '../hostel/hostel.service';
 
 export interface NotificationPayload {
   userId: string;
@@ -42,6 +43,7 @@ export class UnifiedNotificationService {
     private readonly configService: ConfigService,
     @InjectRepository(Student)
     private readonly studentRepository: Repository<Student>,
+    private readonly hostelService: HostelService,
   ) {
     // Get URLs from environment or use defaults
     this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
@@ -64,7 +66,8 @@ export class UnifiedNotificationService {
    */
   async sendToUser(
     payload: NotificationPayload,
-    adminJwt?: JwtPayload
+    adminJwt?: JwtPayload,
+    hostelContext?: any
   ): Promise<void> {
     try {
       console.log(`🔔 UNIFIED NOTIFICATION START - Type: ${payload.type}`);
@@ -80,8 +83,18 @@ export class UnifiedNotificationService {
         return;
       }
       
-      // 2. Get business name
-      const businessName = adminJwt ? await this.getBusinessName(adminJwt.id) : 'Your Hostel';
+      // 2. Get business/hostel name from JWT businessId
+      let businessName = 'Your Hostel'; // Default fallback
+      
+      if (adminJwt && adminJwt.businessId) {
+        businessName = await this.getBusinessName(adminJwt.businessId);
+        console.log(`🏢 Using hostel name from businessId: ${businessName}`);
+      } else if (hostelContext && hostelContext.hostelName) {
+        businessName = hostelContext.hostelName;
+        console.log(`🏨 Using hostel name from context: ${businessName}`);
+      }
+      
+      console.log(`📝 Final sender name: ${businessName}`);
       
       // 3. Compose payload for express server (using booking notification format)
       const expressPayload = {
@@ -124,7 +137,8 @@ export class UnifiedNotificationService {
    */
   async sendBulkNotification(
     payload: BulkNotificationPayload,
-    adminJwt: JwtPayload
+    adminJwt: JwtPayload,
+    hostelContext?: any
   ): Promise<{ sent: number; failed: number; skipped: number; details: any }> {
     console.log(`🔔 BULK NOTIFICATION START - Type: ${payload.type}`);
     console.log(`👥 Target students: ${payload.studentIds.length}`);
@@ -169,7 +183,7 @@ export class UnifiedNotificationService {
             studentId: studentId,
             studentName: student.name
           }
-        }, adminJwt);
+        }, adminJwt, hostelContext);
 
         results.sent++;
         results.details.sentTo.push({
@@ -277,15 +291,27 @@ export class UnifiedNotificationService {
   }
 
   /**
-   * Get business name (same as existing implementation)
+   * Get business/hostel name by businessId from JWT
+   * Now actually fetches the real hostel name!
    */
   private async getBusinessName(businessId: string): Promise<string> {
-    this.logger.log(`📝 Using hardcoded business name for: ${businessId}`);
-    return 'Your Hostel';
-    
-    // TODO: Later implementation
-    // const business = await this.businessIntegrationService.getBusinessData(businessId);
-    // return business.name;
+    try {
+      console.log(`🔍 Fetching hostel name for businessId: ${businessId}`);
+      
+      // Use HostelService to get hostel by businessId
+      const hostel = await this.hostelService.findByBusinessId(businessId);
+      
+      if (hostel && hostel.name) {
+        console.log(`✅ Found hostel name: ${hostel.name}`);
+        return hostel.name;
+      } else {
+        console.log(`⚠️ No hostel found for businessId: ${businessId}, using fallback`);
+        return 'Your Hostel';
+      }
+    } catch (error) {
+      console.log(`❌ Error fetching hostel name: ${error.message}, using fallback`);
+      return 'Your Hostel';
+    }
   }
 
   /**

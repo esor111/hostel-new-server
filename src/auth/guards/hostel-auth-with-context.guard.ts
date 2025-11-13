@@ -49,7 +49,8 @@ export class HostelAuthWithContextGuard extends JwtAuthGuard {
         hostelId: hostel.id, // Use the actual database hostel ID
         businessId: user.businessId, // Keep businessId for reference
         userId: user.id,
-        kahaId: user.kahaId
+        kahaId: user.kahaId,
+        hostelName: hostel.name // 🔔 Add hostel name for notifications
       };
 
       console.log(`✅ Hostel context established in guard: hostelId=${hostel.id}, businessId=${user.businessId}, hostelName=${hostel.name}`);
