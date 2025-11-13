@@ -174,6 +174,49 @@ export class AttendanceController {
   }
 
   /**
+   * STUDENT: Get own attendance history using Business Token (auto-resolves studentId and hostelId)
+   * GET /attendance/student/my-history?dateFrom=xxx&dateTo=xxx&page=1&limit=50
+   * Requires Business Token with userId and businessId - both IDs auto-resolved
+   */
+  @Get('student/my-history')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get student own attendance history using Business Token',
+    description: 'Auto-resolves studentId and hostelId from JWT Business Token. Only requires optional date filters.'
+  })
+  async getStudentMyHistory(
+    @CurrentUser() user: JwtPayload,
+    @Query() filters: AttendanceFiltersDto
+  ) {
+    // Validate Business Token
+    if (!user.businessId) {
+      throw new BadRequestException(
+        'Business token required. Please switch to hostel profile before accessing history.'
+      );
+    }
+
+    // Step 1: Find hostelId from businessId
+    const hostel = await this.hostelService.findByBusinessId(user.businessId);
+    if (!hostel) {
+      throw new NotFoundException(
+        `Hostel not found for businessId: ${user.businessId}`
+      );
+    }
+
+    // Step 2: Find studentId from userId + hostelId
+    const student = await this.studentsService.findByUserId(user.id, hostel.id);
+    if (!student) {
+      throw new NotFoundException(
+        `No student found for user ${user.kahaId} in this hostel. Please contact admin.`
+      );
+    }
+
+    // Step 3: Get history using auto-resolved IDs
+    return this.attendanceService.getMyHistory(student.id, hostel.id, filters);
+  }
+
+  /**
    * Get current status - who's checked in right now
    * GET /attendance/current-status?page=1&limit=20&search=John
    */

@@ -1162,30 +1162,52 @@ export class StudentsService {
       status: StudentStatus.ACTIVE
     });
 
-    // 🔧 FIX: Update bed status from RESERVED to OCCUPIED
-    if (student.bedNumber && student.roomId) {
-      try {
-        // Find the bed using bedNumber (or bedIdentifier) and roomId
-        const bed = await this.bedRepository.findOne({
+    // 🔧 UNIVERSAL FIX: Update bed status from RESERVED to OCCUPIED
+    // Works for both manual students and booking-based students
+    try {
+      let bed = null;
+      
+      // Method 1: Try to find bed by currentOccupantId (works for manual students)
+      bed = await this.bedRepository.findOne({
+        where: { currentOccupantId: studentId }
+      });
+      
+      // Method 2: If not found, try by bedIdentifier + roomId (fallback)
+      if (!bed && student.bedNumber && student.roomId) {
+        bed = await this.bedRepository.findOne({
           where: { 
             roomId: student.roomId,
-            bedIdentifier: student.bedNumber // bedNumber is stored as bedIdentifier in beds table
+            bedIdentifier: student.bedNumber
           }
         });
-
-        if (bed) {
-          await this.bedRepository.update(bed.id, {
-            status: BedStatus.OCCUPIED,
-            currentOccupantName: student.name
-          });
-          console.log(`✅ Bed ${student.bedNumber} status updated: RESERVED → OCCUPIED for student ${student.name}`);
-        } else {
-          console.warn(`⚠️ Bed ${student.bedNumber} not found in room ${student.roomId} for student ${student.name}`);
-        }
-      } catch (error) {
-        console.error(`❌ Failed to update bed status for student ${studentId}:`, error);
-        // Don't fail configuration if bed update fails
       }
+      
+      // Method 3: If still not found, find any RESERVED bed in the student's room
+      if (!bed && student.roomId) {
+        bed = await this.bedRepository.findOne({
+          where: { 
+            roomId: student.roomId,
+            status: BedStatus.RESERVED
+          }
+        });
+      }
+
+      if (bed) {
+        await this.bedRepository.update(bed.id, {
+          status: BedStatus.OCCUPIED,
+          currentOccupantId: studentId,  // Ensure correct occupant ID
+          currentOccupantName: student.name
+        });
+        console.log(`✅ Bed ${bed.bedIdentifier} status updated: RESERVED → OCCUPIED for student ${student.name}`);
+        console.log(`   - Method used: ${bed.currentOccupantId === studentId ? 'currentOccupantId' : 'bedIdentifier/roomId'}`);
+      } else {
+        console.error(`❌ No suitable bed found for student ${student.name} (ID: ${studentId})`);
+        console.error(`   - Student roomId: ${student.roomId}`);
+        console.error(`   - Student bedNumber: ${student.bedNumber}`);
+      }
+    } catch (error) {
+      console.error(`❌ Failed to update bed status for student ${studentId}:`, error);
+      // Don't fail configuration if bed update fails
     }
 
     // Get final calculation for response (reuse the calculation from above)
@@ -2297,32 +2319,49 @@ export class StudentsService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
-    return await this.dataSource.transaction(async manager => {
-      // 1. Validate bed is available
-      const bed = await manager.findOne(Bed, {
-        where: { id: dto.bedId, status: BedStatus.AVAILABLE },
-        relations: ['room']
-      });
+    try {
+      return await this.dataSource.transaction(async manager => {
+        // 1. Validate bed is available
+        const bed = await manager.findOne(Bed, {
+          where: { id: dto.bedId, status: BedStatus.AVAILABLE },
+          relations: ['room']
+        });
 
-      if (!bed) {
-        throw new BadRequestException('Selected bed is not available');
-      }
+        if (!bed) {
+          throw new BadRequestException('Selected bed is not available');
+        }
 
-      if (bed.hostelId !== hostelId) {
-        throw new BadRequestException('Bed does not belong to this hostel');
-      }
+        if (bed.hostelId !== hostelId) {
+          throw new BadRequestException('Bed does not belong to this hostel');
+        }
 
-      // 2. Check if student with same email/phone exists
-      const existingStudent = await manager.findOne(Student, {
-        where: [
-          { email: dto.email, hostelId },
-          { phone: dto.phone, hostelId }
-        ]
-      });
+        // 2. Check if student with same email exists globally (across all hostels)
+        const existingEmailStudent = await manager.findOne(Student, {
+          where: { email: dto.email },
+          relations: ['hostel']
+        });
 
-      if (existingStudent) {
-        throw new BadRequestException('Student with this email or phone already exists in this hostel');
-      }
+        if (existingEmailStudent) {
+          if (existingEmailStudent.hostelId === hostelId) {
+            throw new BadRequestException(`A student with email "${dto.email}" already exists in this hostel`);
+          } else {
+            throw new BadRequestException(`A student with email "${dto.email}" already exists in another hostel (${existingEmailStudent.hostel?.name || 'Unknown Hostel'}). Each email can only be used once across the entire system.`);
+          }
+        }
+
+        // 3. Check if student with same phone exists globally (across all hostels)
+        const existingPhoneStudent = await manager.findOne(Student, {
+          where: { phone: dto.phone },
+          relations: ['hostel']
+        });
+
+        if (existingPhoneStudent) {
+          if (existingPhoneStudent.hostelId === hostelId) {
+            throw new BadRequestException(`A student with phone "${dto.phone}" already exists in this hostel`);
+          } else {
+            throw new BadRequestException(`A student with phone "${dto.phone}" already exists in another hostel (${existingPhoneStudent.hostel?.name || 'Unknown Hostel'}). Each phone number can only be used once across the entire system.`);
+          }
+        }
 
       // 3. Get real userId by checking phone number against Kaha API
       const userId = await this.getRealUserId(dto.phone);
@@ -2405,9 +2444,31 @@ export class StudentsService {
         await manager.save(StudentAcademicInfo, academicInfo);
       }
 
-      // Return the created student in API format
-      return this.transformToApiResponse(savedStudent);
-    });
+        // Return the created student in API format
+        return this.transformToApiResponse(savedStudent);
+      });
+    } catch (error) {
+      console.error('❌ Error creating manual student:', error);
+      
+      // Handle database constraint violations
+      if (error.code === '23505' || error.message?.includes('duplicate key')) {
+        if (error.message?.includes('email')) {
+          throw new BadRequestException(`A student with email "${dto.email}" already exists. Each email can only be used once across the entire system.`);
+        } else if (error.message?.includes('phone')) {
+          throw new BadRequestException(`A student with phone "${dto.phone}" already exists. Each phone number can only be used once across the entire system.`);
+        } else {
+          throw new BadRequestException('A student with this email or phone already exists in the system.');
+        }
+      }
+      
+      // Re-throw BadRequestExceptions (our validation errors)
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      // Handle other database errors
+      throw new BadRequestException('Failed to create student. Please check your input and try again.');
+    }
   }
 
   /**
