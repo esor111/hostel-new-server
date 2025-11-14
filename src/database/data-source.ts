@@ -43,6 +43,8 @@ import { MealPlan } from '../meal-plans/entities/meal-plan.entity';
 import { StudentAttendance } from '../attendance/entities/student-attendance.entity';
 import { StudentCheckInOut } from '../attendance/entities/student-checkin-checkout.entity';
 
+import { Notification } from '../notification/entities/notification.entity';
+
 // Load environment variables
 config();
 
@@ -104,6 +106,9 @@ export const dataSourceOptions: DataSourceOptions = {
     // Attendance entities
     StudentAttendance,
     StudentCheckInOut,
+    
+    // Notification entities
+    Notification,
   ],
   // Migrations disabled - using synchronize mode for development
   migrations: [],
