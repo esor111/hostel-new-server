@@ -7,6 +7,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Student } from '../students/entities/student.entity';
 import { HostelService } from '../hostel/hostel.service';
+import { NotificationLogService } from './notification-log.service';
+import { RecipientType, NotificationCategory } from './entities/notification.entity';
 
 export interface NotificationPayload {
   userId: string;
@@ -44,6 +46,7 @@ export class UnifiedNotificationService {
     @InjectRepository(Student)
     private readonly studentRepository: Repository<Student>,
     private readonly hostelService: HostelService,
+    private readonly notificationLogService: NotificationLogService,
   ) {
     // Get URLs from environment or use defaults
     this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
@@ -69,17 +72,41 @@ export class UnifiedNotificationService {
     adminJwt?: JwtPayload,
     hostelContext?: any
   ): Promise<void> {
+    let notificationId: string | null = null;
+    
     try {
       console.log(`🔔 UNIFIED NOTIFICATION START - Type: ${payload.type}`);
       console.log(`👤 Target userId: ${payload.userId}`);
       console.log(`📧 Title: ${payload.title}`);
       console.log(`💬 Message: ${payload.message}`);
       
+      // 🔔 NEW: Create notification record before sending
+      const notification = await this.notificationLogService.createNotification({
+        recipientType: RecipientType.USER,
+        recipientId: payload.userId,
+        category: payload.type as NotificationCategory,
+        title: payload.title,
+        message: payload.message,
+        metadata: {
+          ...payload.metadata,
+          imageUrl: payload.imageUrl,
+          source: 'unified_notification_service',
+          adminJwtId: adminJwt?.id,
+          businessId: adminJwt?.businessId,
+        },
+      });
+      notificationId = notification.id;
+      
       // 1. Get user FCM tokens
       const userFcmTokens = await this.getFcmTokens(payload.userId, false);
       if (!userFcmTokens.length) {
         this.logger.warn(`⚠️ No FCM token found for user ${payload.userId}`);
         console.log(`⚠️ SKIPPING NOTIFICATION - No FCM tokens for userId: ${payload.userId}`);
+        
+        // 🔔 NEW: Mark as skipped
+        if (notificationId) {
+          await this.notificationLogService.markAsSkipped(notificationId, 'No FCM tokens found');
+        }
         return;
       }
       
@@ -123,10 +150,21 @@ export class UnifiedNotificationService {
       console.log(`🚀 Sending to Express server: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
       await this.sendNotification(expressPayload);
       
+      // 🔔 NEW: Mark as sent on success
+      if (notificationId) {
+        await this.notificationLogService.markAsSent(notificationId, userFcmTokens[0]);
+      }
+      
       console.log(`✅ UNIFIED NOTIFICATION SENT SUCCESSFULLY - Type: ${payload.type}`);
     } catch (error) {
       this.logger.error(`❌ Failed to send unified notification: ${error.message}`);
       this.logger.error(error.stack);
+      
+      // 🔔 NEW: Mark as failed on error
+      if (notificationId) {
+        await this.notificationLogService.markAsFailed(notificationId, error.message);
+      }
+      
       // Don't throw - notification failure shouldn't break main flow
     }
   }
