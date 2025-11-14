@@ -5,7 +5,7 @@ import { NotificationLogService } from './notification-log.service';
 import { SendToStudentsDto } from './dto/send-to-students.dto';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RecipientType } from './entities/notification.entity';
+import { RecipientType, NotificationCategory } from './entities/notification.entity';
 
 @ApiTags('Notifications')
 @Controller('notification')
@@ -166,4 +166,5 @@ export class NotificationController {
       message: `${markedCount} notifications marked as seen` 
     };
   }
+
 }
