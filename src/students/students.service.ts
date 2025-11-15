@@ -359,7 +359,7 @@ export class StudentsService {
       currentBalance = netBalance > 0 ? netBalance : 0; // Dues
       const totalAdvanceFromLedger = netBalance < 0 ? Math.abs(netBalance) : 0;
 
-      // ✅ SIMPLIFIED: No configuration advance - all advance is regular advance
+      // SIMPLIFIED: No configuration advance - all advance is regular advance
       // Since configuration advance is no longer created, all advance is regular advance
       advanceBalance = totalAdvanceFromLedger;
       configurationAdvance = 0; // No longer used
@@ -550,7 +550,7 @@ export class StudentsService {
     try {
       const student = await this.findOne(studentId, hostelId);
 
-      // 🏦 PHASE 1: FINANCIAL INTEGRATION - Get current balance from LedgerV2Service
+      // PHASE 1: FINANCIAL INTEGRATION - Get current balance from LedgerV2Service
       let currentBalance = { currentBalance: 0, balanceType: 'Cr' };
       try {
         // Import LedgerV2Service dynamically to avoid circular dependency
@@ -566,9 +566,9 @@ export class StudentsService {
         );
         
         currentBalance = await ledgerV2Service.getStudentBalance(studentId, hostelId);
-        console.log(`💰 Current balance for ${student.name}: NPR ${currentBalance.currentBalance} (${currentBalance.balanceType})`);
+        console.log(` Current balance for ${student.name}: NPR ${currentBalance.currentBalance} (${currentBalance.balanceType})`);
       } catch (error) {
-        console.warn('⚠️ Could not fetch balance from LedgerV2Service, using fallback calculation');
+        console.warn(' Could not fetch balance from LedgerV2Service, using fallback calculation');
         // Fallback: Calculate from existing ledger entries
         const balanceResult = await queryRunner.manager
           .createQueryBuilder()
@@ -594,7 +594,7 @@ export class StudentsService {
       const deductionAmount = checkoutDetails.deductionAmount || 0;
       const netSettlement = refundAmount - deductionAmount;
 
-      // 🏦 PHASE 1: FINANCIAL INTEGRATION - Create ledger entries for checkout settlement
+      // PHASE 1: FINANCIAL INTEGRATION - Create ledger entries for checkout settlement
       if (refundAmount > 0) {
         await queryRunner.manager
           .createQueryBuilder()
@@ -615,7 +615,7 @@ export class StudentsService {
           })
           .execute();
         
-        console.log(`💸 Created refund entry: NPR ${refundAmount} for ${student.name}`);
+        console.log(` Created refund entry: NPR ${refundAmount} for ${student.name}`);
       }
 
       if (deductionAmount > 0) {
@@ -638,7 +638,7 @@ export class StudentsService {
           })
           .execute();
         
-        console.log(`💰 Created deduction entry: NPR ${deductionAmount} for ${student.name}`);
+        console.log(` Created deduction entry: NPR ${deductionAmount} for ${student.name}`);
       }
 
       // Update student status to inactive
@@ -654,16 +654,16 @@ export class StudentsService {
         });
       }
 
-      // 🏠 PHASE 2: HISTORICAL TRACKING - Update RoomOccupant with checkout date
+      // PHASE 2: HISTORICAL TRACKING - Update RoomOccupant with checkout date
       await this.updateRoomOccupancyHistory(queryRunner, studentId, checkoutDetails.checkoutDate);
 
-      // 🛏️ ENHANCED BED RELEASE - Update booking-guest status and free up the bed
+      // ENHANCED BED RELEASE - Update booking-guest status and free up the bed
       await this.releaseBedAndUpdateBooking(queryRunner, student, checkoutDetails);
 
       // Commit transaction for basic checkout operations
       await queryRunner.commitTransaction();
 
-      // 🧮 NEPALESE BILLING: Calculate accurate settlement (outside transaction)
+      // NEPALESE BILLING: Calculate accurate settlement (outside transaction)
       let accurateSettlement = null;
       try {
         const settlementResult = await this.checkoutSettlementService.processCheckoutSettlement(
@@ -673,13 +673,13 @@ export class StudentsService {
           checkoutDetails.notes
         );
         accurateSettlement = settlementResult.settlement;
-        console.log(`✅ Accurate settlement processed: ${settlementResult.message}`);
+        console.log(` Accurate settlement processed: ${settlementResult.message}`);
       } catch (error) {
-        console.error('❌ Settlement calculation failed:', error);
+        console.error(' Settlement calculation failed:', error);
         // Don't fail checkout if settlement calculation fails
       }
 
-      // 📢 RECENT ACTIVITIES - Log checkout activity
+      // RECENT ACTIVITIES - Log checkout activity
       await this.logCheckoutActivity(student, currentBalance.currentBalance, netSettlement);
 
       // Use accurate settlement if available, otherwise use basic calculation
@@ -692,7 +692,7 @@ export class StudentsService {
         usageBreakdown: []
       };
 
-      console.log(`✅ Checkout completed for ${student.name}:`);
+      console.log(` Checkout completed for ${student.name}:`);
       console.log(`   - Initial balance: NPR ${currentBalance.currentBalance}`);
       console.log(`   - Total payments made: NPR ${finalSettlement.totalPaymentsMade?.toLocaleString() || 'N/A'}`);
       console.log(`   - Actual usage: NPR ${finalSettlement.totalActualUsage?.toLocaleString() || 'N/A'}`);
@@ -715,7 +715,7 @@ export class StudentsService {
     } catch (error) {
       // Rollback transaction on error
       await queryRunner.rollbackTransaction();
-      console.error('❌ Checkout transaction failed:', error);
+      console.error(' Checkout transaction failed:', error);
       throw new BadRequestException(`Checkout failed: ${error.message}`);
     } finally {
       await queryRunner.release();
@@ -990,12 +990,12 @@ export class StudentsService {
     const student = await this.findOne(studentId, hostelId);
     console.log(`🔧 Student found:`, { id: student.id, name: student.name, userId: student.userId });
 
-    // ✅ PROTECTION: Prevent re-configuration if student is already configured
+    // PROTECTION: Prevent re-configuration if student is already configured
     if (student.isConfigured) {
       throw new BadRequestException('Student is already configured. Use update endpoint to modify configuration.');
     }
-    
-    // ✅ CRITICAL FIX: Save guardian information
+
+    // CRITICAL FIX: Save guardian information
     if (configData.guardian) {
       // First, deactivate any existing guardian contacts
       await this.contactRepository.update(
@@ -1017,7 +1017,7 @@ export class StudentsService {
       }
     }
 
-    // ✅ CRITICAL FIX: Save academic information
+    // CRITICAL FIX: Save academic information
     if (configData.course || configData.institution) {
       // First, deactivate any existing academic info
       await this.academicRepository.update(
@@ -1136,9 +1136,9 @@ export class StudentsService {
         configurationDate
       );
       
-      console.log(`✅ Immediate invoice generated: NPR ${feeCalculation.totalMonthlyFee.toLocaleString()} for period ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`);
+      console.log(` Immediate invoice generated: NPR ${feeCalculation.totalMonthlyFee.toLocaleString()} for period ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`);
     } catch (error) {
-      console.error('❌ Failed to generate immediate invoice:', error);
+      console.error(' Failed to generate immediate invoice:', error);
       throw new BadRequestException(`Configuration failed: ${error.message}`);
     }
 
@@ -1148,7 +1148,7 @@ export class StudentsService {
     const feeCalculation = await this.advancePaymentService.calculateMonthlyFee(studentId);
     const totalMonthlyFee = feeCalculation.totalMonthlyFee;
     
-    console.log(`✅ Student configured with monthly fee: NPR ${totalMonthlyFee.toLocaleString()}`);
+    console.log(` Student configured with monthly fee: NPR ${totalMonthlyFee.toLocaleString()}`);
     console.log(`   - Breakdown:`, feeCalculation.breakdown.map(b => `${b.description}: ${b.amount}`).join(', '));
     console.log(`   - Configuration amount stored in financial info only - no payment record created`);
     console.log(`   - Student will pay this amount later as regular payments`);
@@ -1213,14 +1213,14 @@ export class StudentsService {
     // Get final calculation for response (reuse the calculation from above)
     const finalFeeCalculation = feeCalculation;
 
-    // 🆕 AUTO CHECK-IN: Create initial check-in after configuration
+    // AUTO CHECK-IN: Create initial check-in after configuration
     try {
       await this.attendanceService.createInitialCheckIn(studentId, hostelId);
-      console.log(`✅ Initial check-in created for student ${studentId}`);
+      console.log(` Initial check-in created for student ${studentId}`);
     } catch (error) {
-      console.error('❌ Failed to create initial check-in:', error);
+      console.error(' Failed to create initial check-in:', error);
       // Don't fail configuration if check-in fails
-      console.warn('⚠️ Configuration completed but initial check-in failed');
+      console.warn(' Configuration completed but initial check-in failed');
     }
 
     const result = {
@@ -1323,7 +1323,7 @@ export class StudentsService {
   }
 
   /**
-   * 🏠 PHASE 2: HISTORICAL TRACKING - Update room occupancy with checkout date
+   * PHASE 2: HISTORICAL TRACKING - Update room occupancy with checkout date
    */
   private async updateRoomOccupancyHistory(queryRunner: any, studentId: string, checkoutDate?: string) {
     try {
@@ -1352,18 +1352,18 @@ export class StudentsService {
           .where('id = :id', { id: occupancy.id })
           .execute();
 
-        console.log(`🏠 Updated room occupancy history for student ${studentId} - checkout date: ${checkoutDateValue.toISOString().split('T')[0]}`);
+        console.log(` Updated room occupancy history for student ${studentId} - checkout date: ${checkoutDateValue.toISOString().split('T')[0]}`);
       } else {
-        console.warn(`⚠️ No active room occupancy found for student ${studentId}`);
+        console.warn(` No active room occupancy found for student ${studentId}`);
       }
     } catch (error) {
-      console.error('❌ Error updating room occupancy history:', error);
+      console.error(' Error updating room occupancy history:', error);
       // Don't fail the entire checkout, but log the error
     }
   }
 
   /**
-   * 🛏️ ENHANCED BED RELEASE - Robust bed release with multiple lookup strategies
+   * ENHANCED BED RELEASE - Robust bed release with multiple lookup strategies
    */
   private async releaseBedAndUpdateBooking(queryRunner: any, student: any, checkoutDetails: any) {
     try {
@@ -1418,25 +1418,25 @@ export class StudentsService {
                 [bookingGuest.bed_id],
                 `Student checkout: ${student.name} - ${checkoutDetails.notes || 'Regular checkout'}`
               );
-              console.log(`✅ Bed ${bookingGuest.bed_id} freed up for student ${student.name} using BedSyncService`);
+              console.log(` Bed ${bookingGuest.bed_id} freed up for student ${student.name} using BedSyncService`);
             } catch (error) {
-              console.error('❌ Error in BedSyncService:', error);
+              console.error(' Error in BedSyncService:', error);
             }
           }, 1000);
         }
 
-        console.log(`🛏️ Updated booking guest ${bookingGuest.id} to CHECKED_OUT status`);
+        console.log(` Updated booking guest ${bookingGuest.id} to CHECKED_OUT status`);
       } else {
-        console.warn(`⚠️ No booking guest found for student ${student.name} during checkout`);
+        console.warn(` No booking guest found for student ${student.name} during checkout`);
       }
     } catch (error) {
-      console.error('❌ Error updating bed availability during checkout:', error);
+      console.error(' Error updating bed availability during checkout:', error);
       // Don't fail the entire checkout process, but log the error
     }
   }
 
   /**
-   * 📢 RECENT ACTIVITIES - Log checkout activity for dashboard
+   * RECENT ACTIVITIES - Log checkout activity for dashboard
    */
   private async logCheckoutActivity(student: any, initialBalance: number, netSettlement: number) {
     try {
@@ -1444,7 +1444,7 @@ export class StudentsService {
       // with recent updatedAt timestamps, so we don't need to create a separate activity record.
       // The student status update to INACTIVE with updatedAt will automatically appear in recent activities.
       
-      console.log(`📢 Checkout activity will appear in dashboard for student: ${student.name}`);
+      console.log(` Checkout activity will appear in dashboard for student: ${student.name}`);
       console.log(`   - Initial balance: NPR ${initialBalance}`);
       console.log(`   - Net settlement: NPR ${netSettlement}`);
       console.log(`   - Activity will be picked up by dashboard service automatically`);
@@ -1453,13 +1453,13 @@ export class StudentsService {
       // But the current dashboard service already handles this by monitoring student status changes
       
     } catch (error) {
-      console.error('❌ Error logging checkout activity:', error);
+      console.error(' Error logging checkout activity:', error);
       // Don't fail checkout for logging errors
     }
   }
 
   /**
-   * 🏦 NEPALESE BILLING: Get payment status for student
+   * NEPALESE BILLING: Get payment status for student
    */
   async getPaymentStatus(studentId: string, hostelId: string) {
     try {
@@ -1482,7 +1482,7 @@ export class StudentsService {
   }
 
   /**
-   * 🧮 NEPALESE BILLING: Calculate checkout settlement
+   * NEPALESE BILLING: Calculate checkout settlement
    */
   async calculateCheckoutSettlement(studentId: string, checkoutDate: string, hostelId: string) {
     try {
@@ -1498,7 +1498,7 @@ export class StudentsService {
   }
 
   /**
-   * 📅 BILLING TIMELINE: Get billing timeline with pagination
+   * BILLING TIMELINE: Get billing timeline with pagination
    * Shows past events, current status, and upcoming billing cycles
    */
   async getConfigurationBillingTimelinePaginated(
@@ -1549,7 +1549,7 @@ export class StudentsService {
   }
 
   /**
-   * 💰 Get student advance balance from ledger
+   * Get student advance balance from ledger
    */
   private async getStudentAdvanceBalance(studentId: string, hostelId: string): Promise<number> {
     try {
@@ -1575,7 +1575,7 @@ export class StudentsService {
   }
 
   /**
-   * 📅 BILLING TIMELINE: Get billing timeline for configuration-based billing (Legacy - no pagination)
+   * BILLING TIMELINE: Get billing timeline for configuration-based billing (Legacy - no pagination)
    * Shows past events, current status, and upcoming billing cycles
    */
   async getConfigurationBillingTimeline(hostelId: string) {
@@ -1846,11 +1846,11 @@ export class StudentsService {
   }
 
   /**
-   * 🔄 BED SWITCH - Switch student to different bed with full financial integrity
+   * BED SWITCH - Switch student to different bed with full financial integrity
    * Uses same transaction pattern as processCheckout()
    */
   async switchBed(studentId: string, switchBedDto: SwitchBedDto, hostelId: string) {
-    console.log(`🔄 Starting bed switch for student ${studentId} to bed ${switchBedDto.newBedId}`);
+    console.log(` Starting bed switch for student ${studentId} to bed ${switchBedDto.newBedId}`);
 
     // Validate hostelId
     if (!hostelId) {
@@ -1912,7 +1912,7 @@ export class StudentsService {
       const rateChanged = Math.abs(rateDifference) > 0.01;
       const effectiveDate = switchBedDto.effectiveDate ? new Date(switchBedDto.effectiveDate) : new Date();
 
-      console.log(`📊 Rate comparison: Old=${oldRate}, New=${newRate}, Difference=${rateDifference}, Changed=${rateChanged}`);
+      console.log(` Rate comparison: Old=${oldRate}, New=${newRate}, Difference=${rateDifference}, Changed=${rateChanged}`);
 
       // STEP 5: Update financial info if rate changed
       if (rateChanged) {
@@ -1946,7 +1946,7 @@ export class StudentsService {
           isReversed: false
         });
 
-        console.log(`✅ Financial info updated with new rate: ${newRate}`);
+        console.log(` Financial info updated with new rate: ${newRate}`);
       }
 
       // STEP 6: Update student record
@@ -1979,9 +1979,9 @@ export class StudentsService {
       await queryRunner.manager
         .createQueryBuilder()
         .update(RoomOccupant)
-        .set({ checkOutDate: effectiveDate, status: 'Transferred' })
+        .set({ check_out_date: effectiveDate, status: 'Transferred' })
         .where('studentId = :studentId', { studentId })
-        .andWhere('checkOutDate IS NULL')
+        .andWhere('check_out_date IS NULL')
         .execute();
 
       // Create new occupancy
@@ -2024,7 +2024,7 @@ export class StudentsService {
       // STEP 10: Commit transaction
       await queryRunner.commitTransaction();
 
-      console.log(`✅ Bed switch completed successfully: ${currentBed.bedIdentifier} → ${targetBed.bedIdentifier}`);
+      console.log(` Bed switch completed successfully: ${currentBed.bedIdentifier} → ${targetBed.bedIdentifier}`);
 
       // STEP 11: Async operations (after commit)
       setImmediate(async () => {
@@ -2032,9 +2032,9 @@ export class StudentsService {
           // Sync room occupancy counts
           await this.bedSyncService.updateRoomOccupancyFromBeds(currentBed.roomId);
           await this.bedSyncService.updateRoomOccupancyFromBeds(targetBed.roomId);
-          console.log(`✅ Room occupancy synced for both rooms`);
+          console.log(` Room occupancy synced for both rooms`);
         } catch (error) {
-          console.warn(`⚠️ Failed to sync room occupancy: ${error.message}`);
+          console.warn(` Failed to sync room occupancy: ${error.message}`);
         }
       });
 
@@ -2075,7 +2075,7 @@ export class StudentsService {
 
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      console.error(`❌ Bed switch failed: ${error.message}`);
+      console.error(` Bed switch failed: ${error.message}`);
       throw new BadRequestException(`Bed switch failed: ${error.message}`);
     } finally {
       await queryRunner.release();
@@ -2252,9 +2252,9 @@ export class StudentsService {
       order: { bedNumber: 'ASC' }
     });
 
-    console.log(`🛏️ Found ${beds.length} beds in room ${roomId}`);
+    console.log(` Found ${beds.length} beds in room ${roomId}`);
     beds.forEach(bed => {
-      console.log(`🛏️ Bed ${bed.bedIdentifier}: status="${bed.status}" (type: ${typeof bed.status})`);
+      console.log(` Bed ${bed.bedIdentifier}: status="${bed.status}" (type: ${typeof bed.status})`);
     });
 
     return beds.map(bed => ({
@@ -2361,7 +2361,13 @@ export class StudentsService {
         notes: `Reserved for manual student: ${savedStudent.name}`
       });
 
-      // 6. Create RoomOccupant record
+      // 6. After student configuration completes, update bed status to OCCUPIED
+      await manager.update(Bed, bed.id, {
+        status: BedStatus.OCCUPIED,
+        notes: `Occupied by ${savedStudent.name} after configuration`
+      });
+
+      // 7. Create RoomOccupant record
       const roomOccupant = manager.create(RoomOccupant, {
         roomId: bed.roomId,
         studentId: savedStudent.id,
@@ -2374,10 +2380,10 @@ export class StudentsService {
 
       await manager.save(RoomOccupant, roomOccupant);
 
-      // 7. Update room occupancy
+      // 8. Update room occupancy
       await manager.increment(Room, { id: bed.roomId }, 'occupancy', 1);
 
-      // 8. Save optional information if provided
+      // 9. Save optional information if provided
       if (dto.guardianName || dto.guardianPhone) {
         const guardianContact = manager.create(StudentContact, {
           studentId: savedStudent.id,

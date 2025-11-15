@@ -418,18 +418,30 @@ export class MultiGuestBookingService {
           if (successfulAssignments.includes(guest.bedId)) {
             try {
               this.logger.log(`🎓 Attempting to create student for guest: ${guest.guestName}`);
+              this.logger.log(`🔍 Guest details: name="${guest.guestName}", bedId="${guest.bedId}"`);
+              this.logger.log(`🔍 Booking contact: email="${booking.contactEmail}", phone="${booking.contactPhone}"`);
+              
               const student = await this.createStudentFromGuest(manager, guest, booking, {
                 processedBy: processedBy || 'admin',
                 assignedRoom: null, // Will be handled by bed assignment
                 createStudent: true
               });
               createdStudents.push(student);
-              this.logger.log(`✅ Created student profile for guest: ${guest.guestName}`);
+              this.logger.log(`✅ Created student profile for guest: ${guest.guestName} (ID: ${student.id})`);
             } catch (studentError) {
-              this.logger.error(`❌ Failed to create student for guest ${guest.guestName}: ${studentError.message}`);
-              this.logger.error(`❌ Student creation error stack: ${studentError.stack}`);
-              // Don't let student creation failure cause transaction rollback
-              // Just log the error and continue - this ensures booking confirmation still succeeds
+              this.logger.error(`❌ CRITICAL: Failed to create student for guest ${guest.guestName}`);
+              this.logger.error(`❌ Error message: ${studentError.message}`);
+              this.logger.error(`❌ Error stack: ${studentError.stack}`);
+              this.logger.error(`❌ Guest data: ${JSON.stringify(guest)}`);
+              this.logger.error(`❌ Booking data: ${JSON.stringify({
+                id: booking.id,
+                contactEmail: booking.contactEmail,
+                contactPhone: booking.contactPhone,
+                hostelId: booking.hostelId
+              })}`);
+              
+              // 🔧 ENHANCED: Still don't throw to avoid transaction rollback, but log extensively
+              // The booking confirmation should still succeed even if student creation fails
             }
           }
         }
@@ -1624,16 +1636,17 @@ export class MultiGuestBookingService {
     this.logger.log(`✅ Handling bed confirmation within transaction for booking ${bookingId}`);
 
     for (const assignment of guestAssignments) {
-      // Update bed status within the transaction
+      // 🔧 FIX: Update bed status to OCCUPIED instead of RESERVED during booking confirmation
+      // This ensures booking-based students have the same bed status as manually created students
       await manager.update(Bed, assignment.bedId, {
-        status: BedStatus.RESERVED,
+        status: BedStatus.OCCUPIED,
         currentOccupantId: assignment.guestId,
         currentOccupantName: assignment.guestName,
         occupiedSince: new Date(),
-        notes: `Reserved by ${assignment.guestName} via booking ${bookingId}`
+        notes: `Occupied by ${assignment.guestName} via booking confirmation ${bookingId}`
       });
 
-      this.logger.log(`✅ Bed ${assignment.bedId} confirmed within transaction: RESERVED → RESERVED for ${assignment.guestName}`);
+      this.logger.log(`✅ Bed ${assignment.bedId} confirmed within transaction: RESERVED → OCCUPIED for ${assignment.guestName}`);
     }
 
     // Schedule room occupancy updates to happen after transaction commits
@@ -1738,9 +1751,15 @@ export class MultiGuestBookingService {
   // No existing student found - create new student with REAL contact info
   this.logger.log(`✅ Creating new student for guest "${guest.guestName}" with real contact: ${guestEmail}, ${guestPhone}`);
 
+  // 🔧 ENHANCED FIX: Ensure guest name is properly validated and stored
+  const validatedGuestName = guest.guestName?.trim() || 'Unknown Guest';
+  if (!guest.guestName || guest.guestName.trim() === '') {
+    this.logger.warn(`⚠️ Guest name is empty for booking ${booking.bookingReference}, using fallback name`);
+  }
+
   const student = manager.create(Student, {
     userId: booking.userId, // Link student to the user who created the booking
-    name: guest.guestName,
+    name: validatedGuestName, // 🔧 Use validated guest name
     phone: guestPhone,
     email: guestEmail,
     enrollmentDate: new Date(),
@@ -1755,12 +1774,18 @@ export class MultiGuestBookingService {
 
     const savedStudent = await manager.save(Student, student);
 
-    this.logger.log(`✅ Created student profile for ${guest.guestName} (ID: ${savedStudent.id}) with room UUID: ${roomUuid}`);
+    this.logger.log(`✅ Created student profile for ${validatedGuestName} (ID: ${savedStudent.id}) with room UUID: ${roomUuid}`);
     this.logger.log(`🔍 Student created with status: ${savedStudent.status}, isConfigured: ${savedStudent.isConfigured}, hostelId: ${savedStudent.hostelId}`);
     
-    // Verify student was created correctly
+    // 🔧 ENHANCED VERIFICATION: Verify student name was saved correctly
     const verifyStudent = await manager.findOne(Student, { where: { id: savedStudent.id } });
-    this.logger.log(`🔍 Verification - Student exists in DB: ${!!verifyStudent}, Status: ${verifyStudent?.status}, isConfigured: ${verifyStudent?.isConfigured}`);
+    this.logger.log(`🔍 Verification - Student exists in DB: ${!!verifyStudent}, Name: "${verifyStudent?.name}", Status: ${verifyStudent?.status}, isConfigured: ${verifyStudent?.isConfigured}`);
+    
+    // 🔧 CRITICAL: Ensure name is not null or empty
+    if (!verifyStudent?.name || verifyStudent.name.trim() === '') {
+      this.logger.error(`❌ CRITICAL: Student name is empty after creation! Student ID: ${savedStudent.id}`);
+      throw new Error(`Student name validation failed for booking ${booking.bookingReference}`);
+    }
 
     // Create RoomOccupant record if room is assigned
     if (roomUuid) {
