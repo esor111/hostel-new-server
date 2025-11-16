@@ -1288,12 +1288,16 @@ export class MultiGuestBookingService {
           assignedBedNumber: approvalData.assignedBed || 'B1' // Fixed: Use separate bed assignment or default
         });
 
-        // Create student profiles if requested
+        // Always create/reuse student profiles for confirmed guests
         const students = [];
-        if (approvalData.createStudent) {
-          for (const guest of booking.guests) {
+        for (const guest of booking.guests) {
+          try {
             const student = await this.createStudentFromGuest(manager, guest, booking, approvalData);
             students.push(student);
+            await this.linkStudentToBed(manager, guest, student, booking);
+          } catch (studentError) {
+            this.logger.error(`❌ Failed to create/link student for guest ${guest.guestName}: ${studentError.message}`);
+            // Continue processing other guests so approval isn't blocked
           }
         }
 
@@ -1310,6 +1314,44 @@ export class MultiGuestBookingService {
         this.logger.error(`❌ Error approving booking ${id}: ${error.message}`);
         throw error;
       }
+    });
+  }
+
+  /**
+   * After creating/reusing a student for a booking guest, ensure the reserved bed points to that student
+   */
+  private async linkStudentToBed(
+    manager: any,
+    guest: BookingGuest,
+    student: Student,
+    booking: MultiGuestBooking
+  ): Promise<void> {
+    if (!guest.bedId) {
+      this.logger.warn(`⚠️ Cannot link student ${student.id} to bed – guest ${guest.id} has no bedId`);
+      return;
+    }
+
+    const bed = await manager.findOne(Bed, {
+      where: { id: guest.bedId },
+      relations: ['room']
+    });
+
+    if (!bed) {
+      this.logger.warn(`⚠️ Bed ${guest.bedId} not found while linking student ${student.id}`);
+      return;
+    }
+
+    await manager.update(Bed, bed.id, {
+      currentOccupantId: student.id,
+      currentOccupantName: student.name,
+      status: BedStatus.RESERVED,
+      occupiedSince: booking.checkInDate ? new Date(booking.checkInDate) : new Date(),
+      notes: `Reserved for ${student.name} via booking approval ${booking.bookingReference}`
+    });
+
+    await manager.update(Student, student.id, {
+      roomId: bed.roomId,
+      bedNumber: bed.bedIdentifier
     });
   }
 
