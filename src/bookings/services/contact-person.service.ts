@@ -44,7 +44,7 @@ export class ContactPersonService {
     this.logger.log(`Checking contact person: ${contact}`);
 
     try {
-      const url = `${this.kahaApiBaseUrl}/users/check-contact/${encodeURIComponent(contact)}`;
+      const url = `${this.kahaApiBaseUrl}/users/find-or-create/${encodeURIComponent(contact)}`;
       
       const response = await firstValueFrom(
         this.httpService.get<KahaUserResponse>(url)
