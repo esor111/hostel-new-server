@@ -929,14 +929,9 @@ export class RoomsService extends HostelScopedService<Room> {
     return colorMap[status] || '#6B7280'; // Default to gray
   }
 
-  // Convert bed status for API response - change Occupied beds from bookings to Reserved
+  // Return actual bed status from database
   private convertBedStatusForResponse(bed: any): string {
-    // If bed is Occupied but has notes indicating it's from a booking, return Reserved
-    if (bed.status === 'Occupied' && bed.notes && bed.notes.includes('via booking')) {
-      return 'Reserved';
-    }
-
-    // Otherwise return the actual status
+    // Return the actual status without any conversion
     return bed.status;
   }
 

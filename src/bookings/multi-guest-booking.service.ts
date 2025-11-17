@@ -427,6 +427,10 @@ export class MultiGuestBookingService {
                 createStudent: true
               });
               createdStudents.push(student);
+              
+              // 🔧 FIX: Link student to bed so configuration can find it later
+              await this.linkStudentToBed(manager, guest, student, booking);
+              
               this.logger.log(`✅ Created student profile for guest: ${guest.guestName} (ID: ${student.id})`);
             } catch (studentError) {
               this.logger.error(`❌ CRITICAL: Failed to create student for guest ${guest.guestName}`);

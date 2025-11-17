@@ -28,7 +28,7 @@ async function bootstrap() {
   });
 
   // Additional middleware to handle CORS manually (fallback)
-  app.use((req, res, next) => {
+  app.use((req: any, res: any, next: any) => {
     // Set CORS headers manually as a fallback
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
@@ -41,8 +41,9 @@ async function bootstrap() {
       'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD'
     );
 
-    // Handle preflight requests
+    // Handle preflight requests with proper logging
     if (req.method === 'OPTIONS') {
+      console.log(`✅ CORS Preflight handled for: ${req.url}`);
       return res.status(200).end();
     }
 

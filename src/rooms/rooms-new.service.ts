@@ -470,11 +470,8 @@ export class RoomsNewService {
       let gender: string = 'Any';
 
       if (matchingBed) {
-        // Convert status (Occupied from booking -> Reserved)
+        // Use actual bed status from database
         status = matchingBed.status;
-        if (status === 'Occupied' && matchingBed.notes && matchingBed.notes.includes('via booking')) {
-          status = 'Reserved';
-        }
         
         // CRITICAL: Use pure UUID for booking compatibility
         refId = matchingBed.id;  // This is the pure UUID
