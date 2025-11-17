@@ -115,6 +115,27 @@ export class GuestDto {
   gender: GuestGender;
 
   @ApiProperty({ 
+    description: 'Guest phone number (required)',
+    example: '+9779876543210'
+  })
+  @IsString({ message: 'Phone number must be a string' })
+  @Length(10, 15, { message: 'Phone number must be between 10 and 15 characters' })
+  @Matches(/^[\+]?[1-9][\d]{0,15}$/, { 
+    message: 'Phone number must be a valid format' 
+  })
+  @Transform(({ value }) => value?.trim())
+  phone: string;
+
+  @ApiProperty({ 
+    description: 'Guest email address (required)',
+    example: 'guest@example.com'
+  })
+  @IsEmail({}, { message: 'Email must be a valid email address' })
+  @Length(5, 100, { message: 'Email must be between 5 and 100 characters' })
+  @Transform(({ value }) => value?.trim().toLowerCase())
+  email: string;
+
+  @ApiProperty({ 
     description: 'Guest ID proof type (optional)',
     example: 'Passport',
     required: false

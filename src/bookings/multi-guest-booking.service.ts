@@ -10,6 +10,7 @@ import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
 import { CreateBookingDto, ApproveBookingDto, RejectBookingDto } from './dto/create-booking.dto';
 import { BedSyncService } from '../rooms/bed-sync.service';
 import { BookingValidationService } from './validation/booking-validation.service';
+import { ContactPersonService } from './services/contact-person.service';
 import { ConfigService } from '@nestjs/config';
 import { BusinessIntegrationService } from '../hostel/services/business-integration.service';
 import { HostelNotificationService } from './hostel-notification.service';
@@ -94,6 +95,7 @@ export class MultiGuestBookingService {
     private dataSource: DataSource,
     private bedSyncService: BedSyncService,
     private validationService: BookingValidationService,
+    private contactPersonService: ContactPersonService,
     private configService: ConfigService,
     private businessIntegrationService: BusinessIntegrationService,
     private hostelNotificationService: HostelNotificationService,
@@ -105,9 +107,17 @@ export class MultiGuestBookingService {
     const bookingData = createDto.data;
     this.logger.log(`Creating multi-guest booking for ${bookingData.contactPerson.name} with ${bookingData.guests.length} guests`);
 
+    // 🆕 STEP 1: Get or create contact person via Kaha API
+    let contactPersonUserId = userId; // Use from JWT if provided
+    
+    if (!contactPersonUserId) {
+      this.logger.log(`🔍 Verifying contact person: ${bookingData.contactPerson.phone}`);
+      contactPersonUserId = await this.contactPersonService.validateAndGetUserId(bookingData.contactPerson);
+      this.logger.log(`✅ Contact person verified: userId=${contactPersonUserId}`);
+    }
+
     // Use transaction to ensure data consistency
-    return await this.dataSource.transaction(async manager => {
-      try {
+    return await this.dataSource.transaction(async manager => {      try {
         // Comprehensive validation using validation service
         const dataValidation = this.validationService.validateBookingData(bookingData);
         if (!dataValidation.isValid) {
@@ -122,6 +132,16 @@ export class MultiGuestBookingService {
           throw new BadRequestException(`Bed validation failed: ${bedValidation.errors.join('; ')}`);
         }
 
+        // 🆕 STEP 2: Validate guest contact uniqueness
+        const guestContacts = bookingData.guests.map(g => ({ phone: g.phone, email: g.email }));
+        const contactValidation = await this.validationService.validateGuestContactUniqueness(guestContacts);
+        if (!contactValidation.isValid) {
+          throw new BadRequestException(`Guest contact validation failed: ${contactValidation.errors.join('; ')}`);
+        }
+        if (contactValidation.warnings.length > 0) {
+          this.logger.warn(`Guest contact warnings: ${contactValidation.warnings.join('; ')}`);
+        }
+
         // Gender validation removed - any guest can book any bed
 
         // Get bed details for booking creation
@@ -133,7 +153,7 @@ export class MultiGuestBookingService {
         // Create booking
         const booking = manager.create(MultiGuestBooking, {
           hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
-          userId: userId, // Store user ID from JWT token
+          userId: contactPersonUserId, // ✅ Store contact person's userId from Kaha API
           contactName: bookingData.contactPerson.name,
           contactPhone: bookingData.contactPerson.phone,
           contactEmail: bookingData.contactPerson.email,
@@ -160,6 +180,8 @@ export class MultiGuestBookingService {
             guestName: guestDto.name,
             age: guestDto.age,
             gender: guestDto.gender,
+            phone: guestDto.phone,  // 🆕 Guest's real phone
+            email: guestDto.email,  // 🆕 Guest's real email
             status: GuestStatus.PENDING,
             assignedRoomNumber: bed?.room?.roomNumber,
             assignedBedNumber: bed?.bedIdentifier // Still use bedIdentifier for display
@@ -1177,6 +1199,8 @@ export class MultiGuestBookingService {
           name: dto.name,
           age: 18, // Default age for single guest bookings
           gender: 'Any' as any, // Default gender
+          phone: dto.phone, // Use same phone as contact person for single guest
+          email: dto.email, // Use same email as contact person for single guest
           idProofType: dto.idProofType,
           idProofNumber: dto.idProofNumber,
           emergencyContact: dto.emergencyContact,
@@ -1755,20 +1779,17 @@ export class MultiGuestBookingService {
       }
     }
 
-    // 🔧 FIXED: Generate unique contact info for each guest to avoid conflicts
-    // Each guest gets their own unique email and phone to prevent student reuse
-    const guestEmail = `${guest.guestName.toLowerCase().replace(/\s+/g, '.')}@${booking.contactEmail.split('@')[1]}`;
-    const guestPhone = `${booking.contactPhone.slice(0, -2)}${Math.floor(Math.random() * 90) + 10}`; // Modify last 2 digits
+    // 🔧 NEW: Use guest's REAL contact info from booking_guests table
+    const studentEmail = guest.email;  // ✅ Use real email from booking guest
+    const studentPhone = guest.phone;  // ✅ Use real phone from booking guest
 
-    this.logger.log(`🔧 Creating unique contact for guest "${guest.guestName}": ${guestEmail}, ${guestPhone}`);
-    console.log(`🔧 BUG FIX: Guest "${guest.guestName}" gets unique contact: ${guestEmail}, ${guestPhone}`);
+    this.logger.log(`✅ Creating student "${guest.guestName}" with real contact: ${studentEmail}, ${studentPhone}`);
 
-    // Check if a student with this EXACT guest name already exists (more specific check)
+    // Check if a student with this contact already exists
     const existingStudent = await manager.findOne(Student, {
       where: [
-        { name: guest.guestName, hostelId: booking.hostelId }, // Check by name + hostel
-        { email: guestEmail }, // Check by generated email
-        { phone: guestPhone }  // Check by generated phone
+        { email: studentEmail },
+        { phone: studentPhone }
       ]
     });
 
@@ -1795,7 +1816,7 @@ export class MultiGuestBookingService {
     }
 
   // No existing student found - create new student with REAL contact info
-  this.logger.log(`✅ Creating new student for guest "${guest.guestName}" with real contact: ${guestEmail}, ${guestPhone}`);
+  this.logger.log(`✅ Creating new student for guest "${guest.guestName}" with real contact: ${studentEmail}, ${studentPhone}`);
 
   // 🔧 ENHANCED FIX: Ensure guest name is properly validated and stored
   const validatedGuestName = guest.guestName?.trim() || 'Unknown Guest';
@@ -1806,16 +1827,16 @@ export class MultiGuestBookingService {
   const student = manager.create(Student, {
     userId: booking.userId, // Link student to the user who created the booking
     name: validatedGuestName, // 🔧 Use validated guest name
-    phone: guestPhone,
-    email: guestEmail,
+    phone: studentPhone,  // ✅ Real phone from guest
+    email: studentEmail,  // ✅ Real email from guest
     enrollmentDate: new Date(),
     status: StudentStatus.PENDING_CONFIGURATION, // Fixed: Use correct status for pending configuration
     address: booking.address, // Use booking address instead of guest address
     bedNumber: guest.assignedBedNumber,
     roomId: roomUuid, // Fixed: Use UUID instead of room number
     hostelId: booking.hostelId, // Ensure student belongs to the same hostel as the booking
+    bookingId: booking.id, // 🆕 Link student back to booking for contact person lookup
     isConfigured: false, // Ensure this is false for pending configuration
-    // bookingRequestId: null // Removed: Don't reference deleted booking_requests
   });
 
     const savedStudent = await manager.save(Student, student);

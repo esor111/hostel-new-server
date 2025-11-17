@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { TestPlaygroundController } from './test-playground.controller';
-import { TestPlaygroundService } from './test-playground.service';
+import { PlaygroundController } from './playground.controller';
+import { PlaygroundService } from './playground.service';
 import { Bed } from '../rooms/entities/bed.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
 import { Room } from '../rooms/entities/room.entity';
@@ -10,7 +10,8 @@ import { Room } from '../rooms/entities/room.entity';
   imports: [
     TypeOrmModule.forFeature([Bed, Hostel, Room])
   ],
-  controllers: [TestPlaygroundController],
-  providers: [TestPlaygroundService]
+  controllers: [PlaygroundController],
+  providers: [PlaygroundService],
+  exports: [PlaygroundService]
 })
-export class TestPlaygroundModule {}
+export class PlaygroundModule {}

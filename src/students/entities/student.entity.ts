@@ -2,7 +2,6 @@ import { Entity, Column, OneToMany, ManyToOne, JoinColumn, Index } from 'typeorm
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Room } from '../../rooms/entities/room.entity';
 import { RoomOccupant } from '../../rooms/entities/room-occupant.entity';
-// Removed: import { BookingRequest } from '../../bookings/entities/booking-request.entity';
 import { Invoice } from '../../invoices/entities/invoice.entity';
 import { Payment } from '../../payments/entities/payment.entity';
 import { LedgerEntry } from '../../ledger/entities/ledger-entry.entity';
@@ -12,6 +11,7 @@ import { StudentAcademicInfo } from './student-academic-info.entity';
 import { StudentFinancialInfo } from './student-financial-info.entity';
 import { AdminCharge } from '../../admin-charges/entities/admin-charge.entity';
 import { Hostel } from '../../hostel/entities/hostel.entity';
+import { MultiGuestBooking } from '../../bookings/entities/multi-guest-booking.entity';
 
 export enum StudentStatus {
   ACTIVE = 'Active',
@@ -73,8 +73,8 @@ export class Student extends BaseEntity {
   @Column({ name: 'room_id', nullable: true })
   roomId: string;
 
-  // Removed: @Column({ name: 'booking_request_id', nullable: true })
-  // Removed: bookingRequestId: string;
+  @Column({ name: 'booking_id', nullable: true })
+  bookingId: string;
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.students, { onDelete: 'CASCADE' })
@@ -85,9 +85,9 @@ export class Student extends BaseEntity {
   @JoinColumn({ name: 'room_id' })
   room: Room;
 
-  // Removed: @ManyToOne(() => BookingRequest, booking => booking.student, { nullable: true })
-  // Removed: @JoinColumn({ name: 'booking_request_id' })
-  // Removed: bookingRequest: BookingRequest;
+  @ManyToOne(() => MultiGuestBooking, { nullable: true })
+  @JoinColumn({ name: 'booking_id' })
+  booking: MultiGuestBooking;
 
   @OneToMany(() => StudentContact, contact => contact.student, { cascade: true })
   contacts: StudentContact[];

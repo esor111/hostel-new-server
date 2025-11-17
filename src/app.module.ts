@@ -27,7 +27,7 @@ import { AuthModule } from './auth/auth.module';
 import { MealPlansModule } from './meal-plans/meal-plans.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { HostelContextMiddleware } from './hostel/middleware/hostel-context.middleware';
-import { TestPlaygroundModule } from './test-playground/test-playground.module';
+import { PlaygroundModule } from './playground/playground.module';
 
 @Module({
   imports: [
@@ -62,7 +62,7 @@ import { TestPlaygroundModule } from './test-playground/test-playground.module';
     AuthModule,
     MealPlansModule,
     AttendanceModule,
-    TestPlaygroundModule, // Test playground module
+    PlaygroundModule, // Playground module
   ],
   controllers: [AppController],
   providers: [AppService],
@@ -88,7 +88,7 @@ export class AppModule implements NestModule {
         'meal-plans',
         'dashboard',    // Added for hostel context isolation
         'analytics',     // Added for hostel context isolation
-        'test-playground' // Test playground module
+        'playground' // Playground module
       );
   }
 }

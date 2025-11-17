@@ -65,6 +65,13 @@ export class BookingGuest extends BaseEntity {
   @Column({ name: 'assigned_bed_number', length: 50, nullable: true })
   assignedBedNumber: string;
 
+  // Guest's own contact information (required)
+  @Column({ length: 20, nullable: false })
+  phone: string;
+
+  @Column({ length: 255, nullable: false })
+  email: string;
+
   // Relations
   @ManyToOne(() => MultiGuestBooking, (booking) => booking.guests, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'booking_id' })
