@@ -263,7 +263,7 @@ export class BookingValidationService {
 
   /**
    * Validate guest contact uniqueness
-   * Check if email or phone already exists in students or booking_guests
+   * Check ONLY phone (not email, since students share parent email)
    */
   async validateGuestContactUniqueness(guests: Array<{ phone: string; email: string }>): Promise<BedValidationResult> {
     const result: BedValidationResult = {
@@ -275,16 +275,8 @@ export class BookingValidationService {
     };
 
     for (const guest of guests) {
-      // Check if email already exists in students table
-      const existingStudentByEmail = await this.studentRepository.findOne({
-        where: { email: guest.email }
-      });
-
-      if (existingStudentByEmail) {
-        result.isValid = false;
-        result.errors.push(`Email ${guest.email} is already registered to another student`);
-      }
-
+      // Skip email check - multiple students can have same contact person email
+      
       // Check if phone already exists in students table
       const existingStudentByPhone = await this.studentRepository.findOne({
         where: { phone: guest.phone }
@@ -295,15 +287,8 @@ export class BookingValidationService {
         result.errors.push(`Phone ${guest.phone} is already registered to another student`);
       }
 
-      // Check if email exists in pending booking guests
-      const existingGuestByEmail = await this.bookingGuestRepository.findOne({
-        where: { email: guest.email }
-      });
-
-      if (existingGuestByEmail) {
-        result.warnings.push(`Email ${guest.email} is already used in another pending booking`);
-      }
-
+      // Skip email check for pending booking guests
+      
       // Check if phone exists in pending booking guests
       const existingGuestByPhone = await this.bookingGuestRepository.findOne({
         where: { phone: guest.phone }
@@ -314,15 +299,8 @@ export class BookingValidationService {
       }
     }
 
-    // Check for duplicates within the current booking
-    const emails = guests.map(g => g.email);
+    // Check for duplicate PHONES within the current booking (skip emails)
     const phones = guests.map(g => g.phone);
-
-    const duplicateEmails = emails.filter((email, index) => emails.indexOf(email) !== index);
-    if (duplicateEmails.length > 0) {
-      result.isValid = false;
-      result.errors.push(`Duplicate emails in booking: ${[...new Set(duplicateEmails)].join(', ')}`);
-    }
 
     const duplicatePhones = phones.filter((phone, index) => phones.indexOf(phone) !== index);
     if (duplicatePhones.length > 0) {

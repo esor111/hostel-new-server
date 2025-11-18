@@ -2473,4 +2473,81 @@ export class StudentsService {
       return fallbackUserId;
     }
   }
+
+  /**
+   * Create student from JWT token - Fetches user data from Kaha API
+   * Used for self-registration or admin creating student for a specific user
+   */
+  async createStudentFromToken(
+    createData: { name: string; phone: string },
+    user: JwtPayload,
+    hostelId: string
+  ): Promise<any> {
+    this.logger.log(`Creating student from token - userId: ${user.id}, businessId: ${user.businessId}`);
+
+    try {
+      // Step 1: Validate phone uniqueness (CRITICAL - must be unique)
+      const existingPhone = await this.studentRepository.findOne({
+        where: { phone: createData.phone }
+      });
+
+      if (existingPhone) {
+        throw new BadRequestException(
+          `Phone number ${createData.phone} is already registered to another student`
+        );
+      }
+
+      // Step 2: Fetch user data from Kaha API using userId from JWT
+      const kahaApiUrl = `https://dev.kaha.com.np/main/api/v3/users/filter-user-by-ids?userIds=${user.id}`;
+      this.logger.log(`Fetching user data from Kaha API: ${kahaApiUrl}`);
+
+      const response = await firstValueFrom(
+        this.httpService.get(kahaApiUrl)
+      );
+
+      if (!response.data?.data || response.data.data.length === 0) {
+        throw new BadRequestException('User not found in Kaha system');
+      }
+
+      const kahaUser = response.data.data[0];
+      this.logger.log(`✅ Found Kaha user: ${kahaUser.fullName} (${kahaUser.kahaId})`);
+
+      // Step 3: Extract user data from Kaha API
+      const userEmail = kahaUser.email;
+      const contactPersonUserId = kahaUser.id;  // ✅ This is the userId we need!
+
+      // Step 4: Create student with PENDING_CONFIGURATION status
+      const student = this.studentRepository.create({
+        userId: contactPersonUserId,  // ✅ Contact person's Kaha userId (from API response)
+        name: createData.name,
+        phone: createData.phone,  // Student's unique phone
+        email: userEmail,  // Contact person's email (can be shared)
+        enrollmentDate: new Date(),
+        status: StudentStatus.PENDING_CONFIGURATION,
+        isConfigured: false,
+        hostelId,
+        address: null,
+        roomId: null,
+        bedNumber: null
+      });
+
+      const savedStudent = await this.studentRepository.save(student);
+
+      this.logger.log(
+        `✅ Student created: ${savedStudent.name} (ID: ${savedStudent.id}) - Status: PENDING_CONFIGURATION`
+      );
+
+      return this.transformToApiResponse(savedStudent);
+    } catch (error) {
+      this.logger.error(`❌ Error creating student from token: ${error.message}`);
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        'Failed to create student. Please check your input and try again.'
+      );
+    }
+  }
 }

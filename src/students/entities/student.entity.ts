@@ -38,7 +38,7 @@ export class Student extends BaseEntity {
   @Column({ length: 20, unique: true })
   phone: string;
 
-  @Column({ length: 255, unique: true })
+  @Column({ length: 255, unique: false })  // Not unique - multiple students can share parent email
   email: string;
 
   @Column({ name: 'enrollment_date', type: 'date', nullable: true })

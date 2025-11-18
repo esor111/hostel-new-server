@@ -23,6 +23,15 @@ END $$;
 -- Add index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_students_booking_id ON students(booking_id);
 
+-- 🔧 FIX: Remove foreign key constraint on multi_guest_bookings.user_id
+-- The user_id is from external Kaha API, not a local users table
+ALTER TABLE multi_guest_bookings
+DROP CONSTRAINT IF EXISTS FK_05d1df436632dc19446274b6a6b;
+
+-- Ensure user_id can be nullable (it should store external Kaha userId)
+ALTER TABLE multi_guest_bookings 
+ALTER COLUMN user_id DROP NOT NULL;
+
 -- Add phone and email columns to booking_guests table
 ALTER TABLE booking_guests
 ADD COLUMN IF NOT EXISTS phone VARCHAR(20) NOT NULL DEFAULT '',

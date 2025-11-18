@@ -6,6 +6,7 @@ import { BookingGuest, GuestStatus } from './entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { Student, StudentStatus } from '../students/entities/student.entity';
+import { Hostel } from '../hostel/entities/hostel.entity';
 import { CreateMultiGuestBookingDto } from './dto/multi-guest-booking.dto';
 import { CreateBookingDto, ApproveBookingDto, RejectBookingDto } from './dto/create-booking.dto';
 import { BedSyncService } from '../rooms/bed-sync.service';
@@ -118,6 +119,36 @@ export class MultiGuestBookingService {
 
     // Use transaction to ensure data consistency
     return await this.dataSource.transaction(async manager => {      try {
+        // 🔍 STEP 1.5: Resolve actual hostel ID from business_id
+        let actualHostelId: string;
+        
+        if (hostelId) {
+          // hostelId parameter is actually a business_id - look up the real hostel id
+          const hostel = await manager.findOne(Hostel, {
+            where: { businessId: hostelId }
+          });
+          
+          if (!hostel) {
+            throw new BadRequestException(`Hostel not found with business_id: ${hostelId}`);
+          }
+          
+          actualHostelId = hostel.id;
+          this.logger.log(`✅ Found hostel: ${hostel.name} (id: ${actualHostelId}) for business_id: ${hostelId}`);
+        } else {
+          // Fallback to default from config
+          const defaultBusinessId = this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id');
+          const hostel = await manager.findOne(Hostel, {
+            where: { businessId: defaultBusinessId }
+          });
+          
+          if (!hostel) {
+            throw new BadRequestException(`Default hostel not found with business_id: ${defaultBusinessId}`);
+          }
+          
+          actualHostelId = hostel.id;
+          this.logger.log(`✅ Using default hostel: ${hostel.name} (id: ${actualHostelId}`);;
+        }
+
         // Comprehensive validation using validation service
         const dataValidation = this.validationService.validateBookingData(bookingData);
         if (!dataValidation.isValid) {
@@ -152,7 +183,7 @@ export class MultiGuestBookingService {
 
         // Create booking
         const booking = manager.create(MultiGuestBooking, {
-          hostelId: hostelId || this.configService.get('HOSTEL_BUSINESS_ID', 'default-hostel-id'),
+          hostelId: actualHostelId, // ✅ Use the resolved hostel ID (not business_id)
           userId: contactPersonUserId, // ✅ Store contact person's userId from Kaha API
           contactName: bookingData.contactPerson.name,
           contactPhone: bookingData.contactPerson.phone,
@@ -1780,10 +1811,10 @@ export class MultiGuestBookingService {
     }
 
     // 🔧 NEW: Use guest's REAL contact info from booking_guests table
-    const studentEmail = guest.email;  // ✅ Use real email from booking guest
+    const studentEmail = booking.contactEmail;  // ✅ Use contact person's email (parent/guardian)
     const studentPhone = guest.phone;  // ✅ Use real phone from booking guest
 
-    this.logger.log(`✅ Creating student "${guest.guestName}" with real contact: ${studentEmail}, ${studentPhone}`);
+    this.logger.log(`✅ Creating student "${guest.guestName}" with contact person email: ${studentEmail}, guest phone: ${studentPhone}`);
 
     // Check if a student with this contact already exists
     const existingStudent = await manager.findOne(Student, {
@@ -1816,7 +1847,7 @@ export class MultiGuestBookingService {
     }
 
   // No existing student found - create new student with REAL contact info
-  this.logger.log(`✅ Creating new student for guest "${guest.guestName}" with real contact: ${studentEmail}, ${studentPhone}`);
+  this.logger.log(`✅ Creating new student for guest "${guest.guestName}" with contact person email: ${studentEmail}, guest phone: ${studentPhone}`);
 
   // 🔧 ENHANCED FIX: Ensure guest name is properly validated and stored
   const validatedGuestName = guest.guestName?.trim() || 'Unknown Guest';
