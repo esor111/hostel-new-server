@@ -2498,7 +2498,8 @@ export class StudentsService {
       }
 
       // Step 2: Fetch user data from Kaha API using userId from JWT
-      const kahaApiUrl = `https://dev.kaha.com.np/main/api/v3/users/filter-user-by-ids?userIds=${user.id}`;
+      // Pass userIds twice to create an array (Kaha API requirement)
+      const kahaApiUrl = `https://dev.kaha.com.np/main/api/v3/users/filter-user-by-ids?userIds=${user.id}&userIds=${user.id}`;
       this.logger.log(`Fetching user data from Kaha API: ${kahaApiUrl}`);
 
       const response = await firstValueFrom(

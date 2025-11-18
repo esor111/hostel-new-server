@@ -22,7 +22,6 @@ export enum StudentStatus {
 }
 
 @Entity('students')
-@Index(['email'], { unique: true })
 @Index(['phone'], { unique: true })
 @Index(['status'])
 @Index(['enrollmentDate'])

@@ -1,10 +1,8 @@
--- Remove unique constraint on students.email
--- Multiple students can share the same contact person (parent) email
+-- Remove unique constraint on students.email to allow shared parent emails
+-- Multiple students can have the same parent email, but phone numbers remain unique
 
--- Drop the unique constraint on email column
-ALTER TABLE students DROP CONSTRAINT IF EXISTS UQ_students_email;
+-- Drop the unique index on email
+DROP INDEX IF EXISTS "IDX_25985d58c714a4a427ced57507";
 
--- Also drop any unique index on email if it exists
-DROP INDEX IF EXISTS students_email_key;
-
--- Note: Phone remains unique as it's the student's personal identifier
+-- Note: Phone number remains unique as the primary identifier for students
+-- This allows multiple students to share the same parent/guardian email address

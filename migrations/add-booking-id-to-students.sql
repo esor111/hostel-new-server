@@ -32,10 +32,23 @@ DROP CONSTRAINT IF EXISTS FK_05d1df436632dc19446274b6a6b;
 ALTER TABLE multi_guest_bookings 
 ALTER COLUMN user_id DROP NOT NULL;
 
--- Add phone and email columns to booking_guests table
+-- Add phone and email columns to booking_guests table (nullable first to handle existing data)
 ALTER TABLE booking_guests
-ADD COLUMN IF NOT EXISTS phone VARCHAR(20) NOT NULL DEFAULT '',
-ADD COLUMN IF NOT EXISTS email VARCHAR(255) NOT NULL DEFAULT '';
+ADD COLUMN IF NOT EXISTS phone VARCHAR(20) NULL,
+ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL;
+
+-- Update existing records with default values
+UPDATE booking_guests 
+SET phone = COALESCE(phone, ''), 
+    email = COALESCE(email, '') 
+WHERE phone IS NULL OR email IS NULL;
+
+-- Now make them NOT NULL with default values
+ALTER TABLE booking_guests 
+ALTER COLUMN phone SET NOT NULL,
+ALTER COLUMN phone SET DEFAULT '',
+ALTER COLUMN email SET NOT NULL,
+ALTER COLUMN email SET DEFAULT '';
 
 -- Add indexes for guest contact lookups
 CREATE INDEX IF NOT EXISTS idx_booking_guests_email ON booking_guests(email);
