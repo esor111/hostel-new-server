@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Bed, BedStatus } from '../../rooms/entities/bed.entity';
 import { Room } from '../../rooms/entities/room.entity';
+import { BookingGuest } from '../entities/booking-guest.entity';
+import { Student } from '../../students/entities/student.entity';
 
 export interface BedValidationResult {
   isValid: boolean;
@@ -27,6 +29,10 @@ export class BookingValidationService {
     private bedRepository: Repository<Bed>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
+    @InjectRepository(BookingGuest)
+    private bookingGuestRepository: Repository<BookingGuest>,
+    @InjectRepository(Student)
+    private studentRepository: Repository<Student>,
   ) { }
 
   /**
@@ -220,6 +226,15 @@ export class BookingValidationService {
           result.isValid = false;
           result.errors.push(`Guest ${index + 1}: Valid age is required (1-120)`);
         }
+        // Validate guest contact information (required)
+        if (!guest.phone) {
+          result.isValid = false;
+          result.errors.push(`Guest ${index + 1}: Phone number is required`);
+        }
+        if (!guest.email) {
+          result.isValid = false;
+          result.errors.push(`Guest ${index + 1}: Email is required`);
+        }
       });
     }
 
@@ -244,5 +259,55 @@ export class BookingValidationService {
     }
 
     return message;
+  }
+
+  /**
+   * Validate guest contact uniqueness
+   * Check ONLY phone (not email, since students share parent email)
+   */
+  async validateGuestContactUniqueness(guests: Array<{ phone: string; email: string }>): Promise<BedValidationResult> {
+    const result: BedValidationResult = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      validBeds: [],
+      invalidBeds: []
+    };
+
+    for (const guest of guests) {
+      // Skip email check - multiple students can have same contact person email
+      
+      // Check if phone already exists in students table
+      const existingStudentByPhone = await this.studentRepository.findOne({
+        where: { phone: guest.phone }
+      });
+
+      if (existingStudentByPhone) {
+        result.isValid = false;
+        result.errors.push(`Phone ${guest.phone} is already registered to another student`);
+      }
+
+      // Skip email check for pending booking guests
+      
+      // Check if phone exists in pending booking guests
+      const existingGuestByPhone = await this.bookingGuestRepository.findOne({
+        where: { phone: guest.phone }
+      });
+
+      if (existingGuestByPhone) {
+        result.warnings.push(`Phone ${guest.phone} is already used in another pending booking`);
+      }
+    }
+
+    // Check for duplicate PHONES within the current booking (skip emails)
+    const phones = guests.map(g => g.phone);
+
+    const duplicatePhones = phones.filter((phone, index) => phones.indexOf(phone) !== index);
+    if (duplicatePhones.length > 0) {
+      result.isValid = false;
+      result.errors.push(`Duplicate phone numbers in booking: ${[...new Set(duplicatePhones)].join(', ')}`);
+    }
+
+    return result;
   }
 }

@@ -95,13 +95,17 @@ describe('MultiGuestBookingService', () => {
             bedId: 'bed1',
             name: 'Alice Smith',
             age: 25,
-            gender: GuestGender.FEMALE
+            gender: GuestGender.FEMALE,
+            phone: '+9779876543210',
+            email: 'alice@example.com'
           },
           {
             bedId: 'bed2',
             name: 'Bob Johnson',
             age: 28,
-            gender: GuestGender.MALE
+            gender: GuestGender.MALE,
+            phone: '+9779876543211',
+            email: 'bob@example.com'
           }
         ]
       }

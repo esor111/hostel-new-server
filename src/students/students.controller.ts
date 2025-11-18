@@ -512,4 +512,26 @@ export class StudentsController {
       message: 'Manual student created successfully. Student will appear in pending configuration list.'
     };
   }
+
+  @Post('create-from-token')
+  @ApiOperation({ summary: 'Create student from JWT token (fetches user data from Kaha API)' })
+  @ApiResponse({ status: 201, description: 'Student created successfully from token' })
+  @ApiResponse({ status: 400, description: 'Phone number already registered or validation failed' })
+  async createStudentFromToken(
+    @Body(ValidationPipe) createData: { name: string; phone: string },
+    @CurrentUser() user: JwtPayload,
+    @GetHostelId() hostelId: string
+  ) {
+    const student = await this.studentsService.createStudentFromToken(
+      createData,
+      user,
+      hostelId
+    );
+
+    return {
+      status: HttpStatus.CREATED,
+      data: student,
+      message: 'Student created successfully. Student will appear in pending configuration list.'
+    };
+  }
 }
