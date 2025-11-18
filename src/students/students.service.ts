@@ -2477,45 +2477,26 @@ export class StudentsService {
   /**
    * Create student from JWT token - Fetches user data from Kaha API
    * Used for self-registration or admin creating student for a specific user
+   * No createData needed - all user info comes from Kaha API
    */
   async createStudentFromToken(
-    createData: { name: string; phone: string },
+    createData: { name?: string; phone?: string } | null,
     user: JwtPayload,
     hostelId: string
   ): Promise<any> {
-    console.log('🚨🚨🚨 CREATE-FROM-TOKEN SERVICE METHOD CALLED 🚨🚨🚨');
-    console.log('📋 SERVICE: Received createData:', createData);
-    console.log('📋 SERVICE: createData type:', typeof createData);
-    console.log('📋 SERVICE: createData.name:', createData?.name, '(type:', typeof createData?.name, ')');
-    console.log('📋 SERVICE: createData.phone:', createData?.phone, '(type:', typeof createData?.phone, ')');
-    console.log('👤 SERVICE: User JWT payload:', user ? {
+    console.log('�🚨🚨 CREA TE-FROM-TOKEN SERVICE METHOD CALLED 🚨🚨🚨');
+    console.log('📋 SERVICE: Received createData (should be empty/optional):', createData);
+    console.log('� SERVICE:: User JWT payload:', user ? {
       id: user.id,
       kahaId: user.kahaId,
       businessId: user.businessId
     } : 'NULL');
     console.log('🏨 SERVICE: HostelId:', hostelId);
-    console.log('🔍 SERVICE: JSON.stringify(createData):', JSON.stringify(createData));
     
     this.logger.log(`Creating student from token - userId: ${user.id}, businessId: ${user.businessId}`);
 
     try {
-      // Step 1: Validate phone uniqueness (CRITICAL - must be unique)
-      console.log('🔍 SERVICE: About to check phone uniqueness for:', createData.phone);
-      
-      const existingPhone = await this.studentRepository.findOne({
-        where: { phone: createData.phone }
-      });
-
-      console.log('🔍 SERVICE: Phone uniqueness check result:', existingPhone ? 'PHONE EXISTS' : 'PHONE AVAILABLE');
-
-      if (existingPhone) {
-        console.log('❌ SERVICE: Phone already exists - throwing BadRequestException');
-        throw new BadRequestException(
-          `Phone number ${createData.phone} is already registered to another student`
-        );
-      }
-
-      // Step 2: Fetch user data from Kaha API using userId from JWT
+      // Step 1: Fetch user data from Kaha API using userId from JWT
       // Pass userIds twice to create an array (Kaha API requirement)
       const kahaApiUrl = `https://dev.kaha.com.np/main/api/v3/users/filter-user-by-ids?userIds=${user.id}&userIds=${user.id}`;
       console.log('🌐 SERVICE: Fetching user data from Kaha API:', kahaApiUrl);
@@ -2538,28 +2519,47 @@ export class StudentsService {
         fullName: kahaUser.fullName,
         kahaId: kahaUser.kahaId,
         email: kahaUser.email,
+        phone: kahaUser.phone,
         id: kahaUser.id
       });
       this.logger.log(`✅ Found Kaha user: ${kahaUser.fullName} (${kahaUser.kahaId})`);
 
-      // Step 3: Extract user data from Kaha API
+      // Step 2: Extract user data from Kaha API (this is the source of truth)
       const userEmail = kahaUser.email;
-      const contactPersonUserId = kahaUser.id;  // ✅ This is the userId we need!
+      const userPhone = kahaUser.phone;
+      const userName = kahaUser.fullName;
+      const contactPersonUserId = kahaUser.id;
 
-      console.log('📝 SERVICE: Extracted data for student creation:', {
+      console.log('📝 SERVICE: Extracted data from Kaha API:', {
         contactPersonUserId,
+        userName,
+        userPhone,
         userEmail,
-        studentName: createData.name,
-        studentPhone: createData.phone,
         hostelId
       });
 
-      // Step 4: Create student with PENDING_CONFIGURATION status
+      // Step 3: Validate phone uniqueness AFTER getting phone from Kaha API
+      console.log('🔍 SERVICE: About to check phone uniqueness for:', userPhone);
+      
+      const existingPhone = await this.studentRepository.findOne({
+        where: { phone: userPhone }
+      });
+
+      console.log('🔍 SERVICE: Phone uniqueness check result:', existingPhone ? 'PHONE EXISTS' : 'PHONE AVAILABLE');
+
+      if (existingPhone) {
+        console.log('❌ SERVICE: Phone already exists - throwing BadRequestException');
+        throw new BadRequestException(
+          `Phone number ${userPhone} is already registered to another student`
+        );
+      }
+
+      // Step 4: Create student with PENDING_CONFIGURATION status using Kaha API data
       const studentData = {
         userId: contactPersonUserId,  // ✅ Contact person's Kaha userId (from API response)
-        name: createData.name,
-        phone: createData.phone,  // Student's unique phone
-        email: userEmail,  // Contact person's email (can be shared)
+        name: userName,               // ✅ From Kaha API
+        phone: userPhone,            // ✅ From Kaha API
+        email: userEmail,            // ✅ From Kaha API
         enrollmentDate: new Date(),
         status: StudentStatus.PENDING_CONFIGURATION,
         isConfigured: false,

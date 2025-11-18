@@ -518,15 +518,13 @@ export class StudentsController {
   @ApiResponse({ status: 201, description: 'Student created successfully from token' })
   @ApiResponse({ status: 400, description: 'Phone number already registered or validation failed' })
   async createStudentFromToken(
-    @Body(ValidationPipe) createData: { name: string; phone: string },
+    @Body() createData: { name?: string; phone?: string } | null,
     @CurrentUser() user: JwtPayload,
     @GetHostelId() hostelId: string
   ) {
     console.log('🚨🚨🚨 CREATE-FROM-TOKEN CONTROLLER ENDPOINT HIT 🚨🚨🚨');
-    console.log('📋 CONTROLLER: Raw request body received:', createData);
+    console.log('📋 CONTROLLER: Raw request body received (should be empty/optional):', createData);
     console.log('📋 CONTROLLER: createData type:', typeof createData);
-    console.log('📋 CONTROLLER: createData.name:', createData?.name, '(type:', typeof createData?.name, ')');
-    console.log('📋 CONTROLLER: createData.phone:', createData?.phone, '(type:', typeof createData?.phone, ')');
     console.log('👤 CONTROLLER: User from JWT:', user ? {
       id: user.id,
       kahaId: user.kahaId,
@@ -546,7 +544,7 @@ export class StudentsController {
       return {
         status: HttpStatus.CREATED,
         data: student,
-        message: 'Student created successfully. Student will appear in pending configuration list.'
+        message: 'Student created successfully from Kaha API data. Student will appear in pending configuration list.'
       };
     } catch (error) {
       console.log('❌ CONTROLLER: Error occurred:', error.message);
