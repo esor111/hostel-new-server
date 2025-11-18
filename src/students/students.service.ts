@@ -2483,15 +2483,33 @@ export class StudentsService {
     user: JwtPayload,
     hostelId: string
   ): Promise<any> {
+    console.log('🚨🚨🚨 CREATE-FROM-TOKEN SERVICE METHOD CALLED 🚨🚨🚨');
+    console.log('📋 SERVICE: Received createData:', createData);
+    console.log('📋 SERVICE: createData type:', typeof createData);
+    console.log('📋 SERVICE: createData.name:', createData?.name, '(type:', typeof createData?.name, ')');
+    console.log('📋 SERVICE: createData.phone:', createData?.phone, '(type:', typeof createData?.phone, ')');
+    console.log('👤 SERVICE: User JWT payload:', user ? {
+      id: user.id,
+      kahaId: user.kahaId,
+      businessId: user.businessId
+    } : 'NULL');
+    console.log('🏨 SERVICE: HostelId:', hostelId);
+    console.log('🔍 SERVICE: JSON.stringify(createData):', JSON.stringify(createData));
+    
     this.logger.log(`Creating student from token - userId: ${user.id}, businessId: ${user.businessId}`);
 
     try {
       // Step 1: Validate phone uniqueness (CRITICAL - must be unique)
+      console.log('🔍 SERVICE: About to check phone uniqueness for:', createData.phone);
+      
       const existingPhone = await this.studentRepository.findOne({
         where: { phone: createData.phone }
       });
 
+      console.log('🔍 SERVICE: Phone uniqueness check result:', existingPhone ? 'PHONE EXISTS' : 'PHONE AVAILABLE');
+
       if (existingPhone) {
+        console.log('❌ SERVICE: Phone already exists - throwing BadRequestException');
         throw new BadRequestException(
           `Phone number ${createData.phone} is already registered to another student`
         );
@@ -2500,25 +2518,44 @@ export class StudentsService {
       // Step 2: Fetch user data from Kaha API using userId from JWT
       // Pass userIds twice to create an array (Kaha API requirement)
       const kahaApiUrl = `https://dev.kaha.com.np/main/api/v3/users/filter-user-by-ids?userIds=${user.id}&userIds=${user.id}`;
+      console.log('🌐 SERVICE: Fetching user data from Kaha API:', kahaApiUrl);
       this.logger.log(`Fetching user data from Kaha API: ${kahaApiUrl}`);
 
       const response = await firstValueFrom(
         this.httpService.get(kahaApiUrl)
       );
 
+      console.log('🌐 SERVICE: Kaha API response status:', response.status);
+      console.log('🌐 SERVICE: Kaha API response data:', JSON.stringify(response.data, null, 2));
+
       if (!response.data?.data || response.data.data.length === 0) {
+        console.log('❌ SERVICE: User not found in Kaha system');
         throw new BadRequestException('User not found in Kaha system');
       }
 
       const kahaUser = response.data.data[0];
+      console.log('✅ SERVICE: Found Kaha user:', {
+        fullName: kahaUser.fullName,
+        kahaId: kahaUser.kahaId,
+        email: kahaUser.email,
+        id: kahaUser.id
+      });
       this.logger.log(`✅ Found Kaha user: ${kahaUser.fullName} (${kahaUser.kahaId})`);
 
       // Step 3: Extract user data from Kaha API
       const userEmail = kahaUser.email;
       const contactPersonUserId = kahaUser.id;  // ✅ This is the userId we need!
 
+      console.log('📝 SERVICE: Extracted data for student creation:', {
+        contactPersonUserId,
+        userEmail,
+        studentName: createData.name,
+        studentPhone: createData.phone,
+        hostelId
+      });
+
       // Step 4: Create student with PENDING_CONFIGURATION status
-      const student = this.studentRepository.create({
+      const studentData = {
         userId: contactPersonUserId,  // ✅ Contact person's Kaha userId (from API response)
         name: createData.name,
         phone: createData.phone,  // Student's unique phone
@@ -2530,22 +2567,43 @@ export class StudentsService {
         address: null,
         roomId: null,
         bedNumber: null
-      });
+      };
 
+      console.log('💾 SERVICE: About to create student with data:', JSON.stringify(studentData, null, 2));
+
+      const student = this.studentRepository.create(studentData);
+
+      console.log('💾 SERVICE: Student entity created, about to save...');
       const savedStudent = await this.studentRepository.save(student);
+
+      console.log('✅ SERVICE: Student saved successfully:', {
+        id: savedStudent.id,
+        name: savedStudent.name,
+        phone: savedStudent.phone,
+        status: savedStudent.status
+      });
 
       this.logger.log(
         `✅ Student created: ${savedStudent.name} (ID: ${savedStudent.id}) - Status: PENDING_CONFIGURATION`
       );
 
-      return this.transformToApiResponse(savedStudent);
+      const apiResponse = this.transformToApiResponse(savedStudent);
+      console.log('📤 SERVICE: Returning API response:', JSON.stringify(apiResponse, null, 2));
+      
+      return apiResponse;
     } catch (error) {
+      console.log('❌ SERVICE: Error in createStudentFromToken:', error.message);
+      console.log('❌ SERVICE: Error type:', error.constructor.name);
+      console.log('❌ SERVICE: Error stack:', error.stack);
+      
       this.logger.error(`❌ Error creating student from token: ${error.message}`);
 
       if (error instanceof BadRequestException) {
+        console.log('❌ SERVICE: Re-throwing BadRequestException');
         throw error;
       }
 
+      console.log('❌ SERVICE: Throwing generic BadRequestException');
       throw new BadRequestException(
         'Failed to create student. Please check your input and try again.'
       );

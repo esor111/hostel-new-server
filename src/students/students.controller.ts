@@ -522,16 +522,36 @@ export class StudentsController {
     @CurrentUser() user: JwtPayload,
     @GetHostelId() hostelId: string
   ) {
-    const student = await this.studentsService.createStudentFromToken(
-      createData,
-      user,
-      hostelId
-    );
+    console.log('🚨🚨🚨 CREATE-FROM-TOKEN CONTROLLER ENDPOINT HIT 🚨🚨🚨');
+    console.log('📋 CONTROLLER: Raw request body received:', createData);
+    console.log('📋 CONTROLLER: createData type:', typeof createData);
+    console.log('📋 CONTROLLER: createData.name:', createData?.name, '(type:', typeof createData?.name, ')');
+    console.log('📋 CONTROLLER: createData.phone:', createData?.phone, '(type:', typeof createData?.phone, ')');
+    console.log('👤 CONTROLLER: User from JWT:', user ? {
+      id: user.id,
+      kahaId: user.kahaId,
+      businessId: user.businessId
+    } : 'NULL');
+    console.log('🏨 CONTROLLER: HostelId:', hostelId);
+    console.log('🔍 CONTROLLER: JSON.stringify(createData):', JSON.stringify(createData));
 
-    return {
-      status: HttpStatus.CREATED,
-      data: student,
-      message: 'Student created successfully. Student will appear in pending configuration list.'
-    };
+    try {
+      const student = await this.studentsService.createStudentFromToken(
+        createData,
+        user,
+        hostelId
+      );
+
+      console.log('✅ CONTROLLER: Student created successfully:', student?.id);
+      return {
+        status: HttpStatus.CREATED,
+        data: student,
+        message: 'Student created successfully. Student will appear in pending configuration list.'
+      };
+    } catch (error) {
+      console.log('❌ CONTROLLER: Error occurred:', error.message);
+      console.log('❌ CONTROLLER: Error stack:', error.stack);
+      throw error;
+    }
   }
 }
