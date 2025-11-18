@@ -127,13 +127,15 @@ export class GuestDto {
   phone: string;
 
   @ApiProperty({ 
-    description: 'Guest email address (required)',
-    example: 'guest@example.com'
+    description: 'Guest email address (optional - will use contact person email if not provided)',
+    example: 'guest@example.com',
+    required: false
   })
+  @IsOptional()
   @IsEmail({}, { message: 'Email must be a valid email address' })
   @Length(5, 100, { message: 'Email must be between 5 and 100 characters' })
   @Transform(({ value }) => value?.trim().toLowerCase())
-  email: string;
+  email?: string;
 
   @ApiProperty({ 
     description: 'Guest ID proof type (optional)',

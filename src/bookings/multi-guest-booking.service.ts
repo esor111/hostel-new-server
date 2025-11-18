@@ -205,14 +205,20 @@ export class MultiGuestBookingService {
         const guests = bookingData.guests.map((guestDto: any) => {
           const bed = beds.find(b => b.id === guestDto.bedId);
           this.logger.log(`Creating guest record for ${guestDto.name} in bed ${guestDto.bedId}`);
+          
+          // Auto-populate email from contact person if not provided (phone is required)
+          const guestEmail = guestDto.email || bookingData.contactPerson.email;
+          
+          this.logger.log(`Guest ${guestDto.name}: email=${guestEmail}, phone=${guestDto.phone}`);
+          
           return manager.create(BookingGuest, {
             bookingId: savedBooking.id,
             bedId: guestDto.bedId,
             guestName: guestDto.name,
             age: guestDto.age,
             gender: guestDto.gender,
-            phone: guestDto.phone,  // 🆕 Guest's real phone
-            email: guestDto.email,  // 🆕 Guest's real email
+            phone: guestDto.phone,  // Guest phone is required
+            email: guestEmail,  // Use guest email or fallback to contact person email
             status: GuestStatus.PENDING,
             assignedRoomNumber: bed?.room?.roomNumber,
             assignedBedNumber: bed?.bedIdentifier // Still use bedIdentifier for display
