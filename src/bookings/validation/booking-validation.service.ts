@@ -226,15 +226,12 @@ export class BookingValidationService {
           result.isValid = false;
           result.errors.push(`Guest ${index + 1}: Valid age is required (1-120)`);
         }
-        // Validate guest contact information (required)
+        // Validate guest contact information (phone is required, email is optional)
         if (!guest.phone) {
           result.isValid = false;
           result.errors.push(`Guest ${index + 1}: Phone number is required`);
         }
-        if (!guest.email) {
-          result.isValid = false;
-          result.errors.push(`Guest ${index + 1}: Email is required`);
-        }
+        // Email is optional - will fallback to contact person email if not provided
       });
     }
 
