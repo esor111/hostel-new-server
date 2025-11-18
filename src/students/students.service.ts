@@ -2526,7 +2526,7 @@ export class StudentsService {
 
       // Step 2: Extract user data from Kaha API (this is the source of truth)
       const userEmail = kahaUser.email;
-      const userPhone = kahaUser.phone;
+      const userPhone = kahaUser.contactNumber;
       const userName = kahaUser.fullName;
       const contactPersonUserId = kahaUser.id;
 
