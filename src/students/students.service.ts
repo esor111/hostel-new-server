@@ -2519,7 +2519,7 @@ export class StudentsService {
         fullName: kahaUser.fullName,
         kahaId: kahaUser.kahaId,
         email: kahaUser.email,
-        phone: kahaUser.phone,
+        phone: kahaUser.contactNumber,
         id: kahaUser.id
       });
       this.logger.log(`✅ Found Kaha user: ${kahaUser.fullName} (${kahaUser.kahaId})`);
