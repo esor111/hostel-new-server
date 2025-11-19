@@ -93,96 +93,142 @@ export class HostelNotificationService {
   /**
    * Notify admin when user creates booking
    * Flow: User creates → Admin receives notification
-   * NOTE: Not used yet - will be implemented later
    */
   async notifyAdminOfNewBooking(
     booking: MultiGuestBooking,
     userJwt: JwtPayload
   ): Promise<void> {
     try {
+      console.log(`🔔 NEW BOOKING NOTIFICATION START - Booking ID: ${booking.id}`);
+      console.log(`📋 Booking userId: ${booking.userId}`);
+      console.log(`👤 User: ${booking.contactName}`);
       this.logger.log(`📱 Sending new booking notification for booking ${booking.id}`);
       
-      // 1. Get admin FCM token (using hostelId from booking)
-      const adminFcmTokens = await this.getFcmTokens(booking.hostelId, true);
-      if (!adminFcmTokens.length) {
-        this.logger.warn(`⚠️ No FCM token found for business ${booking.hostelId}`);
+      // Validate hostel relation is loaded
+      if (!booking.hostel) {
+        this.logger.error(`❌ Hostel relation not loaded for booking ${booking.id}`);
+        console.log(`❌ CRITICAL: Hostel relation not loaded - cannot send notification`);
         return;
       }
       
-      // 2. Get user name (hardcoded for now)
-      const userName = await this.getUserName(userJwt.id);
+      console.log(`🏨 Hostel: ${booking.hostel.name} (businessId: ${booking.hostel.businessId})`);
       
-      // 3. Compose payload
+      // 1. Get admin FCM token using businessId
+      const adminFcmTokens = await this.getFcmTokens(booking.hostel.businessId, true);
+      if (!adminFcmTokens.length) {
+        this.logger.warn(`⚠️ No FCM token found for business ${booking.hostel.businessId}`);
+        console.log(`⚠️ No FCM token found for business ${booking.hostel.businessId}`);
+        return;
+      }
+      
+      console.log(`✅ Found ${adminFcmTokens.length} FCM token(s) for admin`);
+      
+      // 2. Get user name from booking
+      const userName = booking.contactName || 'A user';
+      
+      // 3. Get room info from booking
+      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
+      
+      console.log(`📍 Room: ${roomName} (${roomId})`);
+      
+      // 4. Compose payload
       const payload = {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Requested',
         senderName: userName,
-        recipientId: booking.hostelId,
+        recipientId: booking.hostel.businessId,
         recipientType: 'BUSINESS',
         bookingDetails: {
           bookingId: booking.id,
-          roomName: 'test-room', // Hardcoded for now
-          roomId: 'test-room-id'
+          roomName: roomName,
+          roomId: roomId
         }
       };
       
       this.logger.log(`📤 Sending payload:`, JSON.stringify(payload, null, 2));
+      console.log(`📤 Sending notification to Express server...`);
       
-      // 4. Send to express server
+      // 5. Send to express server
       await this.sendNotification(payload);
       
       this.logger.log(`✅ New booking notification sent successfully`);
+      console.log(`✅ NEW BOOKING NOTIFICATION SENT SUCCESSFULLY`);
     } catch (error) {
       this.logger.error(`❌ Failed to send new booking notification: ${error.message}`);
       this.logger.error(error.stack);
+      console.log(`❌ NEW BOOKING NOTIFICATION FAILED: ${error.message}`);
+      // Don't throw - notification failure shouldn't break booking creation
     }
   }
 
   /**
    * Notify admin when user cancels booking
    * Flow: User cancels → Admin receives notification
-   * NOTE: Not used yet - will be implemented later
    */
   async notifyAdminOfCancellation(
     booking: MultiGuestBooking,
     userJwt: JwtPayload
   ): Promise<void> {
     try {
+      console.log(`🔔 BOOKING CANCELLATION NOTIFICATION START - Booking ID: ${booking.id}`);
+      console.log(`📋 Booking userId: ${booking.userId}`);
+      console.log(`👤 User: ${booking.contactName}`);
       this.logger.log(`📱 Sending cancellation notification for booking ${booking.id}`);
       
-      // 1. Get admin FCM token
-      const adminFcmTokens = await this.getFcmTokens(booking.hostelId, true);
-      if (!adminFcmTokens.length) {
-        this.logger.warn(`⚠️ No FCM token found for business ${booking.hostelId}`);
+      // Validate hostel relation is loaded
+      if (!booking.hostel) {
+        this.logger.error(`❌ Hostel relation not loaded for booking ${booking.id}`);
+        console.log(`❌ CRITICAL: Hostel relation not loaded - cannot send notification`);
         return;
       }
       
-      // 2. Get user name (hardcoded for now)
-      const userName = await this.getUserName(userJwt.id);
+      console.log(`🏨 Hostel: ${booking.hostel.name} (businessId: ${booking.hostel.businessId})`);
       
-      // 3. Compose payload
+      // 1. Get admin FCM token using businessId
+      const adminFcmTokens = await this.getFcmTokens(booking.hostel.businessId, true);
+      if (!adminFcmTokens.length) {
+        this.logger.warn(`⚠️ No FCM token found for business ${booking.hostel.businessId}`);
+        console.log(`⚠️ No FCM token found for business ${booking.hostel.businessId}`);
+        return;
+      }
+      
+      console.log(`✅ Found ${adminFcmTokens.length} FCM token(s) for admin`);
+      
+      // 2. Get user name from booking
+      const userName = booking.contactName || 'A user';
+      
+      // 3. Get room info from booking
+      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
+      
+      console.log(`📍 Room: ${roomName} (${roomId})`);
+      
+      // 4. Compose payload
       const payload = {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Cancelled',
         senderName: userName,
-        recipientId: booking.hostelId,
+        recipientId: booking.hostel.businessId,
         recipientType: 'BUSINESS',
         bookingDetails: {
           bookingId: booking.id,
-          roomName: 'test-room', // Hardcoded for now
-          roomId: 'test-room-id'
+          roomName: roomName,
+          roomId: roomId
         }
       };
       
       this.logger.log(`📤 Sending payload:`, JSON.stringify(payload, null, 2));
+      console.log(`📤 Sending notification to Express server...`);
       
-      // 4. Send to express server
+      // 5. Send to express server
       await this.sendNotification(payload);
       
       this.logger.log(`✅ Cancellation notification sent successfully`);
+      console.log(`✅ BOOKING CANCELLATION NOTIFICATION SENT SUCCESSFULLY`);
     } catch (error) {
       this.logger.error(`❌ Failed to send cancellation notification: ${error.message}`);
       this.logger.error(error.stack);
+      console.log(`❌ BOOKING CANCELLATION NOTIFICATION FAILED: ${error.message}`);
+      // Don't throw - notification failure shouldn't break cancellation
     }
   }
 
