@@ -259,14 +259,21 @@ export class RoomsNewService {
     // Build furniture array UNSCALED (in feet)
     const furniture = await this.buildFurnitureArrayUnscaled(room, layout);
 
-    console.log(`✅ Layout prepared: ${furniture.length} furniture items (unscaled)`);
+    // Move windows from furniture to doors array
+    const windows = furniture.filter(item => item.type === 'window');
+    const furnitureWithoutWindows = furniture.filter(item => item.type !== 'window');
+    
+    // Combine doors and windows in the doors array
+    const doorsWithWindows = [...doors, ...windows];
+
+    console.log(`✅ Layout prepared: ${furnitureWithoutWindows.length} furniture items, ${doorsWithWindows.length} doors+windows (unscaled)`);
 
     return {
       roomId: room.id,
       hostelId: room.hostelId,
       dimensions,
-      doors,
-      furniture
+      doors: doorsWithWindows,
+      furniture: furnitureWithoutWindows
     };
   }
 

@@ -9,7 +9,7 @@ import { RecipientType, NotificationCategory } from './entities/notification.ent
 
 @ApiTags('Notifications')
 @Controller('notification')
-@UseGuards(HostelAuthWithContextGuard)
+// @UseGuards(HostelAuthWithContextGuard)
 @ApiBearerAuth()
 export class NotificationController {
   constructor(
