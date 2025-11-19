@@ -1,5 +1,5 @@
 import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Req, Get, Query, Patch, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { NotificationService } from './notification.service';
 import { NotificationLogService } from './notification-log.service';
 import { SendToStudentsDto } from './dto/send-to-students.dto';
@@ -176,6 +176,10 @@ export class NotificationController {
     summary: 'Get notifications for current user (USER TOKEN ONLY)',
     description: 'Returns paginated notifications for the authenticated user. Only accepts userToken, ignores businessId even if present.'
   })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of notifications to return (default: 50)', example: 20 })
+  @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Number of notifications to skip (default: 0)', example: 0 })
+  @ApiQuery({ name: 'unreadOnly', required: false, type: Boolean, description: 'Return only unread notifications (default: false)', example: true })
+  @ApiQuery({ name: 'category', required: false, type: String, description: 'Filter by notification category', example: 'BOOKING', enum: ['BOOKING', 'PAYMENT', 'SYSTEM', 'DISCOUNT', 'ADMIN_CHARGE'] })
   @ApiResponse({
     status: 200,
     description: 'User notifications retrieved successfully',
