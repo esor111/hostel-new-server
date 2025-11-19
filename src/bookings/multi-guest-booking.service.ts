@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { BusinessIntegrationService } from '../hostel/services/business-integration.service';
 import { HostelNotificationService } from './hostel-notification.service';
 import { UnifiedNotificationService } from '../notification/unified-notification.service';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 export interface BookingFilters {
   page?: number;
@@ -240,8 +241,27 @@ export class MultiGuestBookingService {
         // Return complete booking with guests using transaction manager
         const bookingWithGuests = await manager.findOne(MultiGuestBooking, {
           where: { id: savedBooking.id },
-          relations: ['guests']
+          relations: ['guests', 'guests.bed', 'guests.bed.room', 'hostel']
         });
+
+        // 🔔 NEW: Notify admin of new booking request
+        if (contactPersonUserId && bookingWithGuests && bookingWithGuests.hostel) {
+          try {
+            console.log(`📱 Notifying admin of new booking request`);
+            console.log(`👤 User: ${bookingWithGuests.contactName} (${contactPersonUserId})`);
+            console.log(`🏨 Hostel: ${bookingWithGuests.hostel.name} (${bookingWithGuests.hostel.businessId})`);
+            
+            await this.hostelNotificationService.notifyAdminOfNewBooking(
+              bookingWithGuests,
+              { id: contactPersonUserId } as JwtPayload
+            );
+            
+            console.log(`✅ Admin notification sent successfully`);
+          } catch (notifError) {
+            console.warn(`⚠️ Failed to notify admin: ${notifError.message}`);
+            // Don't let notification failure break booking creation
+          }
+        }
 
         return this.transformToApiResponse(bookingWithGuests);
       } catch (error) {
@@ -1077,14 +1097,14 @@ export class MultiGuestBookingService {
         // Try to find booking by UUID first, then by booking reference
         let booking = await manager.findOne(MultiGuestBooking, {
           where: { id: bookingId, userId },
-          relations: ['guests']
+          relations: ['guests', 'guests.bed', 'guests.bed.room', 'hostel']
         });
 
         // If not found by UUID, try by booking reference
         if (!booking) {
           booking = await manager.findOne(MultiGuestBooking, {
             where: { bookingReference: bookingId, userId },
-            relations: ['guests']
+            relations: ['guests', 'guests.bed', 'guests.bed.room', 'hostel']
           });
         }
 
@@ -1117,6 +1137,26 @@ export class MultiGuestBookingService {
         await this.bedSyncService.handleBookingCancellation(bedIds, reason);
 
         this.logger.log(`✅ User ${userId} cancelled booking ${booking.bookingReference}`);
+
+        // 🔔 NEW: Notify admin of booking cancellation
+        if (booking.hostel) {
+          try {
+            console.log(`📱 Notifying admin of booking cancellation`);
+            console.log(`👤 User: ${booking.contactName} (${userId})`);
+            console.log(`🏨 Hostel: ${booking.hostel.name} (${booking.hostel.businessId})`);
+            console.log(`📝 Reason: ${reason}`);
+            
+            await this.hostelNotificationService.notifyAdminOfCancellation(
+              booking,
+              { id: userId } as JwtPayload
+            );
+            
+            console.log(`✅ Admin notification sent successfully`);
+          } catch (notifError) {
+            console.warn(`⚠️ Failed to notify admin: ${notifError.message}`);
+            // Don't let notification failure break cancellation
+          }
+        }
 
         return {
           success: true,
