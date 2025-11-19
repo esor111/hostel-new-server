@@ -523,13 +523,38 @@ export class MultiGuestBookingService {
                 hostelId: booking.hostelId
               })}`);
               
-              // 🔧 ENHANCED: Still don't throw to avoid transaction rollback, but log extensively
-              // The booking confirmation should still succeed even if student creation fails
+              // 🔧 FIX: Throw error to ensure student creation doesn't fail silently
+              // If student creation fails, the booking confirmation should also fail
+              throw new BadRequestException(`Failed to create student for guest ${guest.guestName}: ${studentError.message}`);
             }
           }
         }
 
         console.log(`✅ Confirmed multi-guest booking ${booking.bookingReference} (${confirmedGuestCount}/${booking.totalGuests} guests, ${createdStudents.length} students created)`);
+
+        // 🔧 VERIFICATION: Check if students are actually visible in pending configuration
+        try {
+          const pendingStudents = await manager.find(Student, {
+            where: {
+              hostelId: booking.hostelId,
+              status: StudentStatus.PENDING_CONFIGURATION,
+              isConfigured: false
+            }
+          });
+          
+          const newStudentIds = createdStudents.map(s => s.id);
+          const visibleNewStudents = pendingStudents.filter(s => newStudentIds.includes(s.id));
+          
+          this.logger.log(`🔍 VERIFICATION: ${visibleNewStudents.length}/${createdStudents.length} new students are visible in pending configuration`);
+          
+          if (visibleNewStudents.length !== createdStudents.length) {
+            this.logger.error(`❌ VERIFICATION FAILED: Some students are not visible in pending configuration!`);
+            this.logger.error(`❌ Created student IDs: ${newStudentIds.join(', ')}`);
+            this.logger.error(`❌ Visible student IDs: ${visibleNewStudents.map(s => s.id).join(', ')}`);
+          }
+        } catch (verificationError) {
+          this.logger.error(`❌ VERIFICATION ERROR: ${verificationError.message}`);
+        }
 
         // 🆕 NEW: Send notification via express server
         if (adminJwt) {
@@ -1901,20 +1926,25 @@ export class MultiGuestBookingService {
     this.logger.warn(`⚠️ Guest name is empty for booking ${booking.bookingReference}, using fallback name`);
   }
 
-  const student = manager.create(Student, {
-    userId: booking.userId, // Link student to the user who created the booking
-    name: validatedGuestName, // 🔧 Use validated guest name
-    phone: studentPhone,  // ✅ Real phone from guest
-    email: studentEmail,  // ✅ Real email from guest
+  // 🔧 DEBUG: Log all student creation parameters
+  const studentData = {
+    userId: booking.userId,
+    name: validatedGuestName,
+    phone: studentPhone,
+    email: studentEmail,
     enrollmentDate: new Date(),
-    status: StudentStatus.PENDING_CONFIGURATION, // Fixed: Use correct status for pending configuration
-    address: booking.address, // Use booking address instead of guest address
+    status: StudentStatus.PENDING_CONFIGURATION,
+    address: booking.address,
     bedNumber: guest.assignedBedNumber,
-    roomId: roomUuid, // Fixed: Use UUID instead of room number
-    hostelId: booking.hostelId, // Ensure student belongs to the same hostel as the booking
-    bookingId: booking.id, // 🆕 Link student back to booking for contact person lookup
-    isConfigured: false, // Ensure this is false for pending configuration
-  });
+    roomId: roomUuid,
+    hostelId: booking.hostelId,
+    bookingId: booking.id,
+    isConfigured: false,
+  };
+  
+  this.logger.log(`🔧 Creating student with data: ${JSON.stringify(studentData)}`);
+
+  const student = manager.create(Student, studentData);
 
     const savedStudent = await manager.save(Student, student);
 
