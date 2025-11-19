@@ -40,3 +40,5 @@ export enum PushNotificationTypeEnum {
   BED_AVAILABILITY = 'bed_availability',
   MONTHLY_BILLING = 'monthly_billing',
 }
+
+//checkIn checkOut notification

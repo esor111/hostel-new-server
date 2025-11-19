@@ -9,6 +9,7 @@ import {
   Query,
   HttpStatus,
   UseGuards,
+  Req,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from "@nestjs/swagger";
 import { DiscountsService } from "./discounts.service";
@@ -106,8 +107,10 @@ export class DiscountsController {
   @Post()
   @ApiOperation({ summary: "Create new discount" })
   @ApiResponse({ status: 201, description: "Discount created successfully" })
-  async createDiscount(@GetHostelId() hostelId: string, @Body() createDiscountDto: CreateDiscountDto) {
-    const discount = await this.discountsService.create(createDiscountDto, hostelId);
+  async createDiscount(@GetHostelId() hostelId: string, @Body() createDiscountDto: CreateDiscountDto, @Req() req: any) {
+    // 🔔 NEW: Pass admin JWT for discount notifications
+    const adminJwt = req.user; // JWT payload from auth guard
+    const discount = await this.discountsService.create(createDiscountDto, hostelId, adminJwt);
 
     // Return EXACT same format as current Express API
     return {
@@ -136,11 +139,14 @@ export class DiscountsController {
   @Post("apply")
   @ApiOperation({ summary: "Apply discount to student" })
   @ApiResponse({ status: 200, description: "Discount applied successfully" })
-  async applyDiscount(@GetHostelId() hostelId: string, @Body() applyDiscountDto: ApplyDiscountDto) {
+  async applyDiscount(@GetHostelId() hostelId: string, @Body() applyDiscountDto: ApplyDiscountDto, @Req() req: any) {
+    // 🔔 NEW: Pass admin JWT for discount notifications
+    const adminJwt = req.user; // JWT payload from auth guard
     const result = await this.discountsService.applyDiscount(
       applyDiscountDto.studentId,
       applyDiscountDto,
-      hostelId
+      hostelId,
+      adminJwt
     );
 
     // Return EXACT same format as current Express API

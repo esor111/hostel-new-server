@@ -78,6 +78,131 @@ export class NotificationPublicController {
     return categoryPageMap[category] || 'notifications';
   }
 
+  @Get('by-recipient')
+  @ApiOperation({
+    summary: 'Get notifications by recipientId (No Auth Required)',
+    description: 'Get notifications for a specific recipient without authentication. Useful for mobile apps or public access.'
+  })
+  @ApiQuery({
+    name: 'recipientId',
+    required: true,
+    type: String,
+    description: 'The recipient ID (userId) to get notifications for'
+  })
+  @ApiQuery({
+    name: 'recipientType',
+    required: false,
+    enum: RecipientType,
+    description: 'Type of recipient (USER or BUSINESS). Defaults to USER'
+  })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    enum: NotificationCategory,
+    description: 'Filter by notification category'
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of notifications to return (default: 50)'
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of notifications to skip (default: 0)'
+  })
+  @ApiQuery({
+    name: 'unreadOnly',
+    required: false,
+    type: Boolean,
+    description: 'Return only unread notifications (default: false)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Notifications retrieved successfully',
+    schema: {
+      example: {
+        data: [
+          {
+            id: 'notification_123abc',
+            title: 'Payment Received',
+            message: 'Your payment of NPR 15,000 has been processed',
+            imageUrl: 'https://example.com/image.jpg',
+            createdAt: '2024-11-14T10:30:00.000Z',
+            userId: 'user_456',
+            meta: {
+              tapAction: {
+                notificationType: 'PAYMENT',
+                appMode: 'USER',
+                action: {
+                  page: 'payment-history',
+                  params: {
+                    paymentId: 'payment_789'
+                  }
+                }
+              }
+            }
+          }
+        ],
+        meta: {
+          next: null,
+          count: 1,
+          total: 50,
+          page: 1
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid parameters - recipientId is required'
+  })
+  async getNotificationsByRecipient(
+    @Query('recipientId') recipientId?: string,
+    @Query('recipientType') recipientType?: RecipientType,
+    @Query('category') category?: NotificationCategory,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('unreadOnly') unreadOnly?: boolean,
+  ) {
+    // Validate required parameter
+    if (!recipientId) {
+      throw new BadRequestException('recipientId is required');
+    }
+
+    // Default to USER type if not specified
+    const finalRecipientType = recipientType || RecipientType.USER;
+
+    // Build filter object
+    const filters: any = {
+      recipientType: finalRecipientType,
+      recipientId,
+      limit: limit || 50,
+      offset: offset || 0,
+      unreadOnly: unreadOnly === true,
+    };
+
+    // Add optional category filter
+    if (category) {
+      filters.category = category;
+    }
+
+    // Get notifications from service
+    const result = await this.notificationLogService.getNotifications(filters);
+    
+    // Transform response to desired format
+    return this.transformNotificationResponse(
+      result.notifications,
+      result.total,
+      filters.limit,
+      filters.offset,
+      recipientId,
+      finalRecipientType
+    );
+  }
+
   @Get('filter')
   @ApiBearerAuth()
   @ApiOperation({
@@ -200,6 +325,124 @@ export class NotificationPublicController {
       );
     } catch (error) {
       throw new BadRequestException(`Invalid JWT token: ${error.message}`);
+    }
+  }
+
+  @Get('mark-seen/:id')
+  @ApiOperation({
+    summary: 'Mark notification as seen (No Auth Required)',
+    description: 'Mark a specific notification as seen by providing notification ID and recipientId'
+  })
+  @ApiQuery({
+    name: 'recipientId',
+    required: true,
+    type: String,
+    description: 'The recipient ID (userId) who is marking the notification as seen'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Notification marked as seen successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Notification marked as seen',
+        notificationId: 'notification_123abc'
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid parameters or notification not found'
+  })
+  async markNotificationAsSeenPublic(
+    @Query('recipientId') recipientId?: string,
+    @Query('id') notificationId?: string,
+  ) {
+    // Validate required parameters
+    if (!recipientId) {
+      throw new BadRequestException('recipientId is required');
+    }
+    if (!notificationId) {
+      throw new BadRequestException('notificationId is required');
+    }
+
+    try {
+      const success = await this.notificationLogService.markAsSeen(notificationId, recipientId);
+      
+      if (success) {
+        return { 
+          success: true, 
+          message: 'Notification marked as seen',
+          notificationId 
+        };
+      } else {
+        return { 
+          success: false, 
+          message: 'Notification not found or not owned by recipient',
+          notificationId 
+        };
+      }
+    } catch (error) {
+      throw new BadRequestException(`Failed to mark notification as seen: ${error.message}`);
+    }
+  }
+
+  @Get('mark-all-seen')
+  @ApiOperation({
+    summary: 'Mark all notifications as seen (No Auth Required)',
+    description: 'Mark all unread notifications as seen for a specific recipient'
+  })
+  @ApiQuery({
+    name: 'recipientId',
+    required: true,
+    type: String,
+    description: 'The recipient ID (userId) whose notifications should be marked as seen'
+  })
+  @ApiQuery({
+    name: 'recipientType',
+    required: false,
+    enum: RecipientType,
+    description: 'Type of recipient (USER or BUSINESS). Defaults to USER'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All notifications marked as seen successfully',
+    schema: {
+      example: {
+        success: true,
+        markedCount: 5,
+        message: '5 notifications marked as seen',
+        recipientId: 'user_456'
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid parameters'
+  })
+  async markAllNotificationsAsSeenPublic(
+    @Query('recipientId') recipientId?: string,
+    @Query('recipientType') recipientType?: RecipientType,
+  ) {
+    // Validate required parameter
+    if (!recipientId) {
+      throw new BadRequestException('recipientId is required');
+    }
+
+    // Default to USER type if not specified
+    const finalRecipientType = recipientType || RecipientType.USER;
+
+    try {
+      const markedCount = await this.notificationLogService.markAllAsSeen(recipientId, finalRecipientType);
+      
+      return { 
+        success: true, 
+        markedCount, 
+        message: `${markedCount} notifications marked as seen`,
+        recipientId
+      };
+    } catch (error) {
+      throw new BadRequestException(`Failed to mark notifications as seen: ${error.message}`);
     }
   }
 }

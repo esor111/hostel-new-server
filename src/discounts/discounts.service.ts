@@ -5,6 +5,7 @@ import { Discount, DiscountStatus } from './entities/discount.entity';
 import { DiscountType, DiscountCategory } from './entities/discount-type.entity';
 import { Student } from '../students/entities/student.entity';
 import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
+import { UnifiedNotificationService } from '../notification/unified-notification.service';
 
 @Injectable()
 export class DiscountsService {
@@ -16,6 +17,7 @@ export class DiscountsService {
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
     private ledgerService: LedgerV2Service,
+    private unifiedNotificationService: UnifiedNotificationService,
   ) { }
 
   async findAll(filters: any = {}, hostelId?: string) {
@@ -115,7 +117,7 @@ export class DiscountsService {
     return discounts.map(discount => this.transformToApiResponse(discount));
   }
 
-  async create(createDiscountDto: any, hostelId: string) {
+  async create(createDiscountDto: any, hostelId: string, adminJwt?: any) {
     // First, fetch the student to get the hostelId
     const student = await this.studentRepository.findOne({
       where: { id: createDiscountDto.studentId }
@@ -188,6 +190,39 @@ export class DiscountsService {
       await this.ledgerService.createDiscountEntry(savedDiscount);
     }
 
+    // 🔔 NEW: Send discount notification to student
+    if (adminJwt && student.userId && savedDiscount.status === DiscountStatus.ACTIVE) {
+      try {
+        console.log(`🎁 DISCOUNT NOTIFICATION START - Discount ID: ${savedDiscount.id}`);
+        console.log(`👤 Student: ${student.name} (${student.id})`);
+        console.log(`💰 Amount: NPR ${savedDiscount.amount}`);
+        console.log(`📝 Reason: ${savedDiscount.reason}`);
+        
+        await this.unifiedNotificationService.sendToUser({
+          userId: student.userId,
+          title: 'Discount Applied',
+          message: `A discount of NPR ${Number(savedDiscount.amount).toLocaleString()} has been applied to your account. Reason: ${savedDiscount.reason}`,
+          type: 'PAYMENT',
+          metadata: {
+            discountId: savedDiscount.id,
+            amount: savedDiscount.amount,
+            reason: savedDiscount.reason,
+            appliedBy: savedDiscount.appliedBy,
+            discountDate: savedDiscount.date,
+            discountType: discountType?.name || 'General',
+            studentId: student.id,
+            studentName: student.name,
+            appliedTo: savedDiscount.appliedTo
+          }
+        }, adminJwt);
+        
+        console.log(`✅ DISCOUNT NOTIFICATION SENT SUCCESSFULLY`);
+      } catch (notifError) {
+        console.log(`❌ DISCOUNT NOTIFICATION FAILED: ${notifError.message}`);
+        // Don't let notification failure cause discount creation rollback
+      }
+    }
+
     return this.findOne(savedDiscount.id, student.hostelId);
   }
 
@@ -207,13 +242,13 @@ export class DiscountsService {
     return this.findOne(id, hostelId);
   }
 
-  async applyDiscount(studentId: string, discountData: any, hostelId: string) {
+  async applyDiscount(studentId: string, discountData: any, hostelId: string, adminJwt?: any) {
     // Apply discount and create ledger entry in one transaction
     const discount = await this.create({
       ...discountData,
       studentId,
       appliedTo: 'ledger'
-    }, hostelId);
+    }, hostelId, adminJwt);
 
     return {
       success: true,
