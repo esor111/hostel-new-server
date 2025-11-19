@@ -73,15 +73,23 @@ export class UnifiedNotificationService {
     hostelContext?: any
   ): Promise<void> {
     let notificationId: string | null = null;
+    const sessionId = `unified_${payload.type}_${Date.now()}`;
     
     try {
-      console.log(`🔔 UNIFIED NOTIFICATION START - Type: ${payload.type}`);
+      console.log(`\n🔔 ===== UNIFIED NOTIFICATION START =====`);
+      console.log(`📋 Session ID: ${sessionId}`);
+      console.log(`📋 Notification Type: ${payload.type}`);
       console.log(`👤 Target userId: ${payload.userId}`);
       console.log(`📧 Title: ${payload.title}`);
       console.log(`💬 Message: ${payload.message}`);
+      console.log(`🖼️ Image URL: ${payload.imageUrl || 'None'}`);
+      console.log(`📦 Metadata:`, JSON.stringify(payload.metadata, null, 2));
+      console.log(`👤 Admin JWT:`, adminJwt ? JSON.stringify(adminJwt, null, 2) : 'None');
+      console.log(`🏨 Hostel Context:`, hostelContext ? JSON.stringify(hostelContext, null, 2) : 'None');
       
       // 🔔 NEW: Create notification record before sending
-      const notification = await this.notificationLogService.createNotification({
+      console.log(`\n📝 STEP 1: Creating notification database record`);
+      const notificationData = {
         recipientType: RecipientType.USER,
         recipientId: payload.userId,
         category: payload.type as NotificationCategory,
@@ -93,37 +101,56 @@ export class UnifiedNotificationService {
           source: 'unified_notification_service',
           adminJwtId: adminJwt?.id,
           businessId: adminJwt?.businessId,
+          sessionId: sessionId,
+          timestamp: new Date().toISOString()
         },
-      });
+      };
+      
+      console.log(`📝 Notification Data:`, JSON.stringify(notificationData, null, 2));
+      
+      const notification = await this.notificationLogService.createNotification(notificationData);
       notificationId = notification.id;
       
+      console.log(`✅ Notification record created with ID: ${notificationId}`);
+      
       // 1. Get user FCM tokens
+      console.log(`\n🔍 STEP 2: Fetching FCM tokens for user ${payload.userId}`);
       const userFcmTokens = await this.getFcmTokens(payload.userId, false);
+      console.log(`📱 FCM Tokens Found: ${userFcmTokens.length}`);
+      console.log(`📱 FCM Tokens:`, userFcmTokens.map(token => `${token.substring(0, 20)}...`));
+      
       if (!userFcmTokens.length) {
+        console.log(`⚠️ NO FCM TOKENS - Notification will be skipped`);
         this.logger.warn(`⚠️ No FCM token found for user ${payload.userId}`);
-        console.log(`⚠️ SKIPPING NOTIFICATION - No FCM tokens for userId: ${payload.userId}`);
         
         // 🔔 NEW: Mark as skipped
         if (notificationId) {
           await this.notificationLogService.markAsSkipped(notificationId, 'No FCM tokens found');
+          console.log(`📝 Notification ${notificationId} marked as SKIPPED`);
         }
+        console.log(`⚠️ ===== UNIFIED NOTIFICATION SKIPPED - NO FCM =====\n`);
         return;
       }
       
       // 2. Get business/hostel name from JWT businessId
+      console.log(`\n🏢 STEP 3: Getting business/hostel name`);
       let businessName = 'Your Hostel'; // Default fallback
       
       if (adminJwt && adminJwt.businessId) {
+        console.log(`🔍 Getting hostel name from businessId: ${adminJwt.businessId}`);
         businessName = await this.getBusinessName(adminJwt.businessId);
         console.log(`🏢 Using hostel name from businessId: ${businessName}`);
       } else if (hostelContext && hostelContext.hostelName) {
         businessName = hostelContext.hostelName;
         console.log(`🏨 Using hostel name from context: ${businessName}`);
+      } else {
+        console.log(`🏢 Using default business name: ${businessName}`);
       }
       
       console.log(`📝 Final sender name: ${businessName}`);
       
       // 3. Compose payload for express server (using booking notification format)
+      console.log(`\n📦 STEP 4: Composing express server payload`);
       const expressPayload = {
         fcmToken: userFcmTokens[0],
         bookingStatus: 'Confirmed', // Required field for booking endpoint
@@ -139,30 +166,52 @@ export class UnifiedNotificationService {
           title: payload.title,
           message: payload.message,
           metadata: payload.metadata,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          sessionId: sessionId
         }
       };
       
-      console.log(`📤 UNIFIED NOTIFICATION PAYLOAD:`);
+      console.log(`📦 COMPLETE EXPRESS PAYLOAD:`);
       console.log(JSON.stringify(expressPayload, null, 2));
+      console.log(`📦 Payload Size: ${JSON.stringify(expressPayload).length} bytes`);
       
       // 4. Send to express server
-      console.log(`🚀 Sending to Express server: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
+      console.log(`\n🚀 STEP 5: Sending to Express server`);
+      console.log(`🌐 Express URL: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
+      
+      const startTime = Date.now();
       await this.sendNotification(expressPayload);
+      const endTime = Date.now();
+      
+      console.log(`⏱️ Notification sent in ${endTime - startTime}ms`);
       
       // 🔔 NEW: Mark as sent on success
       if (notificationId) {
         await this.notificationLogService.markAsSent(notificationId, userFcmTokens[0]);
+        console.log(`📝 Notification ${notificationId} marked as SENT`);
       }
       
       console.log(`✅ UNIFIED NOTIFICATION SENT SUCCESSFULLY - Type: ${payload.type}`);
+      console.log(`🔔 ===== UNIFIED NOTIFICATION END =====\n`);
     } catch (error) {
+      console.log(`\n❌ ===== UNIFIED NOTIFICATION FAILED =====`);
+      console.log(`📋 Session ID: ${sessionId}`);
+      console.log(`📋 Notification Type: ${payload.type}`);
+      console.log(`👤 Target userId: ${payload.userId}`);
+      console.log(`📋 Notification ID: ${notificationId}`);
+      console.log(`❌ Error Message: ${error.message}`);
+      console.log(`❌ Error Stack:`, error.stack);
+      console.log(`❌ Error Response:`, error.response?.data);
+      console.log(`❌ Error Status:`, error.response?.status);
+      console.log(`❌ ===== UNIFIED NOTIFICATION FAILED END =====\n`);
+      
       this.logger.error(`❌ Failed to send unified notification: ${error.message}`);
       this.logger.error(error.stack);
       
       // 🔔 NEW: Mark as failed on error
       if (notificationId) {
         await this.notificationLogService.markAsFailed(notificationId, error.message);
+        console.log(`📝 Notification ${notificationId} marked as FAILED`);
       }
       
       // Don't throw - notification failure shouldn't break main flow
