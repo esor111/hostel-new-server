@@ -253,7 +253,7 @@ export class HostelNotificationService {
         });
       });
       
-      // 1. Get business owner ID from businessId
+      // 1. Get business owner ID from businessId (for FCM tokens)
       console.log(`\n🔍 STEP 1: Fetching business owner for business ${booking.hostel.businessId}`);
       const ownerUserId = await this.getBusinessOwnerId(booking.hostel.businessId);
       console.log(`👤 Owner User ID: ${ownerUserId}`);
@@ -273,7 +273,7 @@ export class HostelNotificationService {
       console.log(`\n📝 STEP 4: Creating notification database record`);
       const notificationData = {
         recipientType: RecipientType.BUSINESS,
-        recipientId: ownerUserId,
+        recipientId: booking.hostel.businessId,  // ✅ CORRECT: Save with businessId, not ownerUserId
         category: NotificationCategory.BOOKING,
         title: `New Booking Request - ${roomName}`,
         message: `${userName} has requested a booking`,
@@ -290,6 +290,7 @@ export class HostelNotificationService {
           totalAmount: (booking as any).totalAmount || 0,
           businessId: booking.hostel.businessId,
           hostelId: booking.hostelId,
+          ownerUserId: ownerUserId,  // Store owner ID in metadata for reference
           source: 'booking_creation',
           sessionId: sessionId,
           timestamp: new Date().toISOString()
@@ -455,7 +456,7 @@ export class HostelNotificationService {
       console.log(`\n📝 STEP 4: Creating notification database record`);
       const notificationData = {
         recipientType: RecipientType.BUSINESS,
-        recipientId: ownerUserId,
+        recipientId: booking.hostel.businessId,  // ✅ CORRECT: Save with businessId, not ownerUserId
         category: NotificationCategory.BOOKING,
         title: `Booking Cancelled - ${roomName}`,
         message: `${userName} has cancelled their booking`,
@@ -470,6 +471,7 @@ export class HostelNotificationService {
           cancellationReason: booking.notes || 'User cancelled booking',
           businessId: booking.hostel.businessId,
           hostelId: booking.hostelId,
+          ownerUserId: ownerUserId,  // Store owner ID in metadata for reference
           source: 'booking_cancellation',
           sessionId: sessionId,
           timestamp: new Date().toISOString()
