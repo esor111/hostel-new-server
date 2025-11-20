@@ -8,6 +8,7 @@ import { LedgerV2Module } from '../ledger-v2/ledger-v2.module';
 import { Hostel } from '../hostel/entities/hostel.entity';
 import { AuthModule } from '../auth/auth.module';
 import { HostelModule } from '../hostel/hostel.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { HostelModule } from '../hostel/hostel.module';
     LedgerV2Module,
     AuthModule,
     HostelModule,
+    NotificationModule,
   ],
   controllers: [AdminChargesController],
   providers: [AdminChargesService],

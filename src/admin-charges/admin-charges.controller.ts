@@ -10,6 +10,7 @@ import {
   HttpStatus,
   ValidationPipe,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminChargesService } from './admin-charges.service';
@@ -27,9 +28,11 @@ export class AdminChargesController {
   constructor(private readonly adminChargesService: AdminChargesService) {}
 
   @Post()
-  async create(@GetHostelId() hostelId: string, @Body(ValidationPipe) createAdminChargeDto: CreateAdminChargeDto) {
+  async create(@GetHostelId() hostelId: string, @Body(ValidationPipe) createAdminChargeDto: CreateAdminChargeDto, @Req() req: any) {
     try {
-      const result = await this.adminChargesService.create(createAdminChargeDto, hostelId);
+      // 🔔 NEW: Pass admin JWT for charge notifications
+      const adminJwt = req.user; // JWT payload from auth guard
+      const result = await this.adminChargesService.create(createAdminChargeDto, hostelId, adminJwt);
       return {
         success: true,
         data: result,

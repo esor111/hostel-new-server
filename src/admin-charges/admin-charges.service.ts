@@ -10,6 +10,8 @@ import { CreateAdminChargeDto } from "./dto/create-admin-charge.dto";
 import { UpdateAdminChargeDto } from "./dto/update-admin-charge.dto";
 import { Student } from "../students/entities/student.entity";
 import { LedgerV2Service } from "../ledger-v2/services/ledger-v2.service";
+import { UnifiedNotificationService } from "../notification/unified-notification.service";
+import { JwtPayload } from "../auth/interfaces/jwt-payload.interface";
 
 @Injectable()
 export class AdminChargesService {
@@ -18,12 +20,14 @@ export class AdminChargesService {
     private adminChargeRepository: Repository<AdminCharge>,
     @InjectRepository(Student)
     private studentRepository: Repository<Student>,
-    private ledgerService: LedgerV2Service
+    private ledgerService: LedgerV2Service,
+    private unifiedNotificationService: UnifiedNotificationService,
   ) { }
 
   async create(
     createAdminChargeDto: CreateAdminChargeDto,
-    hostelId: string
+    hostelId: string,
+    adminJwt?: JwtPayload
   ): Promise<AdminCharge> {
     // Verify student exists
     const student = await this.studentRepository.findOne({
@@ -56,7 +60,41 @@ export class AdminChargesService {
       savedCharge.status = AdminChargeStatus.APPLIED;
       savedCharge.appliedDate = new Date();
 
-      return await this.adminChargeRepository.save(savedCharge);
+      const finalCharge = await this.adminChargeRepository.save(savedCharge);
+
+      // 🔔 NEW: Send charge notification to student
+      if (adminJwt && student.userId && finalCharge.status === AdminChargeStatus.APPLIED) {
+        try {
+          console.log(`💰 CHARGE NOTIFICATION START - Charge ID: ${finalCharge.id}`);
+          console.log(`👤 Student: ${student.name} (${student.id})`);
+          console.log(`💵 Amount: NPR ${finalCharge.amount}`);
+          console.log(`📋 Charge Type: ${finalCharge.chargeType}`);
+          
+          await this.unifiedNotificationService.sendToUser({
+            userId: student.userId,
+            title: 'New Charge Added',
+            message: `A charge of NPR ${Number(finalCharge.amount).toLocaleString()} has been added to your account for ${finalCharge.chargeType || 'miscellaneous'}.`,
+            type: 'GENERAL',
+            metadata: {
+              chargeId: finalCharge.id,
+              amount: finalCharge.amount,
+              chargeType: finalCharge.chargeType,
+              category: finalCharge.category,
+              description: finalCharge.description,
+              dueDate: finalCharge.dueDate,
+              studentId: student.id,
+              studentName: student.name
+            }
+          }, adminJwt);
+          
+          console.log(`✅ CHARGE NOTIFICATION SENT SUCCESSFULLY`);
+        } catch (notifError) {
+          console.log(`❌ CHARGE NOTIFICATION FAILED: ${notifError.message}`);
+          // Don't let notification failure cause charge creation rollback
+        }
+      }
+
+      return finalCharge;
     } catch (error) {
       // If ledger application fails, delete the charge to maintain consistency
       await this.adminChargeRepository.remove(savedCharge);
