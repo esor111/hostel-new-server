@@ -38,6 +38,11 @@ export class UpdateStudentDto extends PartialType(CreateStudentDto) {
   @IsOptional()
   @IsString()
   @Transform(({ value }) => value?.trim())
+  guardianRelation?: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => value?.trim())
   address?: string;
 
   @IsOptional()
