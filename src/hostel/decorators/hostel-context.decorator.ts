@@ -37,3 +37,15 @@ export const GetOptionalHostelId = createParamDecorator(
     return request.hostelContext?.hostelId;
   },
 );
+
+export const GetBusinessId = createParamDecorator(
+  (data: unknown, ctx: ExecutionContext): string => {
+    const request = ctx.switchToHttp().getRequest();
+    
+    if (!request.hostelContext?.businessId) {
+      throw new Error('Business ID not found in context. Ensure HostelContextMiddleware is applied.');
+    }
+    
+    return request.hostelContext.businessId;
+  },
+);

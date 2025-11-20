@@ -21,7 +21,7 @@ export class HostelNotificationService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    // Get URLs from environment or use defaults
+    // Get URLs from environment or use defaultsa
     this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
       'KAHA_NOTIFICATION_URL',
       'http://localhost:3000'
