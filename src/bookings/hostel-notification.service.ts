@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { MultiGuestBooking } from './entities/multi-guest-booking.entity';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { NotificationLogService } from '../notification/notification-log.service';
+import { RecipientType, NotificationCategory } from '../notification/entities/notification.entity';
 
 /**
  * Service to handle hostel booking notifications
@@ -20,6 +22,7 @@ export class HostelNotificationService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly notificationLogService: NotificationLogService,
   ) {
     // Get URLs from environment or use defaultsa
     this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
@@ -44,11 +47,12 @@ export class HostelNotificationService {
     booking: MultiGuestBooking,
     adminJwt: JwtPayload
   ): Promise<void> {
-    const notificationId = `booking_confirm_${booking.id}_${Date.now()}`;
+    let notificationId: string | null = null;
+    const sessionId = `booking_confirm_${booking.id}_${Date.now()}`;
     
     try {
       console.log(`\n🔔 ===== BOOKING CONFIRMATION NOTIFICATION START =====`);
-      console.log(`📋 Notification ID: ${notificationId}`);
+      console.log(`📋 Session ID: ${sessionId}`);
       console.log(`📋 Booking ID: ${booking.id}`);
       console.log(`📋 Booking Reference: ${booking.bookingReference}`);
       console.log(`📋 Booking Status: ${booking.status}`);
@@ -66,8 +70,48 @@ export class HostelNotificationService {
       
       this.logger.log(`📱 Sending confirmation notification for booking ${booking.id}`);
       
+      // 🔔 NEW: Get room info first (needed for notification title)
+      console.log(`\n🏠 STEP 1: Getting room info from booking`);
+      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
+      console.log(`🏠 Room Name: ${roomName}`);
+      console.log(`🏠 Room ID: ${roomId}`);
+      
+      // 🔔 NEW: Get business name (needed for notification message)
+      console.log(`\n🏢 STEP 2: Getting business name for admin ${adminJwt.id}`);
+      const businessName = await this.getBusinessName(adminJwt.id);
+      console.log(`🏢 Business Name: ${businessName}`);
+      
+      // 🔔 NEW: Create notification database record BEFORE sending
+      console.log(`\n📝 STEP 3: Creating notification database record`);
+      const notificationData = {
+        recipientType: RecipientType.USER,
+        recipientId: booking.userId,
+        category: NotificationCategory.BOOKING,
+        title: `Booking Confirmed - ${roomName}`,
+        message: `Your booking at ${businessName} has been confirmed`,
+        metadata: {
+          bookingId: booking.id,
+          bookingReference: booking.bookingReference,
+          bookingStatus: 'Confirmed',
+          roomName: roomName,
+          roomId: roomId,
+          businessName: businessName,
+          adminId: adminJwt.id,
+          source: 'booking_confirmation',
+          sessionId: sessionId,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      console.log(`📝 Notification Data:`, JSON.stringify(notificationData, null, 2));
+      
+      const notification = await this.notificationLogService.createNotification(notificationData);
+      notificationId = notification.id;
+      
+      console.log(`✅ Notification record created with ID: ${notificationId}`);
+      
       // 1. Get user FCM token
-      console.log(`\n🔍 STEP 1: Fetching FCM tokens for user ${booking.userId}`);
+      console.log(`\n🔍 STEP 4: Fetching FCM tokens for user ${booking.userId}`);
       const userFcmTokens = await this.getFcmTokens(booking.userId, false);
       console.log(`📱 FCM Tokens Found: ${userFcmTokens.length}`);
       console.log(`📱 FCM Tokens:`, userFcmTokens);
@@ -75,22 +119,18 @@ export class HostelNotificationService {
       if (!userFcmTokens.length) {
         console.log(`⚠️ NO FCM TOKENS - Notification will be skipped`);
         this.logger.warn(`⚠️ No FCM token found for user ${booking.userId}`);
+        
+        // 🔔 NEW: Mark as skipped
+        if (notificationId) {
+          await this.notificationLogService.markAsSkipped(notificationId, 'No FCM tokens found');
+          console.log(`📝 Notification ${notificationId} marked as SKIPPED`);
+        }
+        console.log(`⚠️ ===== BOOKING CONFIRMATION NOTIFICATION SKIPPED - NO FCM =====\n`);
         return;
       }
       
-      // 2. Get business name
-      console.log(`\n🏢 STEP 2: Getting business name for admin ${adminJwt.id}`);
-      const businessName = await this.getBusinessName(adminJwt.id);
-      console.log(`🏢 Business Name: ${businessName}`);
-      
-      // 3. Get room info from booking guests
-      console.log(`\n🏠 STEP 3: Getting room info from booking`);
-      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
-      console.log(`🏠 Room Name: ${roomName}`);
-      console.log(`🏠 Room ID: ${roomId}`);
-      
-      // 4. Compose payload matching express server format
-      console.log(`\n📦 STEP 4: Composing notification payload`);
+      // 2. Compose payload matching express server format
+      console.log(`\n📦 STEP 5: Composing notification payload`);
       const payload = {
         fcmToken: userFcmTokens[0],
         bookingStatus: 'Confirmed',
@@ -109,8 +149,8 @@ export class HostelNotificationService {
       
       this.logger.log(`📤 Sending payload:`, JSON.stringify(payload, null, 2));
       
-      // 5. Send to express server
-      console.log(`\n🚀 STEP 5: Sending to Express server`);
+      // 3. Send to express server
+      console.log(`\n🚀 STEP 6: Sending to Express server`);
       console.log(`🌐 Express URL: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
       
       const startTime = Date.now();
@@ -118,12 +158,20 @@ export class HostelNotificationService {
       const endTime = Date.now();
       
       console.log(`⏱️ Notification sent in ${endTime - startTime}ms`);
+      
+      // 🔔 NEW: Mark as sent on success
+      if (notificationId) {
+        await this.notificationLogService.markAsSent(notificationId, userFcmTokens[0]);
+        console.log(`📝 Notification ${notificationId} marked as SENT`);
+      }
+      
       console.log(`✅ BOOKING CONFIRMATION NOTIFICATION SENT SUCCESSFULLY`);
       console.log(`🔔 ===== BOOKING CONFIRMATION NOTIFICATION END =====\n`);
       
       this.logger.log(`✅ Confirmation notification sent successfully`);
     } catch (error) {
       console.log(`\n❌ ===== BOOKING CONFIRMATION NOTIFICATION FAILED =====`);
+      console.log(`📋 Session ID: ${sessionId}`);
       console.log(`📋 Notification ID: ${notificationId}`);
       console.log(`📋 Booking ID: ${booking.id}`);
       console.log(`❌ Error Message: ${error.message}`);
@@ -132,6 +180,13 @@ export class HostelNotificationService {
       
       this.logger.error(`❌ Failed to send confirmation notification: ${error.message}`);
       this.logger.error(error.stack);
+      
+      // 🔔 NEW: Mark as failed on error
+      if (notificationId) {
+        await this.notificationLogService.markAsFailed(notificationId, error.message);
+        console.log(`📝 Notification ${notificationId} marked as FAILED`);
+      }
+      
       // Don't throw - notification failure shouldn't break booking flow
     }
   }
@@ -144,11 +199,12 @@ export class HostelNotificationService {
     booking: MultiGuestBooking,
     userJwt: JwtPayload
   ): Promise<void> {
-    const notificationId = `booking_new_${booking.id}_${Date.now()}`;
+    let notificationId: string | null = null;
+    const sessionId = `booking_new_${booking.id}_${Date.now()}`;
     
     try {
       console.log(`\n🔔 ===== NEW BOOKING NOTIFICATION START =====`);
-      console.log(`📋 Notification ID: ${notificationId}`);
+      console.log(`📋 Session ID: ${sessionId}`);
       console.log(`📋 Booking ID: ${booking.id}`);
       console.log(`📋 Booking Reference: ${booking.bookingReference}`);
       console.log(`📋 Booking Status: ${booking.status}`);
@@ -202,8 +258,53 @@ export class HostelNotificationService {
       const ownerUserId = await this.getBusinessOwnerId(booking.hostel.businessId);
       console.log(`👤 Owner User ID: ${ownerUserId}`);
       
-      // 2. Get owner FCM token using owner's user ID
-      console.log(`\n📱 STEP 2: Fetching FCM tokens for owner ${ownerUserId}`);
+      // 2. Get user name from booking
+      console.log(`\n👤 STEP 2: Getting user name`);
+      const userName = booking.contactName || 'A user';
+      console.log(`👤 User Name: ${userName}`);
+      
+      // 3. Get room info from booking
+      console.log(`\n🏠 STEP 3: Getting room info from booking`);
+      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
+      console.log(`🏠 Room Name: ${roomName}`);
+      console.log(`🏠 Room ID: ${roomId}`);
+      
+      // 🔔 NEW: Create notification database record BEFORE sending
+      console.log(`\n📝 STEP 4: Creating notification database record`);
+      const notificationData = {
+        recipientType: RecipientType.BUSINESS,
+        recipientId: ownerUserId,
+        category: NotificationCategory.BOOKING,
+        title: `New Booking Request - ${roomName}`,
+        message: `${userName} has requested a booking`,
+        metadata: {
+          bookingId: booking.id,
+          bookingReference: booking.bookingReference,
+          bookingStatus: 'Requested',
+          roomName: roomName,
+          roomId: roomId,
+          userName: userName,
+          userId: booking.userId,
+          checkInDate: booking.checkInDate,
+          totalGuests: booking.totalGuests,
+          totalAmount: (booking as any).totalAmount || 0,
+          businessId: booking.hostel.businessId,
+          hostelId: booking.hostelId,
+          source: 'booking_creation',
+          sessionId: sessionId,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      console.log(`📝 Notification Data:`, JSON.stringify(notificationData, null, 2));
+      
+      const notification = await this.notificationLogService.createNotification(notificationData);
+      notificationId = notification.id;
+      
+      console.log(`✅ Notification record created with ID: ${notificationId}`);
+      
+      // 4. Get owner FCM token using owner's user ID
+      console.log(`\n📱 STEP 5: Fetching FCM tokens for owner ${ownerUserId}`);
       const adminFcmTokens = await this.getFcmTokens(ownerUserId, false);
       console.log(`📱 Owner FCM Tokens Found: ${adminFcmTokens.length}`);
       console.log(`📱 Owner FCM Tokens:`, adminFcmTokens);
@@ -211,23 +312,18 @@ export class HostelNotificationService {
       if (!adminFcmTokens.length) {
         console.log(`⚠️ NO OWNER FCM TOKENS - Notification will be skipped`);
         this.logger.warn(`⚠️ No FCM token found for owner ${ownerUserId}`);
+        
+        // 🔔 NEW: Mark as skipped
+        if (notificationId) {
+          await this.notificationLogService.markAsSkipped(notificationId, 'No FCM tokens found');
+          console.log(`📝 Notification ${notificationId} marked as SKIPPED`);
+        }
         console.log(`⚠️ ===== NEW BOOKING NOTIFICATION SKIPPED - NO FCM =====\n`);
         return;
       }
       
-      // 3. Get user name from booking
-      console.log(`\n👤 STEP 3: Getting user name`);
-      const userName = booking.contactName || 'A user';
-      console.log(`👤 User Name: ${userName}`);
-      
-      // 4. Get room info from booking
-      console.log(`\n🏠 STEP 4: Getting room info from booking`);
-      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
-      console.log(`🏠 Room Name: ${roomName}`);
-      console.log(`🏠 Room ID: ${roomId}`);
-      
       // 5. Compose payload
-      console.log(`\n📦 STEP 5: Composing notification payload`);
+      console.log(`\n📦 STEP 6: Composing notification payload`);
       const payload = {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Requested',
@@ -254,8 +350,8 @@ export class HostelNotificationService {
       
       this.logger.log(`📤 Sending payload:`, JSON.stringify(payload, null, 2));
       
-      // 5. Send to express server
-      console.log(`\n🚀 STEP 5: Sending to Express server`);
+      // 6. Send to express server
+      console.log(`\n🚀 STEP 7: Sending to Express server`);
       console.log(`🌐 Express URL: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
       
       const startTime = Date.now();
@@ -263,12 +359,20 @@ export class HostelNotificationService {
       const endTime = Date.now();
       
       console.log(`⏱️ Notification sent in ${endTime - startTime}ms`);
+      
+      // 🔔 NEW: Mark as sent on success
+      if (notificationId) {
+        await this.notificationLogService.markAsSent(notificationId, adminFcmTokens[0]);
+        console.log(`📝 Notification ${notificationId} marked as SENT`);
+      }
+      
       console.log(`✅ NEW BOOKING NOTIFICATION SENT SUCCESSFULLY`);
       console.log(`🔔 ===== NEW BOOKING NOTIFICATION END =====\n`);
       
       this.logger.log(`✅ New booking notification sent successfully`);
     } catch (error) {
       console.log(`\n❌ ===== NEW BOOKING NOTIFICATION FAILED =====`);
+      console.log(`📋 Session ID: ${sessionId}`);
       console.log(`📋 Notification ID: ${notificationId}`);
       console.log(`📋 Booking ID: ${booking.id}`);
       console.log(`❌ Error Message: ${error.message}`);
@@ -279,6 +383,13 @@ export class HostelNotificationService {
       
       this.logger.error(`❌ Failed to send new booking notification: ${error.message}`);
       this.logger.error(error.stack);
+      
+      // 🔔 NEW: Mark as failed on error
+      if (notificationId) {
+        await this.notificationLogService.markAsFailed(notificationId, error.message);
+        console.log(`📝 Notification ${notificationId} marked as FAILED`);
+      }
+      
       // Don't throw - notification failure shouldn't break booking creation
     }
   }
@@ -291,11 +402,12 @@ export class HostelNotificationService {
     booking: MultiGuestBooking,
     userJwt: JwtPayload
   ): Promise<void> {
-    const notificationId = `booking_cancel_${booking.id}_${Date.now()}`;
+    let notificationId: string | null = null;
+    const sessionId = `booking_cancel_${booking.id}_${Date.now()}`;
     
     try {
       console.log(`\n🔔 ===== BOOKING CANCELLATION NOTIFICATION START =====`);
-      console.log(`� Notifincation ID: ${notificationId}`);
+      console.log(`📋 Session ID: ${sessionId}`);
       console.log(`📋 Booking ID: ${booking.id}`);
       console.log(`📋 Booking Reference: ${booking.bookingReference}`);
       console.log(`📋 Booking Status: ${booking.status}`);
@@ -328,8 +440,51 @@ export class HostelNotificationService {
       const ownerUserId = await this.getBusinessOwnerId(booking.hostel.businessId);
       console.log(`👤 Owner User ID: ${ownerUserId}`);
       
-      // 2. Get owner FCM token using owner's user ID
-      console.log(`\n📱 STEP 2: Fetching FCM tokens for owner ${ownerUserId}`);
+      // 2. Get user name from booking
+      console.log(`\n👤 STEP 2: Getting user name`);
+      const userName = booking.contactName || 'A user';
+      console.log(`👤 User Name: ${userName}`);
+      
+      // 3. Get room info from booking
+      console.log(`\n🏠 STEP 3: Getting room info from booking`);
+      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
+      console.log(`🏠 Room Name: ${roomName}`);
+      console.log(`🏠 Room ID: ${roomId}`);
+      
+      // 🔔 NEW: Create notification database record BEFORE sending
+      console.log(`\n📝 STEP 4: Creating notification database record`);
+      const notificationData = {
+        recipientType: RecipientType.BUSINESS,
+        recipientId: ownerUserId,
+        category: NotificationCategory.BOOKING,
+        title: `Booking Cancelled - ${roomName}`,
+        message: `${userName} has cancelled their booking`,
+        metadata: {
+          bookingId: booking.id,
+          bookingReference: booking.bookingReference,
+          bookingStatus: 'Cancelled',
+          roomName: roomName,
+          roomId: roomId,
+          userName: userName,
+          userId: booking.userId,
+          cancellationReason: booking.notes || 'User cancelled booking',
+          businessId: booking.hostel.businessId,
+          hostelId: booking.hostelId,
+          source: 'booking_cancellation',
+          sessionId: sessionId,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      console.log(`📝 Notification Data:`, JSON.stringify(notificationData, null, 2));
+      
+      const notification = await this.notificationLogService.createNotification(notificationData);
+      notificationId = notification.id;
+      
+      console.log(`✅ Notification record created with ID: ${notificationId}`);
+      
+      // 4. Get owner FCM token using owner's user ID
+      console.log(`\n📱 STEP 5: Fetching FCM tokens for owner ${ownerUserId}`);
       const adminFcmTokens = await this.getFcmTokens(ownerUserId, false);
       console.log(`📱 Owner FCM Tokens Found: ${adminFcmTokens.length}`);
       console.log(`📱 Owner FCM Tokens:`, adminFcmTokens);
@@ -337,23 +492,18 @@ export class HostelNotificationService {
       if (!adminFcmTokens.length) {
         console.log(`⚠️ NO OWNER FCM TOKENS - Notification will be skipped`);
         this.logger.warn(`⚠️ No FCM token found for owner ${ownerUserId}`);
+        
+        // 🔔 NEW: Mark as skipped
+        if (notificationId) {
+          await this.notificationLogService.markAsSkipped(notificationId, 'No FCM tokens found');
+          console.log(`📝 Notification ${notificationId} marked as SKIPPED`);
+        }
         console.log(`⚠️ ===== BOOKING CANCELLATION NOTIFICATION SKIPPED - NO FCM =====\n`);
         return;
       }
       
-      // 3. Get user name from booking
-      console.log(`\n👤 STEP 3: Getting user name`);
-      const userName = booking.contactName || 'A user';
-      console.log(`👤 User Name: ${userName}`);
-      
-      // 4. Get room info from booking
-      console.log(`\n🏠 STEP 4: Getting room info from booking`);
-      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
-      console.log(`🏠 Room Name: ${roomName}`);
-      console.log(`🏠 Room ID: ${roomId}`);
-      
       // 5. Compose payload
-      console.log(`\n📦 STEP 5: Composing notification payload`);
+      console.log(`\n📦 STEP 6: Composing notification payload`);
       const payload = {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Cancelled',
@@ -380,7 +530,7 @@ export class HostelNotificationService {
       this.logger.log(`📤 Sending payload:`, JSON.stringify(payload, null, 2));
       
       // 6. Send to express server
-      console.log(`\n🚀 STEP 6: Sending to Express server`);
+      console.log(`\n🚀 STEP 7: Sending to Express server`);
       console.log(`🌐 Express URL: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
       
       const startTime = Date.now();
@@ -388,12 +538,20 @@ export class HostelNotificationService {
       const endTime = Date.now();
       
       console.log(`⏱️ Notification sent in ${endTime - startTime}ms`);
+      
+      // 🔔 NEW: Mark as sent on success
+      if (notificationId) {
+        await this.notificationLogService.markAsSent(notificationId, adminFcmTokens[0]);
+        console.log(`📝 Notification ${notificationId} marked as SENT`);
+      }
+      
       console.log(`✅ BOOKING CANCELLATION NOTIFICATION SENT SUCCESSFULLY`);
       console.log(`🔔 ===== BOOKING CANCELLATION NOTIFICATION END =====\n`);
       
       this.logger.log(`✅ Cancellation notification sent successfully`);
     } catch (error) {
       console.log(`\n❌ ===== BOOKING CANCELLATION NOTIFICATION FAILED =====`);
+      console.log(`📋 Session ID: ${sessionId}`);
       console.log(`📋 Notification ID: ${notificationId}`);
       console.log(`📋 Booking ID: ${booking.id}`);
       console.log(`❌ Error Message: ${error.message}`);
@@ -404,6 +562,13 @@ export class HostelNotificationService {
       
       this.logger.error(`❌ Failed to send cancellation notification: ${error.message}`);
       this.logger.error(error.stack);
+      
+      // 🔔 NEW: Mark as failed on error
+      if (notificationId) {
+        await this.notificationLogService.markAsFailed(notificationId, error.message);
+        console.log(`📝 Notification ${notificationId} marked as FAILED`);
+      }
+      
       // Don't throw - notification failure shouldn't break cancellation
     }
   }
