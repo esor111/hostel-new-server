@@ -1277,49 +1277,120 @@ export class StudentsService {
   }
 
   private async updateRelatedEntities(studentId: string, dto: any) {
-    // Update contacts
-    if (dto.guardianName !== undefined || dto.guardianPhone !== undefined) {
-      await this.contactRepository.update(
-        { studentId, type: ContactType.GUARDIAN },
-        { name: dto.guardianName, phone: dto.guardianPhone }
-      );
+    // Update or create guardian contact with relation field
+    if (dto.guardianName !== undefined || dto.guardianPhone !== undefined || dto.guardianRelation !== undefined) {
+      const existingGuardian = await this.contactRepository.findOne({
+        where: { studentId, type: ContactType.GUARDIAN }
+      });
+
+      const guardianData: any = {};
+      if (dto.guardianName !== undefined) guardianData.name = dto.guardianName;
+      if (dto.guardianPhone !== undefined) guardianData.phone = dto.guardianPhone;
+      if (dto.guardianRelation !== undefined) guardianData.relationship = dto.guardianRelation;
+
+      if (existingGuardian) {
+        // Update existing guardian
+        await this.contactRepository.update(
+          { studentId, type: ContactType.GUARDIAN },
+          guardianData
+        );
+        console.log(`✅ Updated guardian contact for student ${studentId}:`, guardianData);
+      } else if (dto.guardianName && dto.guardianPhone) {
+        // Create new guardian contact only if we have required fields
+        await this.contactRepository.save({
+          studentId,
+          type: ContactType.GUARDIAN,
+          name: dto.guardianName,
+          phone: dto.guardianPhone,
+          relationship: dto.guardianRelation || null,
+          isPrimary: true,
+          isActive: true
+        });
+        console.log(`✅ Created guardian contact for student ${studentId}`);
+      }
     }
 
+    // Update or create emergency contact
     if (dto.emergencyContact !== undefined) {
-      await this.contactRepository.update(
-        { studentId, type: ContactType.EMERGENCY },
-        { phone: dto.emergencyContact }
-      );
+      const existingEmergency = await this.contactRepository.findOne({
+        where: { studentId, type: ContactType.EMERGENCY }
+      });
+
+      if (existingEmergency) {
+        await this.contactRepository.update(
+          { studentId, type: ContactType.EMERGENCY },
+          { phone: dto.emergencyContact }
+        );
+        console.log(`✅ Updated emergency contact for student ${studentId}`);
+      } else if (dto.emergencyContact) {
+        await this.contactRepository.save({
+          studentId,
+          type: ContactType.EMERGENCY,
+          name: 'Emergency Contact',
+          phone: dto.emergencyContact,
+          isActive: true
+        });
+        console.log(`✅ Created emergency contact for student ${studentId}`);
+      }
     }
 
-    // Update academic info
+    // Update or create academic info
     if (dto.course !== undefined || dto.institution !== undefined) {
-      await this.academicRepository.update(
-        { studentId, isActive: true },
-        { course: dto.course, institution: dto.institution }
-      );
+      const existingAcademic = await this.academicRepository.findOne({
+        where: { studentId, isActive: true }
+      });
+
+      const academicData: any = {};
+      if (dto.course !== undefined) academicData.course = dto.course;
+      if (dto.institution !== undefined) academicData.institution = dto.institution;
+
+      if (existingAcademic) {
+        await this.academicRepository.update(
+          { studentId, isActive: true },
+          academicData
+        );
+        console.log(`✅ Updated academic info for student ${studentId}:`, academicData);
+      } else if (dto.course && dto.institution) {
+        await this.academicRepository.save({
+          studentId,
+          course: dto.course,
+          institution: dto.institution,
+          isActive: true
+        });
+        console.log(`✅ Created academic info for student ${studentId}`);
+      }
     }
 
-    // Update financial info
-    if (dto.baseMonthlyFee !== undefined) {
-      await this.financialRepository.update(
-        { studentId, feeType: FeeType.BASE_MONTHLY, isActive: true },
-        { amount: dto.baseMonthlyFee }
-      );
-    }
+    // Update or create financial info with upsert logic
+    const financialUpdates = [
+      { feeType: FeeType.BASE_MONTHLY, amount: dto.baseMonthlyFee },
+      { feeType: FeeType.LAUNDRY, amount: dto.laundryFee },
+      { feeType: FeeType.FOOD, amount: dto.foodFee }
+    ];
 
-    if (dto.laundryFee !== undefined) {
-      await this.financialRepository.update(
-        { studentId, feeType: FeeType.LAUNDRY, isActive: true },
-        { amount: dto.laundryFee }
-      );
-    }
+    for (const update of financialUpdates) {
+      if (update.amount !== undefined) {
+        const existing = await this.financialRepository.findOne({
+          where: { studentId, feeType: update.feeType, isActive: true }
+        });
 
-    if (dto.foodFee !== undefined) {
-      await this.financialRepository.update(
-        { studentId, feeType: FeeType.FOOD, isActive: true },
-        { amount: dto.foodFee }
-      );
+        if (existing) {
+          await this.financialRepository.update(
+            { studentId, feeType: update.feeType, isActive: true },
+            { amount: update.amount }
+          );
+          console.log(`✅ Updated ${update.feeType} fee for student ${studentId}: ${update.amount}`);
+        } else {
+          await this.financialRepository.save({
+            studentId,
+            feeType: update.feeType,
+            amount: update.amount,
+            effectiveFrom: new Date(),
+            isActive: true
+          });
+          console.log(`✅ Created ${update.feeType} fee for student ${studentId}: ${update.amount}`);
+        }
+      }
     }
   }
 
