@@ -16,6 +16,7 @@ import { BookingGuest, GuestStatus } from '../bookings/entities/booking-guest.en
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { RoomOccupant } from '../rooms/entities/room-occupant.entity';
+import { Hostel } from '../hostel/entities/hostel.entity';
 import { BedSyncService } from '../rooms/bed-sync.service';
 import { AdvancePaymentService } from './services/advance-payment.service';
 import { CheckoutSettlementService } from './services/checkout-settlement.service';
@@ -2282,9 +2283,13 @@ export class StudentsService {
   /**
    * Create student manually with bed assignment
    */
-  async createManualStudent(dto: CreateManualStudentDto, hostelId: string): Promise<any> {
+  async createManualStudent(dto: CreateManualStudentDto, hostelId: string, businessId: string): Promise<any> {
     if (!hostelId) {
       throw new BadRequestException('Hostel context required for this operation.');
+    }
+
+    if (!businessId) {
+      throw new BadRequestException('Business ID required for user creation.');
     }
 
     try {
@@ -2331,11 +2336,19 @@ export class StudentsService {
           }
         }
 
-      // 3. Get real userId by checking phone number against Kaha API
-      const userId = await this.getRealUserId(dto.phone);
+      // 3. Get real userId by finding or creating user via Kaha API
+      // Pass email, name, and businessId - kaha-main will create user if not found
+      console.log(`🏨 Using businessId: ${businessId} for user creation`);
+      
+      const userId = await this.getRealUserId(
+        dto.phone,
+        dto.email,           // optional - for user creation
+        dto.name,            // optional - for user creation
+        businessId           // required - hostel context (from JWT)
+      );
       console.log(`🔍 Manual creation - Real userId for phone ${dto.phone}: ${userId}`);
 
-      // 4. Create student with PENDING_CONFIGURATION status
+      // 5. Create student with PENDING_CONFIGURATION status
       const student = manager.create(Student, {
         userId,
         name: dto.name,
@@ -2352,7 +2365,7 @@ export class StudentsService {
 
       const savedStudent = await manager.save(Student, student);
 
-      // 5. Reserve the bed (not occupied yet - that happens during configuration)
+      // 6. Reserve the bed (not occupied yet - that happens during configuration)
       await manager.update(Bed, bed.id, {
         status: BedStatus.RESERVED,
         currentOccupantId: savedStudent.id,
@@ -2361,13 +2374,13 @@ export class StudentsService {
         notes: `Reserved for manual student: ${savedStudent.name}`
       });
 
-      // 6. After student configuration completes, update bed status to OCCUPIED
+      // 7. After student configuration completes, update bed status to OCCUPIED
       await manager.update(Bed, bed.id, {
         status: BedStatus.OCCUPIED,
         notes: `Occupied by ${savedStudent.name} after configuration`
       });
 
-      // 7. Create RoomOccupant record
+      // 8. Create RoomOccupant record
       const roomOccupant = manager.create(RoomOccupant, {
         roomId: bed.roomId,
         studentId: savedStudent.id,
@@ -2380,10 +2393,10 @@ export class StudentsService {
 
       await manager.save(RoomOccupant, roomOccupant);
 
-      // 8. Update room occupancy
+      // 9. Update room occupancy
       await manager.increment(Room, { id: bed.roomId }, 'occupancy', 1);
 
-      // 9. Save optional information if provided
+      // 10. Save optional information if provided
       if (dto.guardianName || dto.guardianPhone) {
         const guardianContact = manager.create(StudentContact, {
           studentId: savedStudent.id,
@@ -2446,31 +2459,47 @@ export class StudentsService {
   }
 
   /**
-   * Get real userId by checking phone number against Kaha API
-   * If not found, use random UUID as fallback
+   * Get real userId by finding or creating user via Kaha API
+   * If user not found and email/name/businessId provided, kaha-main will create the user
+   * @param phoneNumber - Required phone number
+   * @param email - Optional email (for user creation)
+   * @param name - Optional name (for user creation)
+   * @param businessId - Required businessId for hostel context
    */
-  private async getRealUserId(phoneNumber: string): Promise<string> {
-    const fallbackUserId = 'a635c2da-6fe0-4d10-9dec-e85ddaced067';
-    
+  private async getRealUserId(
+    phoneNumber: string, 
+    email?: string, 
+    name?: string, 
+    businessId?: string
+  ): Promise<string> {
     try {
-      console.log(`🔍 Checking phone ${phoneNumber} against Kaha API...`);
+      console.log(`🔍 Finding or creating user for phone ${phoneNumber}...`);
+      
+      // Build query parameters for find-or-create endpoint
+      const params = new URLSearchParams();
+      if (email) params.append('email', email);
+      if (name) params.append('name', name);
+      if (businessId) params.append('businessId', businessId);
+      
+      const queryString = params.toString();
+      const url = `https://dev.kaha.com.np/main/api/v3/users/find-or-create/${encodeURIComponent(phoneNumber)}${queryString ? '?' + queryString : ''}`;
+      
+      console.log(`🌐 API URL: ${url}`);
       
       const response = await firstValueFrom(
-        this.httpService.get(`https://dev.kaha.com.np/main/api/v3/users/check-contact/${phoneNumber}`)
+        this.httpService.get(url)
       );
       
       if (response.data && response.data.id) {
-        console.log(`✅ Found user: ${response.data.fullName} (${response.data.kahaId})`);
+        console.log(`✅ Found/Created user: ${response.data.fullName} (${response.data.kahaId})`);
         console.log(`   Real userId: ${response.data.id}`);
         return response.data.id;
       } else {
-        console.log(`⚠️ No user found for phone ${phoneNumber}, using fallback`);
-        return fallbackUserId;
+        throw new BadRequestException('Failed to get or create user from Kaha API');
       }
     } catch (error) {
-      console.log(`❌ Error checking phone ${phoneNumber}: ${error.message}`);
-      console.log(`   Using fallback userId: ${fallbackUserId}`);
-      return fallbackUserId;
+      console.log(`❌ Error finding/creating user for phone ${phoneNumber}: ${error.message}`);
+      throw new BadRequestException(`Failed to find or create user: ${error.message}`);
     }
   }
 

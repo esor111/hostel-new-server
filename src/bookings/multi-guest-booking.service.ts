@@ -114,7 +114,11 @@ export class MultiGuestBookingService {
     
     if (!contactPersonUserId) {
       this.logger.log(`🔍 Verifying contact person: ${bookingData.contactPerson.phone}`);
-      contactPersonUserId = await this.contactPersonService.validateAndGetUserId(bookingData.contactPerson);
+      // Pass hostelId (which is actually businessId at this point) for user creation context
+      contactPersonUserId = await this.contactPersonService.validateAndGetUserId(
+        bookingData.contactPerson,
+        hostelId  // This is businessId at this point in the flow
+      );
       this.logger.log(`✅ Contact person verified: userId=${contactPersonUserId}`);
     }
 

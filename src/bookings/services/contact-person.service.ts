@@ -38,13 +38,30 @@ export class ContactPersonService {
   /**
    * Get or create contact person (parent/guardian) using Kaha API
    * @param contact - Phone number or email
+   * @param email - Optional email (for user creation)
+   * @param name - Optional name (for user creation)
+   * @param businessId - Optional businessId for hostel context
    * @returns userId from Kaha system
    */
-  async getOrCreateContactPerson(contact: string): Promise<string> {
-    this.logger.log(`Checking contact person: ${contact}`);
+  async getOrCreateContactPerson(
+    contact: string,
+    email?: string,
+    name?: string,
+    businessId?: string
+  ): Promise<string> {
+    this.logger.log(`Finding or creating contact person: ${contact}`);
 
     try {
-      const url = `${this.kahaApiBaseUrl}/users/find-or-create/${encodeURIComponent(contact)}`;
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (email) params.append('email', email);
+      if (name) params.append('name', name);
+      if (businessId) params.append('businessId', businessId);
+      
+      const queryString = params.toString();
+      const url = `${this.kahaApiBaseUrl}/users/find-or-create/${encodeURIComponent(contact)}${queryString ? '?' + queryString : ''}`;
+      
+      this.logger.log(`🌐 API URL: ${url}`);
       
       const response = await firstValueFrom(
         this.httpService.get<KahaUserResponse>(url)
@@ -70,21 +87,37 @@ export class ContactPersonService {
   /**
    * Validate contact person details
    * Returns userId from Kaha system
+   * @param contactPerson - Contact person details
+   * @param businessId - Optional businessId for hostel context
    */
-  async validateAndGetUserId(contactPerson: {
-    name: string;
-    phone: string;
-    email: string;
-  }): Promise<string> {
+  async validateAndGetUserId(
+    contactPerson: {
+      name: string;
+      phone: string;
+      email: string;
+    },
+    businessId?: string
+  ): Promise<string> {
     // Try with phone first (more reliable identifier)
+    // Pass all parameters for user creation if not found
     try {
-      return await this.getOrCreateContactPerson(contactPerson.phone);
+      return await this.getOrCreateContactPerson(
+        contactPerson.phone,
+        contactPerson.email,
+        contactPerson.name,
+        businessId
+      );
     } catch (phoneError) {
       this.logger.warn(`Failed with phone, trying email: ${phoneError.message}`);
       
       // Fallback to email
       try {
-        return await this.getOrCreateContactPerson(contactPerson.email);
+        return await this.getOrCreateContactPerson(
+          contactPerson.email,
+          contactPerson.email,
+          contactPerson.name,
+          businessId
+        );
       } catch (emailError) {
         this.logger.error(`Failed with both phone and email`);
         throw new BadRequestException(
@@ -93,4 +126,5 @@ export class ContactPersonService {
       }
     }
   }
+
 }

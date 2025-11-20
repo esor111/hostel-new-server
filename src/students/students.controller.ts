@@ -10,7 +10,7 @@ import {
   SwitchBedDto,
   CreateManualStudentDto
 } from './dto';
-import { GetHostelId } from '../hostel/decorators/hostel-context.decorator';
+import { GetHostelId, GetBusinessId } from '../hostel/decorators/hostel-context.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
@@ -502,9 +502,10 @@ export class StudentsController {
   @ApiResponse({ status: 400, description: 'Invalid data or bed not available' })
   async createManualStudent(
     @Body(ValidationPipe) createManualStudentDto: CreateManualStudentDto,
-    @GetHostelId() hostelId: string
+    @GetHostelId() hostelId: string,
+    @GetBusinessId() businessId: string
   ) {
-    const student = await this.studentsService.createManualStudent(createManualStudentDto, hostelId);
+    const student = await this.studentsService.createManualStudent(createManualStudentDto, hostelId, businessId);
 
     return {
       status: HttpStatus.CREATED,

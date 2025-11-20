@@ -21,7 +21,7 @@ export class HostelNotificationService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    // Get URLs from environment or use defaults
+    // Get URLs from environment or use defaultsa
     this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
       'KAHA_NOTIFICATION_URL',
       'http://localhost:3000'
@@ -197,37 +197,42 @@ export class HostelNotificationService {
         });
       });
       
-      // 1. Get admin FCM token using businessId
-      console.log(`\n🔍 STEP 1: Fetching FCM tokens for business ${booking.hostel.businessId}`);
-      const adminFcmTokens = await this.getFcmTokens(booking.hostel.businessId, true);
-      console.log(`📱 Admin FCM Tokens Found: ${adminFcmTokens.length}`);
-      console.log(`📱 Admin FCM Tokens:`, adminFcmTokens);
+      // 1. Get business owner ID from businessId
+      console.log(`\n🔍 STEP 1: Fetching business owner for business ${booking.hostel.businessId}`);
+      const ownerUserId = await this.getBusinessOwnerId(booking.hostel.businessId);
+      console.log(`👤 Owner User ID: ${ownerUserId}`);
+      
+      // 2. Get owner FCM token using owner's user ID
+      console.log(`\n📱 STEP 2: Fetching FCM tokens for owner ${ownerUserId}`);
+      const adminFcmTokens = await this.getFcmTokens(ownerUserId, false);
+      console.log(`📱 Owner FCM Tokens Found: ${adminFcmTokens.length}`);
+      console.log(`📱 Owner FCM Tokens:`, adminFcmTokens);
       
       if (!adminFcmTokens.length) {
-        console.log(`⚠️ NO ADMIN FCM TOKENS - Notification will be skipped`);
-        this.logger.warn(`⚠️ No FCM token found for business ${booking.hostel.businessId}`);
+        console.log(`⚠️ NO OWNER FCM TOKENS - Notification will be skipped`);
+        this.logger.warn(`⚠️ No FCM token found for owner ${ownerUserId}`);
         console.log(`⚠️ ===== NEW BOOKING NOTIFICATION SKIPPED - NO FCM =====\n`);
         return;
       }
       
-      // 2. Get user name from booking
-      console.log(`\n👤 STEP 2: Getting user name`);
+      // 3. Get user name from booking
+      console.log(`\n👤 STEP 3: Getting user name`);
       const userName = booking.contactName || 'A user';
       console.log(`👤 User Name: ${userName}`);
       
-      // 3. Get room info from booking
-      console.log(`\n🏠 STEP 3: Getting room info from booking`);
+      // 4. Get room info from booking
+      console.log(`\n🏠 STEP 4: Getting room info from booking`);
       const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
       console.log(`🏠 Room Name: ${roomName}`);
       console.log(`🏠 Room ID: ${roomId}`);
       
-      // 4. Compose payload
-      console.log(`\n📦 STEP 4: Composing notification payload`);
+      // 5. Compose payload
+      console.log(`\n📦 STEP 5: Composing notification payload`);
       const payload = {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Requested',
         senderName: userName,
-        recipientId: booking.hostel.businessId,
+        recipientId: ownerUserId,
         recipientType: 'BUSINESS',
         bookingDetails: {
           bookingId: booking.id,
@@ -318,37 +323,42 @@ export class HostelNotificationService {
         isActive: booking.hostel.isActive
       });
       
-      // 1. Get admin FCM token using businessId
-      console.log(`\n🔍 STEP 1: Fetching FCM tokens for business ${booking.hostel.businessId}`);
-      const adminFcmTokens = await this.getFcmTokens(booking.hostel.businessId, true);
-      console.log(`📱 Admin FCM Tokens Found: ${adminFcmTokens.length}`);
-      console.log(`📱 Admin FCM Tokens:`, adminFcmTokens);
+      // 1. Get business owner ID from businessId
+      console.log(`\n🔍 STEP 1: Fetching business owner for business ${booking.hostel.businessId}`);
+      const ownerUserId = await this.getBusinessOwnerId(booking.hostel.businessId);
+      console.log(`👤 Owner User ID: ${ownerUserId}`);
+      
+      // 2. Get owner FCM token using owner's user ID
+      console.log(`\n📱 STEP 2: Fetching FCM tokens for owner ${ownerUserId}`);
+      const adminFcmTokens = await this.getFcmTokens(ownerUserId, false);
+      console.log(`📱 Owner FCM Tokens Found: ${adminFcmTokens.length}`);
+      console.log(`📱 Owner FCM Tokens:`, adminFcmTokens);
       
       if (!adminFcmTokens.length) {
-        console.log(`⚠️ NO ADMIN FCM TOKENS - Notification will be skipped`);
-        this.logger.warn(`⚠️ No FCM token found for business ${booking.hostel.businessId}`);
+        console.log(`⚠️ NO OWNER FCM TOKENS - Notification will be skipped`);
+        this.logger.warn(`⚠️ No FCM token found for owner ${ownerUserId}`);
         console.log(`⚠️ ===== BOOKING CANCELLATION NOTIFICATION SKIPPED - NO FCM =====\n`);
         return;
       }
       
-      // 2. Get user name from booking
-      console.log(`\n� STEP  2: Getting user name`);
+      // 3. Get user name from booking
+      console.log(`\n👤 STEP 3: Getting user name`);
       const userName = booking.contactName || 'A user';
       console.log(`👤 User Name: ${userName}`);
       
-      // 3. Get room info from booking
-      console.log(`\n🏠 STEP 3: Getting room info from booking`);
+      // 4. Get room info from booking
+      console.log(`\n🏠 STEP 4: Getting room info from booking`);
       const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
       console.log(`🏠 Room Name: ${roomName}`);
       console.log(`🏠 Room ID: ${roomId}`);
       
-      // 4. Compose payload
-      console.log(`\n📦 STEP 4: Composing notification payload`);
+      // 5. Compose payload
+      console.log(`\n📦 STEP 5: Composing notification payload`);
       const payload = {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Cancelled',
         senderName: userName,
-        recipientId: booking.hostel.businessId,
+        recipientId: ownerUserId,
         recipientType: 'BUSINESS',
         bookingDetails: {
           bookingId: booking.id,
@@ -369,8 +379,8 @@ export class HostelNotificationService {
       
       this.logger.log(`📤 Sending payload:`, JSON.stringify(payload, null, 2));
       
-      // 5. Send to express server
-      console.log(`\n🚀 STEP 5: Sending to Express server`);
+      // 6. Send to express server
+      console.log(`\n🚀 STEP 6: Sending to Express server`);
       console.log(`🌐 Express URL: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
       
       const startTime = Date.now();
@@ -535,6 +545,61 @@ export class HostelNotificationService {
         this.logger.error(`   Status: ${error.response.status}`);
         this.logger.error(`   Data:`, error.response.data);
       }
+      throw error;
+    }
+  }
+
+  /**
+   * Get business owner's user ID from kaha-main API
+   * @param businessId - Business UUID
+   * @returns Owner's user ID
+   */
+  private async getBusinessOwnerId(businessId: string): Promise<string> {
+    const url = `https://dev.kaha.com.np/main/api/v3/businesses/owner?businessId=${businessId}`;
+    
+    try {
+      console.log(`\n🔍 ===== FETCHING BUSINESS OWNER =====`);
+      console.log(`🏢 Business ID: ${businessId}`);
+      console.log(`🌐 URL: ${url}`);
+      
+      this.logger.log(`🔍 Fetching business owner for: ${businessId}`);
+      
+      const startTime = Date.now();
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: { 'accept': '*/*' }
+        })
+      );
+      const endTime = Date.now();
+      
+      console.log(`⏱️ Owner API Response Time: ${endTime - startTime}ms`);
+      console.log(`📊 Response Status: ${response.status}`);
+      console.log(`👤 Owner Data:`, JSON.stringify(response.data, null, 2));
+      
+      const ownerId = response.data?.id;
+      
+      if (!ownerId) {
+        console.log(`❌ Owner ID not found in response`);
+        throw new Error('Owner ID not found in response');
+      }
+      
+      console.log(`👤 Owner ID: ${ownerId}`);
+      console.log(`👤 Owner Name: ${response.data?.fullName}`);
+      console.log(`👤 Owner Contact: ${response.data?.contactNumber}`);
+      console.log(`✅ ===== BUSINESS OWNER FETCHED =====\n`);
+      
+      this.logger.log(`✅ Found owner: ${response.data?.fullName} (${ownerId})`);
+      
+      return ownerId;
+    } catch (error) {
+      console.log(`\n❌ ===== BUSINESS OWNER FETCH FAILED =====`);
+      console.log(`🏢 Business ID: ${businessId}`);
+      console.log(`❌ Error Message: ${error.message}`);
+      console.log(`❌ Error Status: ${error.response?.status}`);
+      console.log(`❌ Error Response:`, error.response?.data);
+      console.log(`❌ ===== BUSINESS OWNER FETCH FAILED END =====\n`);
+      
+      this.logger.error(`❌ Failed to fetch business owner: ${error.message}`);
       throw error;
     }
   }

@@ -92,6 +92,61 @@ export class NotificationCommunicationService {
   }
 
   /**
+   * Get business owner's user ID from kaha-main API
+   * @param businessId - Business UUID
+   * @returns Owner's user ID
+   */
+  private async getBusinessOwnerId(businessId: string): Promise<string> {
+    const url = `https://dev.kaha.com.np/main/api/v3/businesses/owner?businessId=${businessId}`;
+    
+    try {
+      console.log(`\n🔍 ===== FETCHING BUSINESS OWNER =====`);
+      console.log(`🏢 Business ID: ${businessId}`);
+      console.log(`🌐 URL: ${url}`);
+      
+      this.logger.log(`🔍 Fetching business owner for: ${businessId}`);
+      
+      const startTime = Date.now();
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: { 'accept': '*/*' }
+        })
+      );
+      const endTime = Date.now();
+      
+      console.log(`⏱️ Owner API Response Time: ${endTime - startTime}ms`);
+      console.log(`📊 Response Status: ${response.status}`);
+      console.log(`👤 Owner Data:`, JSON.stringify(response.data, null, 2));
+      
+      const ownerId = response.data?.id;
+      
+      if (!ownerId) {
+        console.log(`❌ Owner ID not found in response`);
+        throw new Error('Owner ID not found in response');
+      }
+      
+      console.log(`👤 Owner ID: ${ownerId}`);
+      console.log(`👤 Owner Name: ${response.data?.fullName}`);
+      console.log(`👤 Owner Contact: ${response.data?.contactNumber}`);
+      console.log(`✅ ===== BUSINESS OWNER FETCHED =====\n`);
+      
+      this.logger.log(`✅ Found owner: ${response.data?.fullName} (${ownerId})`);
+      
+      return ownerId;
+    } catch (error) {
+      console.log(`\n❌ ===== BUSINESS OWNER FETCH FAILED =====`);
+      console.log(`🏢 Business ID: ${businessId}`);
+      console.log(`❌ Error Message: ${error.message}`);
+      console.log(`❌ Error Status: ${error.response?.status}`);
+      console.log(`❌ Error Response:`, error.response?.data);
+      console.log(`❌ ===== BUSINESS OWNER FETCH FAILED END =====\n`);
+      
+      this.logger.error(`❌ Failed to fetch business owner: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Send booking request notification to admins (business notification)
    */
   async sendBookingRequestNotification(data: BookingNotificationDto): Promise<void> {
@@ -108,8 +163,12 @@ export class NotificationCommunicationService {
     const businessId = await this.getBusinessIdFromHostelId(data.hostelId);
     console.log('📱 Converted hostelId to businessId:', data.hostelId, '->', businessId);
 
+    // Get business owner's user ID
+    const ownerUserId = await this.getBusinessOwnerId(businessId);
+    console.log('📱 Converted businessId to ownerUserId:', businessId, '->', ownerUserId);
+
     const notification: SendPushNotificationDto = {
-      receiverBusinessIds: [businessId], // Use businessId instead of hostelId
+      receiverUserIds: [ownerUserId], // Use owner's user ID instead of businessId
       title,
       message,
       type: PushNotificationTypeEnum.GENERAL, // Changed to GENERAL
