@@ -253,7 +253,7 @@ export class BookingsController {
   }
 
   @Post('multi-guest/:id/cancel')
-  @UseGuards(HostelAuthWithContextGuard)
+  @UseGuards()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking cancelled successfully' })

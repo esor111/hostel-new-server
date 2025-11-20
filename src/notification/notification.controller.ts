@@ -9,7 +9,6 @@ import { RecipientType, NotificationCategory } from './entities/notification.ent
 
 @ApiTags('Notifications')
 @Controller('notification')
-// @UseGuards(HostelAuthWithContextGuard)
 @ApiBearerAuth()
 export class NotificationController {
   constructor(
@@ -61,7 +60,7 @@ export class NotificationController {
   }
 
   @Get('my-notifications')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(HostelAuthWithContextGuard)
   @ApiOperation({
     summary: 'Get notifications for current user/business',
     description: 'Returns paginated notifications for the authenticated user or business'
@@ -97,8 +96,15 @@ export class NotificationController {
     
     // Determine if this is a user or business request
     const recipientType = user.businessId ? RecipientType.BUSINESS : RecipientType.USER;
-    const recipientId = user.businessId || user.id;
-
+    // For BUSINESS: use businessId (notifications are saved per business)
+    // For USER: use user.id (notifications are saved per user)
+    const recipientId = user.businessId ? user.businessId : user.id;
+    
+    console.log("🔍 getMyNotifications - recipientType:", recipientType);
+    console.log("🔍 getMyNotifications - recipientId:", recipientId);
+    console.log("🔍 getMyNotifications - user.businessId:", user.businessId);
+    console.log("🔍 getMyNotifications - user.id:", user.id);
+    
     return this.notificationLogService.getNotifications({
       recipientType,
       recipientId,
@@ -128,7 +134,8 @@ export class NotificationController {
   })
   async markNotificationAsSeen(@Param('id') id: string, @Req() req: any) {
     const user = req.user;
-    const recipientId = user.businessId || user.id;
+    // For BUSINESS: use businessId, For USER: use user.id
+    const recipientId = user.businessId ? user.businessId : user.id;
     
     const success = await this.notificationLogService.markAsSeen(id, recipientId);
     
@@ -156,7 +163,8 @@ export class NotificationController {
   async markAllNotificationsAsSeen(@Req() req: any) {
     const user = req.user;
     const recipientType = user.businessId ? RecipientType.BUSINESS : RecipientType.USER;
-    const recipientId = user.businessId || user.id;
+    // For BUSINESS: use businessId, For USER: use user.id
+    const recipientId = user.businessId ? user.businessId : user.id;
     
     const markedCount = await this.notificationLogService.markAllAsSeen(recipientId, recipientType);
     
