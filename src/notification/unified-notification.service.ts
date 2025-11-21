@@ -14,7 +14,7 @@ export interface NotificationPayload {
   userId: string;
   title: string;
   message: string;
-  type: 'PAYMENT' | 'BOOKING' | 'CONFIGURATION' | 'INVOICE' | 'GENERAL';
+  type: 'PAYMENT' | 'BOOKING' | 'CONFIGURATION' | 'INVOICE' | 'GENERAL' | 'ADMIN_CHARGE';
   metadata?: any;
   imageUrl?: string;
 }

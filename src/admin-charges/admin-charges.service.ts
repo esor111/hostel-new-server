@@ -74,7 +74,7 @@ export class AdminChargesService {
             userId: student.userId,
             title: 'New Charge Added',
             message: `A charge of NPR ${Number(finalCharge.amount).toLocaleString()} has been added to your account for ${finalCharge.chargeType || 'miscellaneous'}.`,
-            type: 'GENERAL',
+            type: 'ADMIN_CHARGE',
             metadata: {
               chargeId: finalCharge.id,
               amount: finalCharge.amount,
