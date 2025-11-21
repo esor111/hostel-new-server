@@ -329,7 +329,7 @@ export class HostelNotificationService {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Requested',
         senderName: userName,
-        recipientId: ownerUserId,
+        recipientId: booking.hostel.businessId,  // ✅ Send businessId, not ownerUserId
         recipientType: 'BUSINESS',
         bookingDetails: {
           bookingId: booking.id,
@@ -510,7 +510,7 @@ export class HostelNotificationService {
         fcmToken: adminFcmTokens[0],
         bookingStatus: 'Cancelled',
         senderName: userName,
-        recipientId: ownerUserId,
+        recipientId: booking.hostel.businessId,  // ✅ Send businessId, not ownerUserId
         recipientType: 'BUSINESS',
         bookingDetails: {
           bookingId: booking.id,
