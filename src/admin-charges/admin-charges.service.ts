@@ -63,6 +63,13 @@ export class AdminChargesService {
       const finalCharge = await this.adminChargeRepository.save(savedCharge);
 
       // 🔔 NEW: Send charge notification to student
+      console.log(`\n🔔 CHECKING NOTIFICATION CONDITIONS:`);
+      console.log(`   adminJwt exists: ${!!adminJwt}`);
+      console.log(`   student.userId exists: ${!!student.userId}`);
+      console.log(`   student.userId value: ${student.userId}`);
+      console.log(`   finalCharge.status: ${finalCharge.status}`);
+      console.log(`   AdminChargeStatus.APPLIED: ${AdminChargeStatus.APPLIED}`);
+      
       if (adminJwt && student.userId && finalCharge.status === AdminChargeStatus.APPLIED) {
         try {
           console.log(`💰 CHARGE NOTIFICATION START - Charge ID: ${finalCharge.id}`);
@@ -90,8 +97,14 @@ export class AdminChargesService {
           console.log(`✅ CHARGE NOTIFICATION SENT SUCCESSFULLY`);
         } catch (notifError) {
           console.log(`❌ CHARGE NOTIFICATION FAILED: ${notifError.message}`);
+          console.error(notifError);
           // Don't let notification failure cause charge creation rollback
         }
+      } else {
+        console.log(`⚠️ NOTIFICATION SKIPPED - Conditions not met`);
+        if (!adminJwt) console.log(`   ❌ No adminJwt`);
+        if (!student.userId) console.log(`   ❌ No student.userId`);
+        if (finalCharge.status !== AdminChargeStatus.APPLIED) console.log(`   ❌ Status is not APPLIED`);
       }
 
       return finalCharge;
