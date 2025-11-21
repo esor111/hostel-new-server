@@ -1167,8 +1167,14 @@ export class MultiGuestBookingService {
 
         this.logger.log(`✅ User ${userId} cancelled booking ${booking.bookingReference}`);
 
+        // 🔧 FIX: Reload booking with relations after update (manager.update() can detach relations)
+        booking = await manager.findOne(MultiGuestBooking, {
+          where: { id: booking.id },
+          relations: ['guests', 'guests.bed', 'guests.bed.room', 'hostel']
+        });
+
         // 🔔 NEW: Notify admin of booking cancellation
-        if (booking.hostel) {
+        if (booking && booking.hostel) {
           try {
             console.log(`📱 Notifying admin of booking cancellation`);
             console.log(`👤 User: ${booking.contactName} (${userId})`);

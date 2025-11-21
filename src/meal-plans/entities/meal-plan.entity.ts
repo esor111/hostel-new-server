@@ -26,7 +26,7 @@ export class MealPlan extends BaseEntity {
   @Column({ 
     type: 'enum', 
     enum: DayOfWeek 
-  })
+  }) 
   day: DayOfWeek;
 
   @Column({ type: 'varchar', length: 255 })

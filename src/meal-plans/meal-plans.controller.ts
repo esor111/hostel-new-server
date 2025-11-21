@@ -38,14 +38,17 @@ export class MealPlansController {
     private readonly hostelService: HostelService
   ) {}
 
-  @Get()
-  @UseGuards(PublicBusinessIdGuard)
-  @ApiOperation({ summary: 'Get all meal plans (Public - businessId required)' })
-  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
+  // ========================================
+  // ADMIN ENDPOINTS (Protected - Uses Token)
+  // ========================================
+
+  @Get('admin')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all meal plans (Admin - Token required)' })
   @ApiResponse({ status: 200, description: 'List of meal plans retrieved successfully' })
-  @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
-  @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
-  async getAllMealPlans(@GetHostelId() hostelId: string) {
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async getAdminAllMealPlans(@GetHostelId() hostelId: string) {
     const result = await this.mealPlansService.findAll(hostelId);
 
     return {
@@ -54,14 +57,13 @@ export class MealPlansController {
     };
   }
 
-  @Get('weekly')
-  @UseGuards(PublicBusinessIdGuard)
-  @ApiOperation({ summary: 'Get weekly meal plan (Public - businessId required)' })
-  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
+  @Get('admin/weekly')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get weekly meal plan (Admin - Token required)' })
   @ApiResponse({ status: 200, description: 'Weekly meal plan retrieved successfully' })
-  @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
-  @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
-  async getWeeklyMealPlan(@GetHostelId() hostelId: string) {
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async getAdminWeeklyMealPlan(@GetHostelId() hostelId: string) {
     const result = await this.mealPlansService.getWeeklyMealPlan(hostelId);
 
     return {
@@ -70,15 +72,14 @@ export class MealPlansController {
     };
   }
 
-  @Get('day/:day')
-  @UseGuards(PublicBusinessIdGuard)
-  @ApiOperation({ summary: 'Get meal plan for a specific day (Public - businessId required)' })
+  @Get('admin/day/:day')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get meal plan for a specific day (Admin - Token required)' })
   @ApiParam({ name: 'day', enum: DayOfWeek, description: 'Day of the week' })
-  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
   @ApiResponse({ status: 200, description: 'Meal plan for the day retrieved successfully' })
-  @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
-  @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
-  async getMealPlanByDay(
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async getAdminMealPlanByDay(
     @GetHostelId() hostelId: string,
     @Param('day') day: DayOfWeek
   ) {
@@ -90,7 +91,82 @@ export class MealPlansController {
     };
   }
 
-  @Get(':id')
+  @Get('admin/:id')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get meal plan by ID (Admin - Token required)' })
+  @ApiParam({ name: 'id', description: 'Meal plan ID' })
+  @ApiResponse({ status: 200, description: 'Meal plan retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async getAdminMealPlan(
+    @GetHostelId() hostelId: string,
+    @Param('id') id: string
+  ) {
+    const result = await this.mealPlansService.findOne(id, hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      result: result
+    };
+  }
+
+  // ========================================
+  // PUBLIC ENDPOINTS (No Token - Uses businessId)
+  // ========================================
+
+  @Get('public')
+  @UseGuards(PublicBusinessIdGuard)
+  @ApiOperation({ summary: 'Get all meal plans (Public - businessId required)' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
+  @ApiResponse({ status: 200, description: 'List of meal plans retrieved successfully' })
+  @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
+  @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
+  async getPublicAllMealPlans(@GetHostelId() hostelId: string) {
+    const result = await this.mealPlansService.findAll(hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      result: result
+    };
+  }
+
+  @Get('public/weekly')
+  @UseGuards(PublicBusinessIdGuard)
+  @ApiOperation({ summary: 'Get weekly meal plan (Public - businessId required)' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
+  @ApiResponse({ status: 200, description: 'Weekly meal plan retrieved successfully' })
+  @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
+  @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
+  async getPublicWeeklyMealPlan(@GetHostelId() hostelId: string) {
+    const result = await this.mealPlansService.getWeeklyMealPlan(hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      result: result
+    };
+  }
+
+  @Get('public/day/:day')
+  @UseGuards(PublicBusinessIdGuard)
+  @ApiOperation({ summary: 'Get meal plan for a specific day (Public - businessId required)' })
+  @ApiParam({ name: 'day', enum: DayOfWeek, description: 'Day of the week' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
+  @ApiResponse({ status: 200, description: 'Meal plan for the day retrieved successfully' })
+  @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
+  @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
+  async getPublicMealPlanByDay(
+    @GetHostelId() hostelId: string,
+    @Param('day') day: DayOfWeek
+  ) {
+    const result = await this.mealPlansService.findByDay(day, hostelId);
+
+    return {
+      status: HttpStatus.OK,
+      result: result
+    };
+  }
+
+  @Get('public/:id')
   @UseGuards(PublicBusinessIdGuard)
   @ApiOperation({ summary: 'Get meal plan by ID (Public - businessId required)' })
   @ApiParam({ name: 'id', description: 'Meal plan ID' })
@@ -98,7 +174,7 @@ export class MealPlansController {
   @ApiResponse({ status: 200, description: 'Meal plan retrieved successfully' })
   @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
   @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
-  async getMealPlan(
+  async getPublicMealPlan(
     @GetHostelId() hostelId: string,
     @Param('id') id: string
   ) {
