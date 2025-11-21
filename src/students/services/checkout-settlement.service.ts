@@ -148,7 +148,9 @@ export class CheckoutSettlementService {
       paymentId: payment.id,
       paymentType: payment.paymentType,
       amount: Number(payment.amount),
-      date: payment.paymentDate.toISOString().split('T')[0],
+      date: payment.paymentDate instanceof Date 
+        ? payment.paymentDate.toISOString().split('T')[0]
+        : new Date(payment.paymentDate).toISOString().split('T')[0],
       monthCovered: payment.monthCovered
     }));
 
