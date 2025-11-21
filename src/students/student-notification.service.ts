@@ -53,12 +53,18 @@ export class StudentNotificationService {
       console.log(`💰 Monthly fee: NPR ${configurationResult.totalMonthlyFee?.toLocaleString()}`);
       console.log(`📱 Sending configuration notification for student ${student.id}`);
       
-      // 1. Get real userId by checking student's phone number against Kaha API
-      const realUserId = await this.getRealUserId(student.phone);
-      console.log(`🔍 Real userId for phone ${student.phone}: ${realUserId}`);
+      // 1. Use student.userId directly (same as booking flow)
+      if (!student.userId) {
+        this.logger.warn(`⚠️ No userId found for student ${student.id}`);
+        console.log(`⚠️ SKIPPING NOTIFICATION SEND - No userId available for student`);
+        return;
+      }
       
-      // 2. Get student FCM token using the real userId
-      const studentFcmTokens = await this.getFcmTokens(realUserId, false);
+      const recipientUserId = student.userId;
+      console.log(`✅ Using student userId: ${recipientUserId}`);
+      
+      // 2. Get student FCM token using the userId
+      const studentFcmTokens = await this.getFcmTokens(recipientUserId, false);
       
       // 2. Get business name (hardcoded for now)
       const businessName = await this.getBusinessName(adminJwt.id);
@@ -68,7 +74,7 @@ export class StudentNotificationService {
         fcmToken: studentFcmTokens[0],
         bookingStatus: 'Confirmed', // Required field for booking endpoint
         senderName: businessName,
-        recipientId: realUserId,
+        recipientId: recipientUserId,
         recipientType: 'USER',
         bookingDetails: {
           bookingId: `config_${student.id}`, // Use student config as booking ID
@@ -92,8 +98,8 @@ export class StudentNotificationService {
       
       // 4. Check if we have FCM tokens before sending
       if (!studentFcmTokens.length) {
-        this.logger.warn(`⚠️ No FCM token found for user ${realUserId}`);
-        console.log(`⚠️ SKIPPING NOTIFICATION SEND - No FCM tokens available for userId: ${realUserId}`);
+        this.logger.warn(`⚠️ No FCM token found for user ${recipientUserId}`);
+        console.log(`⚠️ SKIPPING NOTIFICATION SEND - No FCM tokens available for userId: ${recipientUserId}`);
         return;
       }
       
@@ -223,34 +229,7 @@ export class StudentNotificationService {
     }
   }
 
-  /**
-   * Get real userId by checking phone number against Kaha API
-   * If not found, use hardcoded fallback userId
-   */
-  private async getRealUserId(phoneNumber: string): Promise<string> {
-    const fallbackUserId = 'a635c2da-6fe0-4d10-9dec-e85ddaced067';
-    
-    try {
-      console.log(`🔍 Checking phone ${phoneNumber} against Kaha API...`);
-      
-      const response = await firstValueFrom(
-        this.httpService.get(`https://dev.kaha.com.np/main/api/v3/users/check-contact/${phoneNumber}`)
-      );
-      
-      if (response.data && response.data.id) {
-        console.log(`✅ Found user: ${response.data.fullName} (${response.data.kahaId})`);
-        console.log(`   Real userId: ${response.data.id}`);
-        return response.data.id;
-      } else {
-        console.log(`⚠️ No user found for phone ${phoneNumber}, using fallback`);
-        return fallbackUserId;
-      }
-    } catch (error) {
-      console.log(`❌ Error checking phone ${phoneNumber}: ${error.message}`);
-      console.log(`   Using fallback userId: ${fallbackUserId}`);
-      return fallbackUserId;
-    }
-  }
+
 
   /**
    * Get business name (hardcoded for now)

@@ -395,11 +395,21 @@ export class BookingsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve booking request' })
   @ApiResponse({ status: 200, description: 'Booking approved successfully' })
-  async approveBookingRequest(@Param('id') id: string, @Body() approvalDto: ApproveBookingDto) {
+  async approveBookingRequest(
+    @Param('id') id: string, 
+    @Body() approvalDto: ApproveBookingDto,
+    @Request() req  // ✅ Add Request to get JWT
+  ) {
     this.logger.log(`Approving booking ${id} via unified multi-guest system`);
+    this.logger.log(`Admin user: ${req.user?.id}`);
 
-    // Use MultiGuestBookingService confirmBooking method
-    const result = await this.multiGuestBookingService.confirmBooking(id, approvalDto.processedBy || 'admin');
+    // Use MultiGuestBookingService confirmBooking method with admin JWT
+    const result = await this.multiGuestBookingService.confirmBooking(
+      id, 
+      approvalDto.processedBy || 'admin',
+      undefined,  // hostelId (optional)
+      req.user    // ✅ Pass admin JWT for notifications
+    );
 
     // Return direct response
     return {
