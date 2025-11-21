@@ -116,13 +116,20 @@ export class MealPlansController {
 
   @Get('public')
   @UseGuards(PublicBusinessIdGuard)
-  @ApiOperation({ summary: 'Get all meal plans (Public - businessId required)' })
+  @ApiOperation({ summary: 'Get meal plan(s) (Public - businessId required, id optional)' })
   @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
-  @ApiResponse({ status: 200, description: 'List of meal plans retrieved successfully' })
+  @ApiQuery({ name: 'id', required: false, description: 'Meal plan ID (optional - if provided, returns single meal plan)' })
+  @ApiResponse({ status: 200, description: 'Meal plan(s) retrieved successfully' })
   @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
   @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
-  async getPublicAllMealPlans(@GetHostelId() hostelId: string) {
-    const result = await this.mealPlansService.findAll(hostelId);
+  async getPublicAllMealPlans(
+    @GetHostelId() hostelId: string,
+    @Query('id') id?: string
+  ) {
+    // If id is provided, return single meal plan, otherwise return all
+    const result = id 
+      ? await this.mealPlansService.findOne(id, hostelId)
+      : await this.mealPlansService.findAll(hostelId);
 
     return {
       status: HttpStatus.OK,
@@ -166,25 +173,7 @@ export class MealPlansController {
     };
   }
 
-  @Get('public/:id')
-  @UseGuards(PublicBusinessIdGuard)
-  @ApiOperation({ summary: 'Get meal plan by ID (Public - businessId required)' })
-  @ApiParam({ name: 'id', description: 'Meal plan ID' })
-  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
-  @ApiResponse({ status: 200, description: 'Meal plan retrieved successfully' })
-  @ApiResponse({ status: 400, description: 'businessId query parameter is required' })
-  @ApiResponse({ status: 404, description: 'Hostel not found for the provided businessId' })
-  async getPublicMealPlan(
-    @GetHostelId() hostelId: string,
-    @Param('id') id: string
-  ) {
-    const result = await this.mealPlansService.findOne(id, hostelId);
 
-    return {
-      status: HttpStatus.OK,
-      result: result
-    };
-  }
 
   @Post()
   @UseGuards(HostelAuthWithContextGuard)
