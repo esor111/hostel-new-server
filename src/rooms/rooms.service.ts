@@ -438,13 +438,10 @@ export class RoomsService extends HostelScopedService<Room> {
       relations: [
         'building',
         'roomType',
-        'occupants',
-        'occupants.student',
         'amenities',
         'amenities.amenity',
         'layout',
-        'beds',
-        'hostel'
+        'beds'
       ]
     });
 
@@ -452,18 +449,49 @@ export class RoomsService extends HostelScopedService<Room> {
       throw new NotFoundException('Room not found');
     }
 
-    // Ensure occupancy is accurate for this room
-    await this.syncRoomOccupancy([room]);
+    // Return lightweight response (same format as /new-rooms)
+    return this.transformToLightweightPublicResponse(room);
+  }
 
-    // Merge Bed entity data into bedPositions for hybrid integration
-    if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
-      room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
-        room.layout.layoutData.bedPositions,
-        room.beds
-      );
+  /**
+   * Transform room to lightweight public response (same as /new-rooms format)
+   */
+  private transformToLightweightPublicResponse(room: Room): any {
+    // Get amenities
+    const amenities = room.amenities?.map((ra, index) => ({
+      id: (index + 1).toString(),
+      name: ra.amenity.name,
+      description: ra.amenity.description || ra.amenity.name
+    })) || [];
+
+    // Calculate availability from actual beds
+    let availableBeds = room.bedCount - room.occupancy;
+    let actualBedCount = room.bedCount;
+    
+    if (room.beds && room.beds.length > 0) {
+      actualBedCount = room.beds.length;
+      availableBeds = room.beds.filter(bed => bed.status === 'Available').length;
     }
 
-    return await this.transformToApiResponse(room);
+    return {
+      id: room.id,
+      name: room.name,
+      roomNumber: room.roomNumber,
+      type: room.roomType?.name || 'Private',
+      bedCount: actualBedCount,
+      occupancy: room.occupancy,
+      gender: room.gender,
+      monthlyRate: room.monthlyRate?.toString() || '0',
+      dailyRate: room.roomType?.baseDailyRate?.toString() || '0',
+      amenities,
+      status: room.status,
+      floor: room.building?.name || '1',
+      availableBeds,
+      description: room.description,
+      images: room.images || [],
+      hasLayout: !!room.layout,
+      hostelId: room.hostelId
+    };
   }
 
   async create(createRoomDto: any, hostelId: string) {
