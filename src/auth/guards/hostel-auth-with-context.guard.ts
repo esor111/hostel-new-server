@@ -1,7 +1,9 @@
 import { Injectable, ExecutionContext, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { HostelService } from '../../hostel/hostel.service';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 /**
  * Enhanced Hostel authentication guard that also sets up hostel context
@@ -10,12 +12,22 @@ import { HostelService } from '../../hostel/hostel.service';
 @Injectable()
 export class HostelAuthWithContextGuard extends JwtAuthGuard {
   constructor(
-    @Inject(forwardRef(() => HostelService)) private readonly hostelService: HostelService
+    @Inject(forwardRef(() => HostelService)) private readonly hostelService: HostelService,
+    private reflector: Reflector
   ) {
     super();
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Check if the route is marked as public
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    
+    if (isPublic) {
+      return true;
+    }
     // First verify the JWT token
     const canActivate = await super.canActivate(context);
     if (!canActivate) {

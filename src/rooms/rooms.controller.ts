@@ -10,6 +10,7 @@ import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-cont
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { HostelService } from '../hostel/hostel.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('rooms')
 @Controller('rooms')
@@ -94,6 +95,22 @@ async getBedsWithHostels() {
     data
   };
 }
+
+  @Public()
+  @Get('public/:id')
+  @ApiOperation({ summary: 'Get room by ID (Public - No Auth Required)' })
+  @ApiResponse({ status: 200, description: 'Room retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Room not found' })
+  async getPublicRoomById(@Param('id') id: string) {
+    console.log('🌐 getPublicRoomById - No auth required, roomId:', id);
+
+    const room = await this.roomsService.findOnePublic(id);
+
+    return {
+      status: HttpStatus.OK,
+      room: room
+    };
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get room by ID' })
