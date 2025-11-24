@@ -341,7 +341,7 @@ export class AttendanceService {
 
     // Get paginated data
     const attendanceRecords = await queryBuilder
-      .orderBy('attendance.firstCheckInTime', 'ASC')
+      .orderBy('attendance.firstCheckInTime', 'DESC')
       .skip(skip)
       .take(limit)
       .getMany();

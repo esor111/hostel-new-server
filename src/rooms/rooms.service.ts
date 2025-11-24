@@ -430,6 +430,42 @@ export class RoomsService extends HostelScopedService<Room> {
     return await this.transformToApiResponse(room);
   }
 
+  async findOnePublic(id: string) {
+    console.log('🌐 Public room lookup - No hostel filter, roomId:', id);
+
+    const room = await this.roomRepository.findOne({
+      where: { id },
+      relations: [
+        'building',
+        'roomType',
+        'occupants',
+        'occupants.student',
+        'amenities',
+        'amenities.amenity',
+        'layout',
+        'beds',
+        'hostel'
+      ]
+    });
+
+    if (!room) {
+      throw new NotFoundException('Room not found');
+    }
+
+    // Ensure occupancy is accurate for this room
+    await this.syncRoomOccupancy([room]);
+
+    // Merge Bed entity data into bedPositions for hybrid integration
+    if (room.layout?.layoutData?.bedPositions && room.beds && room.beds.length > 0) {
+      room.layout.layoutData.bedPositions = await this.bedSyncService.mergeBedDataIntoPositions(
+        room.layout.layoutData.bedPositions,
+        room.beds
+      );
+    }
+
+    return await this.transformToApiResponse(room);
+  }
+
   async create(createRoomDto: any, hostelId: string) {
     // Validate hostelId is present
     if (!hostelId) {

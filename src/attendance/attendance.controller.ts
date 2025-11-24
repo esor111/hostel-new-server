@@ -217,6 +217,28 @@ export class AttendanceController {
   }
 
   /**
+   * ADMIN: Get any student's attendance history
+   * GET /attendance/admin/student-history?studentId=xxx&dateFrom=xxx&dateTo=xxx&page=1&limit=50
+   */
+  @Get('admin/student-history')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get student attendance history (Admin)',
+    description: 'Admin can view any student\'s attendance history with statistics'
+  })
+  async getAdminStudentHistory(
+    @GetHostelId() hostelId: string,
+    @Query('studentId') studentId: string,
+    @Query() filters: AttendanceFiltersDto
+  ) {
+    if (!studentId) {
+      throw new BadRequestException('studentId is required');
+    }
+    return this.attendanceService.getMyHistory(studentId, hostelId, filters);
+  }
+
+  /**
    * Get current status - who's checked in right now
    * GET /attendance/current-status?page=1&limit=20&search=John
    */
