@@ -441,7 +441,8 @@ export class RoomsService extends HostelScopedService<Room> {
         'amenities',
         'amenities.amenity',
         'layout',
-        'beds'
+        'beds',
+        'hostel'
       ]
     });
 
@@ -490,7 +491,7 @@ export class RoomsService extends HostelScopedService<Room> {
       description: room.description,
       images: room.images || [],
       hasLayout: !!room.layout,
-      hostelId: room.hostelId
+      hostelId: room.hostel?.businessId || room.hostelId
     };
   }
 
