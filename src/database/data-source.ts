@@ -44,6 +44,7 @@ import { StudentAttendance } from '../attendance/entities/student-attendance.ent
 import { StudentCheckInOut } from '../attendance/entities/student-checkin-checkout.entity';
 
 import { Notification } from '../notification/entities/notification.entity';
+import { Expense } from '../expenses/entities/expense.entity';
 
 // Load environment variables
 config();
@@ -109,6 +110,9 @@ export const dataSourceOptions: DataSourceOptions = {
     
     // Notification entities
     Notification,
+    
+    // Expense entities
+    Expense,
   ],
   // Migrations disabled - using synchronize mode for development
   migrations: [],

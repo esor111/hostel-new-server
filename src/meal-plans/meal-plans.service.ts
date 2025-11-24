@@ -74,9 +74,15 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     return mealPlan;
   }
 
-  async findByDay(day: DayOfWeek, hostelId?: string) {
+  async findByDay(day: DayOfWeek, hostelId?: string, includeInactive: boolean = false) {
     // Build where condition conditionally
-    const whereCondition: any = { day, isActive: true };
+    const whereCondition: any = { day };
+    
+    // Only filter by isActive if we don't want to include inactive records
+    if (!includeInactive) {
+      whereCondition.isActive = true;
+    }
+    
     if (hostelId) {
       whereCondition.hostelId = hostelId;
     }
@@ -95,8 +101,8 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
       throw new Error('Hostel context is required for meal plan creation. Please ensure you are authenticated with a Business Token.');
     }
 
-    // Check if meal plan for this day already exists for this hostel
-    const existingMealPlan = await this.findByDay(createMealPlanDto.day, hostelId);
+    // Check if meal plan for this day already exists for this hostel (including inactive ones)
+    const existingMealPlan = await this.findByDay(createMealPlanDto.day, hostelId, true);
     if (existingMealPlan) {
       throw new ConflictException(`Meal plan for ${createMealPlanDto.day} already exists for this hostel`);
     }
@@ -118,7 +124,7 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
 
     // If updating the day, check for conflicts
     if (updateMealPlanDto.day && updateMealPlanDto.day !== mealPlan.day) {
-      const existingMealPlan = await this.findByDay(updateMealPlanDto.day, hostelId);
+      const existingMealPlan = await this.findByDay(updateMealPlanDto.day, hostelId, true);
       if (existingMealPlan && existingMealPlan.id !== id) {
         throw new ConflictException(`Meal plan for ${updateMealPlanDto.day} already exists for this hostel`);
       }
@@ -189,8 +195,8 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
 
     for (const dayPlan of weeklyPlanData) {
       try {
-        // Check if meal plan for this day already exists
-        const existingMealPlan = await this.findByDay(dayPlan.day, hostelId);
+        // Check if meal plan for this day already exists (including inactive ones)
+        const existingMealPlan = await this.findByDay(dayPlan.day, hostelId, true);
         
         if (existingMealPlan) {
           // Update existing meal plan
