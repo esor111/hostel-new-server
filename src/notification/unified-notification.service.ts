@@ -14,7 +14,7 @@ export interface NotificationPayload {
   userId: string;
   title: string;
   message: string;
-  type: 'PAYMENT' | 'BOOKING' | 'CONFIGURATION' | 'INVOICE' | 'GENERAL' | 'ADMIN_CHARGE';
+  type: 'PAYMENT' | 'BOOKING' | 'CONFIGURATION' | 'INVOICE' | 'GENERAL' | 'ADMIN_CHARGE' | 'BULK_MESSAGE' | 'BULK_PAYMENT' | 'BULK_INVOICE';
   metadata?: any;
   imageUrl?: string;
 }
@@ -149,27 +149,58 @@ export class UnifiedNotificationService {
       
       console.log(`📝 Final sender name: ${businessName}`);
       
-      // 3. Compose payload for express server (using booking notification format)
+      // 3. Compose payload for express server
       console.log(`\n📦 STEP 4: Composing express server payload`);
-      const expressPayload = {
-        fcmToken: userFcmTokens[0],
-        bookingStatus: 'Confirmed', // Required field for booking endpoint
-        senderName: businessName,
-        recipientId: payload.userId,
-        recipientType: 'USER',
-        bookingDetails: {
-          bookingId: `${payload.type.toLowerCase()}_${Date.now()}`, // Unique ID
-          roomName: payload.title, // Use title as room name
-          roomId: payload.type.toLowerCase(),
-          // Additional notification details
-          notificationType: payload.type,
+      
+      // Determine if this is a bulk message or booking-related notification
+      const isBulkMessage = payload.type === 'BULK_MESSAGE' || payload.type === 'GENERAL';
+      
+      let expressPayload: any;
+      let endpoint: string;
+      
+      if (isBulkMessage) {
+        // Use general notification format (no redirect to booking details)
+        expressPayload = {
+          fcmToken: userFcmTokens[0],
+          senderName: businessName,
+          recipientId: payload.userId,
+          recipientType: 'USER',
           title: payload.title,
           message: payload.message,
-          metadata: payload.metadata,
-          timestamp: new Date().toISOString(),
-          sessionId: sessionId
-        }
-      };
+          imageUrl: payload.imageUrl,
+          meta: {
+            type: 'general',
+            notificationType: payload.type,
+            metadata: payload.metadata,
+            timestamp: new Date().toISOString(),
+            sessionId: sessionId
+          }
+        };
+        endpoint = `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-general-notification`;
+        console.log(`📧 Using GENERAL notification endpoint (no redirect)`);
+      } else {
+        // Use booking notification format (redirects to booking details)
+        expressPayload = {
+          fcmToken: userFcmTokens[0],
+          bookingStatus: 'Confirmed',
+          senderName: businessName,
+          recipientId: payload.userId,
+          recipientType: 'USER',
+          bookingDetails: {
+            bookingId: `${payload.type.toLowerCase()}_${Date.now()}`,
+            roomName: payload.title,
+            roomId: payload.type.toLowerCase(),
+            notificationType: payload.type,
+            title: payload.title,
+            message: payload.message,
+            metadata: payload.metadata,
+            timestamp: new Date().toISOString(),
+            sessionId: sessionId
+          }
+        };
+        endpoint = `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`;
+        console.log(`🏨 Using BOOKING notification endpoint (redirects to booking)`);
+      }
       
       console.log(`📦 COMPLETE EXPRESS PAYLOAD:`);
       console.log(JSON.stringify(expressPayload, null, 2));
@@ -177,10 +208,10 @@ export class UnifiedNotificationService {
       
       // 4. Send to express server
       console.log(`\n🚀 STEP 5: Sending to Express server`);
-      console.log(`🌐 Express URL: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
+      console.log(`🌐 Express URL: ${endpoint}`);
       
       const startTime = Date.now();
-      await this.sendNotification(expressPayload);
+      await this.sendNotificationToEndpoint(endpoint, expressPayload);
       const endTime = Date.now();
       
       console.log(`⏱️ Notification sent in ${endTime - startTime}ms`);
@@ -330,45 +361,18 @@ export class UnifiedNotificationService {
   }
 
   /**
-   * Send notification to express server (booking endpoint)
-   * Uses booking-specific endpoint with hardcoded messages
+   * Send notification to express server endpoint
+   * Unified method that works with any endpoint
    */
-  private async sendNotification(payload: any): Promise<void> {
+  private async sendNotificationToEndpoint(endpoint: string, payload: any): Promise<void> {
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`,
-          payload
-        )
+        this.httpService.post(endpoint, payload)
       );
       
       this.logger.log(`✅ Express server response:`, response.data);
     } catch (error) {
       this.logger.error(`❌ Failed to send to express server: ${error.message}`);
-      if (error.response) {
-        this.logger.error(`   Status: ${error.response.status}`);
-        this.logger.error(`   Data:`, error.response.data);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Send general notification to express server
-   * Uses general endpoint that preserves custom title/message
-   */
-  private async sendGeneralNotification(payload: any): Promise<void> {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-general-notification`,
-          payload
-        )
-      );
-      
-      this.logger.log(`✅ Express server (general) response:`, response.data);
-    } catch (error) {
-      this.logger.error(`❌ Failed to send to express server (general): ${error.message}`);
       if (error.response) {
         this.logger.error(`   Status: ${error.response.status}`);
         this.logger.error(`   Data:`, error.response.data);
