@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Not, IsNull, MoreThan } from 'typeorm';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import { MultiGuestBooking, MultiGuestBookingStatus } from './entities/multi-guest-booking.entity';
 import { BookingGuest, GuestStatus } from './entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
@@ -102,6 +104,7 @@ export class MultiGuestBookingService {
     private businessIntegrationService: BusinessIntegrationService,
     private hostelNotificationService: HostelNotificationService,
     private unifiedNotificationService: UnifiedNotificationService,
+    private httpService: HttpService,
   ) { }
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string, userId?: string): Promise<any> {
@@ -1891,40 +1894,44 @@ export class MultiGuestBookingService {
       }
     }
 
-    // 🔧 NEW: Use guest's REAL contact info from booking_guests table
-    const studentEmail = booking.contactEmail;  // ✅ Use contact person's email (parent/guardian)
-    const studentPhone = guest.phone;  // ✅ Use real phone from booking guest
+    // Get hostel businessId for Kaha API
+    const hostel = await manager.findOne(Hostel, {
+      where: { id: booking.hostelId }
+    });
+    const businessId = hostel?.businessId;
 
-    this.logger.log(`✅ Creating student "${guest.guestName}" with contact person email: ${studentEmail}, guest phone: ${studentPhone}`);
+    // Use guest's email (fallback to contact person's email)
+    const studentEmail = guest.email || booking.contactEmail;
+    const studentPhone = guest.phone;
 
-    // Check if a student with this contact already exists
+    this.logger.log(`✅ Creating student "${guest.guestName}" with guest email: ${studentEmail}, guest phone: ${studentPhone}`);
+
+    // Check if guest phone already exists (reject if duplicate)
     const existingStudent = await manager.findOne(Student, {
-      where: [
-        { email: studentEmail },
-        { phone: studentPhone }
-      ]
+      where: { phone: studentPhone }
     });
 
     if (existingStudent) {
-      // Student already exists - reset to pending configuration for new booking
-      this.logger.log(`✅ Found existing student ${existingStudent.id} (${existingStudent.name}) - resetting to pending configuration`);
-      
-      // Reset student to pending configuration status
-      await manager.update(Student, existingStudent.id, {
-        status: StudentStatus.PENDING_CONFIGURATION,
-        isConfigured: false,
-        roomId: roomUuid || existingStudent.roomId, // Update room if provided
-        bedNumber: guest.assignedBedNumber || existingStudent.bedNumber // Update bed if provided
-      });
-      
-      // Update the guest's status to confirmed
-      guest.status = GuestStatus.CONFIRMED;
-      await manager.save(BookingGuest, guest);
-      
-      // Return updated student
-      const updatedStudent = await manager.findOne(Student, { where: { id: existingStudent.id } });
-      this.logger.log(`✅ Reset existing student to pending configuration: status=${updatedStudent?.status}, isConfigured=${updatedStudent?.isConfigured}`);
-      return updatedStudent || existingStudent;
+      throw new BadRequestException(
+        `Phone number ${studentPhone} is already registered to another student. Please use a different phone number.`
+      );
+    }
+
+    // Call find-or-create to get guest's userId from Kaha
+    let guestUserId;
+    try {
+      guestUserId = await this.getRealUserId(
+        studentPhone,
+        studentEmail,
+        guest.guestName,
+        businessId
+      );
+      this.logger.log(`✅ Got userId from Kaha for guest ${guest.guestName}: ${guestUserId}`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to create Kaha user for guest: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to create user account for guest ${guest.guestName}. Please try again or contact support.`
+      );
     }
 
   // No existing student found - create new student with REAL contact info
@@ -1938,7 +1945,8 @@ export class MultiGuestBookingService {
 
   // 🔧 DEBUG: Log all student creation parameters
   const studentData = {
-    userId: booking.userId,
+    userId: guestUserId,                    // Guest's userId from Kaha
+    contactPersonUserId: booking.userId,    // Contact person's userId
     name: validatedGuestName,
     phone: studentPhone,
     email: studentEmail,
@@ -2000,6 +2008,47 @@ export class MultiGuestBookingService {
     }
 
     return savedStudent;
+  }
+
+  /**
+   * Get or create user in Kaha system by phone number
+   * Same as StudentsService.getRealUserId()
+   */
+  private async getRealUserId(
+    phoneNumber: string,
+    email?: string,
+    name?: string,
+    businessId?: string
+  ): Promise<string> {
+    try {
+      this.logger.log(`🔍 Finding or creating Kaha user for phone ${phoneNumber}...`);
+
+      // Build query parameters for find-or-create endpoint
+      const params = new URLSearchParams();
+      if (email) params.append('email', email);
+      if (name) params.append('name', name);
+      if (businessId) params.append('businessId', businessId);
+
+      const queryString = params.toString();
+      const url = `https://dev.kaha.com.np/main/api/v3/users/find-or-create/${encodeURIComponent(phoneNumber)}${queryString ? '?' + queryString : ''}`;
+
+      this.logger.log(`🌐 Calling Kaha API: ${url}`);
+
+      const response = await firstValueFrom(
+        this.httpService.get(url)
+      );
+
+      if (response.data && response.data.id) {
+        this.logger.log(`✅ Found/Created Kaha user: ${response.data.fullName} (${response.data.kahaId})`);
+        this.logger.log(`   Real userId: ${response.data.id}`);
+        return response.data.id;
+      } else {
+        throw new BadRequestException('Failed to get or create user from Kaha API');
+      }
+    } catch (error) {
+      this.logger.error(`❌ Error finding/creating Kaha user for phone ${phoneNumber}: ${error.message}`);
+      throw new BadRequestException(`Failed to find or create user: ${error.message}`);
+    }
   }
 
   /**

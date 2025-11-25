@@ -31,6 +31,11 @@ export class Student extends BaseEntity {
   // User ID from JWT token - this creates the missing link
   @Column({ name: 'user_id', nullable: true })
   userId: string;
+
+  // Contact person's user ID (for booking-related notifications)
+  @Column({ name: 'contact_person_user_id', nullable: true })
+  contactPersonUserId: string;
+
   @Column({ length: 255 })
   name: string;
 
