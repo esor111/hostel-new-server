@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@ne
 import { NotificationService } from './notification.service';
 import { NotificationLogService } from './notification-log.service';
 import { SendToStudentsDto } from './dto/send-to-students.dto';
+import { SendToFloorsDto } from './dto/send-to-floors.dto';
+import { FloorStatsResponseDto } from './dto/floor-stats.dto';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RecipientType, NotificationCategory } from './entities/notification.entity';
@@ -57,6 +59,74 @@ export class NotificationController {
     const adminJwt = req.user; // JWT payload from auth guard
     const hostelContext = req.hostelContext; // Hostel context from guard
     return this.notificationService.sendToStudentsUnified(dto, adminJwt, hostelContext);
+  }
+
+  @Get('floors')
+  @UseGuards(HostelAuthWithContextGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get floor statistics for hostel',
+    description: 'Returns list of floors with student counts for the current hostel. Only shows floors that have active students.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Floor statistics retrieved successfully',
+    type: FloorStatsResponseDto,
+    schema: {
+      example: {
+        floors: [
+          { floor: 1, studentCount: 15, roomCount: 8 },
+          { floor: 2, studentCount: 20, roomCount: 10 },
+          { floor: 3, studentCount: 12, roomCount: 6 }
+        ],
+        totalStudents: 47
+      }
+    }
+  })
+  async getFloorStats(@Req() req: any) {
+    const hostelContext = req.hostelContext;
+    return this.notificationService.getFloorStats(hostelContext.hostelId);
+  }
+
+  @Post('send-to-floors')
+  @UseGuards(HostelAuthWithContextGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Send notification to students on specific floors',
+    description:
+      'Admin can send notifications to all active students on selected floors. ' +
+      'Automatically queries students by floor numbers and sends bulk notification.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Floor-wise notification sent successfully',
+    schema: {
+      example: {
+        success: true,
+        sent: 18,
+        failed: 0,
+        skipped: 2,
+        floors: [1, 2],
+        studentsFound: 20,
+        details: {
+          sentTo: [
+            { studentId: 'student_123', userId: 'user_abc', name: 'John Doe' },
+          ],
+          skipped: [
+            { studentId: 'student_789', reason: 'No userId found' },
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request data',
+  })
+  async sendToFloors(@Body() dto: SendToFloorsDto, @Req() req: any) {
+    const adminJwt = req.user;
+    const hostelContext = req.hostelContext;
+    return this.notificationService.sendToFloors(dto, adminJwt, hostelContext);
   }
 
   @Get('my-notifications')

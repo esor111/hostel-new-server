@@ -1,0 +1,39 @@
+### Test Floor-Wise Notification API
+
+### 1. Get Floor Statistics
+GET http://localhost:3000/notification/floors
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 2. Send Notification to Specific Floors
+POST http://localhost:3000/notification/send-to-floors
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "floors": [1, 2],
+  "title": "Floor Meeting Announcement",
+  "message": "All students on floors 1 and 2, please gather in the common area at 6 PM today for an important announcement."
+}
+
+### 3. Send to Single Floor
+POST http://localhost:3000/notification/send-to-floors
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "floors": [3],
+  "title": "Floor 3 Maintenance Notice",
+  "message": "Water supply will be temporarily shut off on floor 3 tomorrow from 10 AM to 2 PM for maintenance work."
+}
+
+### 4. Test with Image URL
+POST http://localhost:3000/notification/send-to-floors
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "floors": [1, 2, 3],
+  "title": "Event Invitation",
+  "message": "Join us for the hostel cultural night this Saturday at 7 PM!",
+  "imageUrl": "https://example.com/event-poster.jpg"
+}
