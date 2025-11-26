@@ -40,6 +40,7 @@ import { MaintenanceRequest } from '../maintenance/entities/maintenance-request.
 import { AdminCharge } from '../admin-charges/entities/admin-charge.entity';
 import { Hostel } from '../hostel/entities/hostel.entity';
 import { MealPlan } from '../meal-plans/entities/meal-plan.entity';
+import { MealTiming } from '../meal-plans/entities/meal-timing.entity';
 import { StudentAttendance } from '../attendance/entities/student-attendance.entity';
 import { StudentCheckInOut } from '../attendance/entities/student-checkin-checkout.entity';
 
@@ -103,6 +104,7 @@ export const dataSourceOptions: DataSourceOptions = {
     
     // Meal Plan entities
     MealPlan,
+    MealTiming,
     
     // Attendance entities
     StudentAttendance,

@@ -397,6 +397,19 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
       throw new Error('Hostel context is required. Please ensure you are authenticated with a Business Token.');
     }
 
+    // Clean the DTO - convert empty strings to null
+    const cleanedDto = {
+      breakfastStart: dto.breakfastStart && dto.breakfastStart.trim() !== '' ? dto.breakfastStart : null,
+      breakfastEnd: dto.breakfastEnd && dto.breakfastEnd.trim() !== '' ? dto.breakfastEnd : null,
+      lunchStart: dto.lunchStart && dto.lunchStart.trim() !== '' ? dto.lunchStart : null,
+      lunchEnd: dto.lunchEnd && dto.lunchEnd.trim() !== '' ? dto.lunchEnd : null,
+      snacksStart: dto.snacksStart && dto.snacksStart.trim() !== '' ? dto.snacksStart : null,
+      snacksEnd: dto.snacksEnd && dto.snacksEnd.trim() !== '' ? dto.snacksEnd : null,
+      dinnerStart: dto.dinnerStart && dto.dinnerStart.trim() !== '' ? dto.dinnerStart : null,
+      dinnerEnd: dto.dinnerEnd && dto.dinnerEnd.trim() !== '' ? dto.dinnerEnd : null,
+      isActive: dto.isActive !== false
+    };
+
     // Check if timing already exists for this hostel
     const existing = await this.mealTimingRepository.findOne({
       where: { hostelId }
@@ -404,10 +417,7 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
 
     if (existing) {
       // Update existing
-      await this.mealTimingRepository.update(existing.id, {
-        ...dto,
-        isActive: dto.isActive !== false
-      });
+      await this.mealTimingRepository.update(existing.id, cleanedDto);
       return {
         ...(await this.mealTimingRepository.findOne({ where: { id: existing.id } })),
         action: 'updated'
@@ -415,9 +425,8 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     } else {
       // Create new
       const timing = this.mealTimingRepository.create({
-        ...dto,
-        hostelId,
-        isActive: dto.isActive !== false
+        ...cleanedDto,
+        hostelId
       });
       const saved = await this.mealTimingRepository.save(timing);
       return {
