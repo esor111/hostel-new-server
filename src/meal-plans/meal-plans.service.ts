@@ -108,10 +108,11 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     }
 
     // Create meal plan entity with hostelId
+    // Default isActive to true - only set to false if explicitly passed as false
     const mealPlan = this.mealPlanRepository.create({
       ...createMealPlanDto,
       hostelId: hostelId,
-      isActive: createMealPlanDto.isActive ?? true
+      isActive: createMealPlanDto.isActive === false ? false : true
     });
 
     const savedMealPlan = await this.mealPlanRepository.save(mealPlan);

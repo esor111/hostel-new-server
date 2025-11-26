@@ -126,15 +126,29 @@ export class MealPlansController {
     @GetHostelId() hostelId: string,
     @Query('id') id?: string
   ) {
-    // If id is provided, return single meal plan, otherwise return all
-    const result = id 
-      ? await this.mealPlansService.findOne(id, hostelId)
-      : await this.mealPlansService.findAll(hostelId);
-
-    return {
-      status: HttpStatus.OK,
-      result: result
-    };
+    if (id) {
+      // If id is provided, return single meal plan
+      const result = await this.mealPlansService.findOne(id, hostelId);
+      return {
+        status: HttpStatus.OK,
+        result: result
+      };
+    } else {
+      // Return all meal plans with pagination format like rooms
+      const result = await this.mealPlansService.findAll(hostelId);
+      return {
+        status: HttpStatus.OK,
+        result: {
+          items: result.items,
+          pagination: {
+            page: 1,
+            limit: 20,
+            total: result.total,
+            totalPages: Math.ceil(result.total / 20)
+          }
+        }
+      };
+    }
   }
 
   @Get('public/weekly')
