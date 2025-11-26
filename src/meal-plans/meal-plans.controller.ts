@@ -140,6 +140,7 @@ export class MealPlansController {
         status: HttpStatus.OK,
         result: {
           items: result.items,
+          mealTimingConfig: result.mealTimingConfig,
           pagination: {
             page: 1,
             limit: 20,

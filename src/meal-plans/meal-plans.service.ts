@@ -197,7 +197,7 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     }
 
     // Check if meal plan for this day already exists for this hostel (including inactive ones)
-    const existingMealPlan = await this.findByDay(createMealPlanDto.day, hostelId, true);
+    const existingMealPlan = await this.findMealPlanByDay(createMealPlanDto.day, hostelId, true);
     if (existingMealPlan) {
       throw new ConflictException(`Meal plan for ${createMealPlanDto.day} already exists for this hostel`);
     }
@@ -215,13 +215,27 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     return savedMealPlan;
   }
 
+  // Internal method to find meal plan by day without timing data (for operations)
+  private async findMealPlanByDay(day: DayOfWeek, hostelId: string, includeInactive: boolean = false) {
+    const whereCondition: any = { day, hostelId };
+    
+    if (!includeInactive) {
+      whereCondition.isActive = true;
+    }
+
+    return await this.mealPlanRepository.findOne({
+      where: whereCondition,
+      relations: ['hostel']
+    });
+  }
+
   async upsertMealPlan(createMealPlanDto: CreateMealPlanDto, hostelId?: string) {
     if (!hostelId) {
       throw new Error('Hostel context is required for meal plan creation. Please ensure you are authenticated with a Business Token.');
     }
 
     // Check if meal plan for this day already exists for this hostel (including inactive ones)
-    const existingMealPlan = await this.findByDay(createMealPlanDto.day, hostelId, true);
+    const existingMealPlan = await this.findMealPlanByDay(createMealPlanDto.day, hostelId, true);
     
     if (existingMealPlan) {
       // Update existing meal plan
@@ -241,11 +255,24 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
   }
 
   async update(id: string, updateMealPlanDto: UpdateMealPlanDto, hostelId?: string) {
-    const mealPlan = await this.findOne(id, hostelId);
+    // Find meal plan without timing data for update operations
+    const whereCondition: any = { id };
+    if (hostelId) {
+      whereCondition.hostelId = hostelId;
+    }
+
+    const mealPlan = await this.mealPlanRepository.findOne({
+      where: whereCondition,
+      relations: ['hostel']
+    });
+
+    if (!mealPlan) {
+      throw new NotFoundException('Meal plan not found');
+    }
 
     // If updating the day, check for conflicts
     if (updateMealPlanDto.day && updateMealPlanDto.day !== mealPlan.day) {
-      const existingMealPlan = await this.findByDay(updateMealPlanDto.day, hostelId, true);
+      const existingMealPlan = await this.findMealPlanByDay(updateMealPlanDto.day, hostelId, true);
       if (existingMealPlan && existingMealPlan.id !== id) {
         throw new ConflictException(`Meal plan for ${updateMealPlanDto.day} already exists for this hostel`);
       }
@@ -254,6 +281,7 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     // Update the meal plan
     await this.mealPlanRepository.update(id, updateMealPlanDto);
 
+    // Return the updated meal plan with timing data
     return this.findOne(id, hostelId);
   }
 
@@ -339,7 +367,7 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     for (const dayPlan of weeklyPlanData) {
       try {
         // Check if meal plan for this day already exists (including inactive ones)
-        const existingMealPlan = await this.findByDay(dayPlan.day, hostelId, true);
+        const existingMealPlan = await this.findMealPlanByDay(dayPlan.day, hostelId, true);
         
         if (existingMealPlan) {
           // Update existing meal plan
@@ -369,12 +397,17 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
   // ========================================
 
   async getMealTiming(hostelId: string) {
+    this.logger.debug(`Getting meal timing for hostelId: ${hostelId}`);
+    
     const timing = await this.mealTimingRepository.findOne({
-      where: { hostelId, isActive: true }
+      where: { hostelId }
     });
+
+    this.logger.debug(`Meal timing found: ${JSON.stringify(timing)}`);
 
     if (!timing) {
       // Return default timing structure if not set
+      this.logger.debug(`No meal timing found for hostelId: ${hostelId}, returning defaults`);
       return {
         breakfastStart: null,
         breakfastEnd: null,
