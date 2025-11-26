@@ -46,11 +46,41 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
 
       const mealPlans = await queryBuilder.getMany();
       
-      this.logger.debug(`Found ${mealPlans.length} meal plans`);
+      // Get meal timing configuration for the hostel
+      let mealTimingConfig = null;
+      if (hostelId) {
+        mealTimingConfig = await this.getMealTiming(hostelId);
+      }
+
+      // Transform meal plans to include structured timing data
+      const itemsWithTiming = mealPlans.map(plan => ({
+        ...plan,
+        mealTimings: mealTimingConfig ? {
+          breakfast: {
+            start: mealTimingConfig.breakfastStart || null,
+            end: mealTimingConfig.breakfastEnd || null
+          },
+          lunch: {
+            start: mealTimingConfig.lunchStart || null,
+            end: mealTimingConfig.lunchEnd || null
+          },
+          snacks: {
+            start: mealTimingConfig.snacksStart || null,
+            end: mealTimingConfig.snacksEnd || null
+          },
+          dinner: {
+            start: mealTimingConfig.dinnerStart || null,
+            end: mealTimingConfig.dinnerEnd || null
+          }
+        } : null
+      }));
+      
+      this.logger.debug(`Found ${mealPlans.length} meal plans with timing data`);
 
       return {
-        items: mealPlans,
-        total: mealPlans.length
+        items: itemsWithTiming,
+        total: mealPlans.length,
+        mealTimingConfig: mealTimingConfig
       };
     } catch (error) {
       this.logger.error(`Error in findAll for hostelId ${hostelId}:`, error);
@@ -74,7 +104,36 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
       throw new NotFoundException('Meal plan not found');
     }
 
-    return mealPlan;
+    // Get meal timing configuration for the hostel
+    let mealTimingConfig = null;
+    if (hostelId || mealPlan.hostelId) {
+      mealTimingConfig = await this.getMealTiming(hostelId || mealPlan.hostelId);
+    }
+
+    // Add structured timing data to the meal plan
+    const mealPlanWithTiming = {
+      ...mealPlan,
+      mealTimings: mealTimingConfig ? {
+        breakfast: {
+          start: mealTimingConfig.breakfastStart || null,
+          end: mealTimingConfig.breakfastEnd || null
+        },
+        lunch: {
+          start: mealTimingConfig.lunchStart || null,
+          end: mealTimingConfig.lunchEnd || null
+        },
+        snacks: {
+          start: mealTimingConfig.snacksStart || null,
+          end: mealTimingConfig.snacksEnd || null
+        },
+        dinner: {
+          start: mealTimingConfig.dinnerStart || null,
+          end: mealTimingConfig.dinnerEnd || null
+        }
+      } : null
+    };
+
+    return mealPlanWithTiming;
   }
 
   async findByDay(day: DayOfWeek, hostelId?: string, includeInactive: boolean = false) {
@@ -95,7 +154,40 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
       relations: ['hostel']
     });
 
-    return mealPlan;
+    if (!mealPlan) {
+      return null;
+    }
+
+    // Get meal timing configuration for the hostel
+    let mealTimingConfig = null;
+    if (hostelId || mealPlan.hostelId) {
+      mealTimingConfig = await this.getMealTiming(hostelId || mealPlan.hostelId);
+    }
+
+    // Add structured timing data to the meal plan
+    const mealPlanWithTiming = {
+      ...mealPlan,
+      mealTimings: mealTimingConfig ? {
+        breakfast: {
+          start: mealTimingConfig.breakfastStart || null,
+          end: mealTimingConfig.breakfastEnd || null
+        },
+        lunch: {
+          start: mealTimingConfig.lunchStart || null,
+          end: mealTimingConfig.lunchEnd || null
+        },
+        snacks: {
+          start: mealTimingConfig.snacksStart || null,
+          end: mealTimingConfig.snacksEnd || null
+        },
+        dinner: {
+          start: mealTimingConfig.dinnerStart || null,
+          end: mealTimingConfig.dinnerEnd || null
+        }
+      } : null
+    };
+
+    return mealPlanWithTiming;
   }
 
   async create(createMealPlanDto: CreateMealPlanDto, hostelId?: string) {
@@ -188,6 +280,26 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
         mealPlanMap.set(plan.day, plan);
       });
 
+      // Get default timing structure for days without meal plans
+      const defaultTiming = allMealPlans.mealTimingConfig ? {
+        breakfast: {
+          start: allMealPlans.mealTimingConfig.breakfastStart || null,
+          end: allMealPlans.mealTimingConfig.breakfastEnd || null
+        },
+        lunch: {
+          start: allMealPlans.mealTimingConfig.lunchStart || null,
+          end: allMealPlans.mealTimingConfig.lunchEnd || null
+        },
+        snacks: {
+          start: allMealPlans.mealTimingConfig.snacksStart || null,
+          end: allMealPlans.mealTimingConfig.snacksEnd || null
+        },
+        dinner: {
+          start: allMealPlans.mealTimingConfig.dinnerStart || null,
+          end: allMealPlans.mealTimingConfig.dinnerEnd || null
+        }
+      } : null;
+
       // Create weekly structure with all days
       const weeklyPlan = Object.values(DayOfWeek).map(day => {
         const mealPlan = mealPlanMap.get(day);
@@ -198,7 +310,8 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
           snacks: 'Not planned',
           dinner: 'Not planned',
           notes: null,
-          isActive: false
+          isActive: false,
+          mealTimings: defaultTiming
         };
       });
 
@@ -206,7 +319,8 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
 
       return {
         weeklyPlan,
-        totalDaysPlanned: allMealPlans.items.length
+        totalDaysPlanned: allMealPlans.items.length,
+        mealTimingConfig: allMealPlans.mealTimingConfig
       };
     } catch (error) {
       this.logger.error(`Error in getWeeklyMealPlan for hostelId ${hostelId}:`, error);
