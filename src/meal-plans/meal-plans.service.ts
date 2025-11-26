@@ -2,7 +2,8 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MealPlan, DayOfWeek } from './entities/meal-plan.entity';
-import { CreateMealPlanDto, UpdateMealPlanDto } from './dto';
+import { MealTiming } from './entities/meal-timing.entity';
+import { CreateMealPlanDto, UpdateMealPlanDto, CreateMealTimingDto, UpdateMealTimingDto } from './dto';
 import { HostelScopedService } from '../common/services/hostel-scoped.service';
 
 @Injectable()
@@ -10,6 +11,8 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
   constructor(
     @InjectRepository(MealPlan)
     private mealPlanRepository: Repository<MealPlan>,
+    @InjectRepository(MealTiming)
+    private mealTimingRepository: Repository<MealTiming>,
   ) {
     super(mealPlanRepository, 'MealPlan');
   }
@@ -120,6 +123,31 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
     return savedMealPlan;
   }
 
+  async upsertMealPlan(createMealPlanDto: CreateMealPlanDto, hostelId?: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context is required for meal plan creation. Please ensure you are authenticated with a Business Token.');
+    }
+
+    // Check if meal plan for this day already exists for this hostel (including inactive ones)
+    const existingMealPlan = await this.findByDay(createMealPlanDto.day, hostelId, true);
+    
+    if (existingMealPlan) {
+      // Update existing meal plan
+      const updated = await this.update(existingMealPlan.id, createMealPlanDto, hostelId);
+      return {
+        ...updated,
+        action: 'updated'
+      };
+    } else {
+      // Create new meal plan
+      const created = await this.create(createMealPlanDto, hostelId);
+      return {
+        ...created,
+        action: 'created'
+      };
+    }
+  }
+
   async update(id: string, updateMealPlanDto: UpdateMealPlanDto, hostelId?: string) {
     const mealPlan = await this.findOne(id, hostelId);
 
@@ -220,5 +248,81 @@ export class MealPlansService extends HostelScopedService<MealPlan> {
       successCount: results.length,
       errorCount: errors.length
     };
+  }
+
+  // ========================================
+  // MEAL TIMING METHODS
+  // ========================================
+
+  async getMealTiming(hostelId: string) {
+    const timing = await this.mealTimingRepository.findOne({
+      where: { hostelId, isActive: true }
+    });
+
+    if (!timing) {
+      // Return default timing structure if not set
+      return {
+        breakfastStart: null,
+        breakfastEnd: null,
+        lunchStart: null,
+        lunchEnd: null,
+        snacksStart: null,
+        snacksEnd: null,
+        dinnerStart: null,
+        dinnerEnd: null,
+        isActive: false,
+        hostelId
+      };
+    }
+
+    return timing;
+  }
+
+  async upsertMealTiming(dto: CreateMealTimingDto, hostelId: string) {
+    if (!hostelId) {
+      throw new Error('Hostel context is required. Please ensure you are authenticated with a Business Token.');
+    }
+
+    // Check if timing already exists for this hostel
+    const existing = await this.mealTimingRepository.findOne({
+      where: { hostelId }
+    });
+
+    if (existing) {
+      // Update existing
+      await this.mealTimingRepository.update(existing.id, {
+        ...dto,
+        isActive: dto.isActive !== false
+      });
+      return {
+        ...(await this.mealTimingRepository.findOne({ where: { id: existing.id } })),
+        action: 'updated'
+      };
+    } else {
+      // Create new
+      const timing = this.mealTimingRepository.create({
+        ...dto,
+        hostelId,
+        isActive: dto.isActive !== false
+      });
+      const saved = await this.mealTimingRepository.save(timing);
+      return {
+        ...saved,
+        action: 'created'
+      };
+    }
+  }
+
+  async deleteMealTiming(hostelId: string) {
+    const timing = await this.mealTimingRepository.findOne({
+      where: { hostelId }
+    });
+
+    if (!timing) {
+      throw new NotFoundException('Meal timing not found for this hostel');
+    }
+
+    await this.mealTimingRepository.update(timing.id, { isActive: false });
+    return { message: 'Meal timing deleted successfully' };
   }
 }

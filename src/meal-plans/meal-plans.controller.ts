@@ -22,7 +22,7 @@ import {
   ApiQuery
 } from '@nestjs/swagger';
 import { MealPlansService } from './meal-plans.service';
-import { CreateMealPlanDto, UpdateMealPlanDto } from './dto';
+import { CreateMealPlanDto, UpdateMealPlanDto, CreateMealTimingDto } from './dto';
 import { DayOfWeek } from './entities/meal-plan.entity';
 import { GetHostelId, GetOptionalHostelId } from '../hostel/decorators/hostel-context.decorator';
 import { HostelAuthWithContextGuard } from '../auth/guards/hostel-auth-with-context.guard';
@@ -210,6 +210,26 @@ export class MealPlansController {
     };
   }
 
+  @Post('upsert')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create or update meal plan (upsert)' })
+  @ApiResponse({ status: 201, description: 'Meal plan created or updated successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid input data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async upsertMealPlan(
+    @GetHostelId() hostelId: string,
+    @Body() createMealPlanDto: CreateMealPlanDto
+  ) {
+    const result = await this.mealPlansService.upsertMealPlan(createMealPlanDto, hostelId);
+
+    return {
+      status: HttpStatus.CREATED,
+      result: result,
+      message: result.action === 'created' ? 'Meal plan created successfully' : 'Meal plan updated successfully'
+    };
+  }
+
   @Post('weekly')
   @UseGuards(HostelAuthWithContextGuard)
   @ApiBearerAuth()
@@ -267,6 +287,70 @@ export class MealPlansController {
   ) {
     const result = await this.mealPlansService.remove(id, hostelId);
 
+    return {
+      status: HttpStatus.OK,
+      result: result
+    };
+  }
+
+  // ========================================
+  // MEAL TIMING ENDPOINTS
+  // ========================================
+
+  @Get('timing/admin')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get meal timing (Admin - Token required)' })
+  @ApiResponse({ status: 200, description: 'Meal timing retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async getAdminMealTiming(@GetHostelId() hostelId: string) {
+    const result = await this.mealPlansService.getMealTiming(hostelId);
+    return {
+      status: HttpStatus.OK,
+      result: result
+    };
+  }
+
+  @Get('timing/public')
+  @UseGuards(PublicBusinessIdGuard)
+  @ApiOperation({ summary: 'Get meal timing (Public - businessId required)' })
+  @ApiQuery({ name: 'businessId', required: true, description: 'Business ID for hostel lookup' })
+  @ApiResponse({ status: 200, description: 'Meal timing retrieved successfully' })
+  async getPublicMealTiming(@GetHostelId() hostelId: string) {
+    const result = await this.mealPlansService.getMealTiming(hostelId);
+    return {
+      status: HttpStatus.OK,
+      result: result
+    };
+  }
+
+  @Post('timing')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create or update meal timing (upsert)' })
+  @ApiResponse({ status: 201, description: 'Meal timing saved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async upsertMealTiming(
+    @GetHostelId() hostelId: string,
+    @Body() dto: CreateMealTimingDto
+  ) {
+    const result = await this.mealPlansService.upsertMealTiming(dto, hostelId);
+    return {
+      status: HttpStatus.CREATED,
+      result: result,
+      message: result.action === 'created' ? 'Meal timing created successfully' : 'Meal timing updated successfully'
+    };
+  }
+
+  @Delete('timing')
+  @UseGuards(HostelAuthWithContextGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete meal timing' })
+  @ApiResponse({ status: 200, description: 'Meal timing deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Meal timing not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Business token required' })
+  async deleteMealTiming(@GetHostelId() hostelId: string) {
+    const result = await this.mealPlansService.deleteMealTiming(hostelId);
     return {
       status: HttpStatus.OK,
       result: result
