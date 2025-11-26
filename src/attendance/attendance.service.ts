@@ -13,6 +13,9 @@ import {
 import { Student, StudentStatus } from '../students/entities/student.entity';
 import { CheckInDto, CheckOutDto, AttendanceFiltersDto } from './dto';
 
+// Nepal timezone constant
+const NEPAL_TIMEZONE = 'Asia/Kathmandu';
+
 @Injectable()
 export class AttendanceService {
   constructor(
@@ -60,9 +63,10 @@ export class AttendanceService {
     }
 
     // Get current date and time in Nepal timezone
-    const now = new Date();
-    const todayDate = this.formatDate(now);
-    const currentTime = this.formatTime(now);
+    const now = this.getUTCDate(); // Get actual UTC time
+    const nepalNow = this.getNepalTime(); // For date/time formatting only
+    const todayDate = this.formatDate(nepalNow);
+    const currentTime = this.formatTime(nepalNow);
 
     // Check if attendance exists for today
     const existingAttendance = await this.attendanceRepository.findOne({
@@ -144,7 +148,7 @@ export class AttendanceService {
     }
 
     // Update check-out time
-    const now = new Date();
+    const now = this.getUTCDate(); // Get actual UTC time
     activeCheckIn.checkOutTime = now;
     activeCheckIn.status = CheckInOutStatus.CHECKED_OUT;
     if (notes) {
@@ -284,7 +288,7 @@ export class AttendanceService {
       .take(limit)
       .getMany();
 
-    const now = new Date();
+    const now = this.getUTCDate();
     const students = activeCheckIns.map(checkin => ({
       studentId: checkin.studentId,
       studentName: checkin.student?.name || 'Unknown',
@@ -504,9 +508,10 @@ export class AttendanceService {
    * Create initial check-in (called during student configuration)
    */
   async createInitialCheckIn(studentId: string, hostelId: string) {
-    const now = new Date();
-    const todayDate = this.formatDate(now);
-    const currentTime = this.formatTime(now);
+    const now = this.getUTCDate(); // Get actual UTC time
+    const nepalNow = this.getNepalTime(); // For date/time formatting only
+    const todayDate = this.formatDate(nepalNow);
+    const currentTime = this.formatTime(nepalNow);
 
     // Create attendance record
     await this.attendanceRepository.save({
@@ -535,6 +540,48 @@ export class AttendanceService {
       date: todayDate,
       time: currentTime
     };
+  }
+
+  /**
+   * Helper: Get current time
+   * Returns current Date - PostgreSQL with timestamptz will handle timezone correctly
+   */
+  private getUTCDate(): Date {
+    return new Date();
+  }
+
+  /**
+   * Helper: Get current time in Nepal timezone
+   * Returns a Date object that represents the current Nepal time
+   */
+  private getNepalTime(): Date {
+    const now = new Date();
+    
+    // Get Nepal time components using Intl.DateTimeFormat
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: NEPAL_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const dateParts: any = {};
+    parts.forEach(part => {
+      if (part.type !== 'literal') {
+        dateParts[part.type] = part.value;
+      }
+    });
+    
+    // Create a Date object with Nepal time components
+    // This creates a Date in UTC that represents the Nepal local time
+    return new Date(
+      `${dateParts.year}-${dateParts.month}-${dateParts.day}T${dateParts.hour}:${dateParts.minute}:${dateParts.second}.000Z`
+    );
   }
 
   /**

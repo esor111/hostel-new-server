@@ -24,10 +24,10 @@ export class StudentCheckInOut extends BaseEntity {
   @Column({ name: 'hostel_id' })
   hostelId: string;
 
-  @Column({ name: 'check_in_time', type: 'timestamp' })
+  @Column({ name: 'check_in_time', type: 'timestamptz' })
   checkInTime: Date;
 
-  @Column({ name: 'check_out_time', type: 'timestamp', nullable: true })
+  @Column({ name: 'check_out_time', type: 'timestamptz', nullable: true })
   checkOutTime: Date;
 
   @Column({
