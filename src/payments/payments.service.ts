@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentStatus, PaymentMethod, PaymentType } from './entities/payment.entity';
 import { PaymentInvoiceAllocation } from './entities/payment-invoice-allocation.entity';
-import { Student } from '../students/entities/student.entity';
+import { Student, StudentStatus } from '../students/entities/student.entity';
 import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 import { UnifiedNotificationService } from '../notification/unified-notification.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -144,6 +144,13 @@ export class PaymentsService {
 
     if (!student) {
       throw new NotFoundException(`Student with ID ${createPaymentDto.studentId} not found in this hostel`);
+    }
+
+    // 🚫 RESTRICTION: Prevent operations on inactive (checked-out) students
+    if (student.status === StudentStatus.INACTIVE) {
+      throw new BadRequestException(
+        `Cannot record payment. Student "${student.name}" has been checked out and is inactive.`
+      );
     }
 
     // Create payment entity - let TypeORM generate UUID automatically

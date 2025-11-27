@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
+import { Student, StudentStatus } from '../students/entities/student.entity';
 import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 
 @Injectable()
@@ -12,6 +13,8 @@ export class InvoicesService {
     private invoiceRepository: Repository<Invoice>,
     @InjectRepository(InvoiceItem)
     private invoiceItemRepository: Repository<InvoiceItem>,
+    @InjectRepository(Student)
+    private studentRepository: Repository<Student>,
     private ledgerService: LedgerV2Service,
   ) { }
 
@@ -102,6 +105,21 @@ export class InvoicesService {
     // Validate hostelId is present
     if (!hostelId) {
       throw new BadRequestException('Hostel context required');
+    }
+
+    // 🚫 RESTRICTION: Prevent operations on inactive (checked-out) students
+    const student = await this.studentRepository.findOne({
+      where: { id: createInvoiceDto.studentId, hostelId }
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${createInvoiceDto.studentId} not found in this hostel`);
+    }
+
+    if (student.status === StudentStatus.INACTIVE) {
+      throw new BadRequestException(
+        `Cannot create invoice. Student "${student.name}" has been checked out and is inactive.`
+      );
     }
 
     // Create invoice entity

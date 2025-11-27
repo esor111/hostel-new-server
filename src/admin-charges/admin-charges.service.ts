@@ -8,7 +8,7 @@ import { Repository } from "typeorm";
 import { AdminCharge, AdminChargeStatus } from "./entities/admin-charge.entity";
 import { CreateAdminChargeDto } from "./dto/create-admin-charge.dto";
 import { UpdateAdminChargeDto } from "./dto/update-admin-charge.dto";
-import { Student } from "../students/entities/student.entity";
+import { Student, StudentStatus } from "../students/entities/student.entity";
 import { LedgerV2Service } from "../ledger-v2/services/ledger-v2.service";
 import { UnifiedNotificationService } from "../notification/unified-notification.service";
 import { JwtPayload } from "../auth/interfaces/jwt-payload.interface";
@@ -37,6 +37,13 @@ export class AdminChargesService {
     if (!student) {
       throw new NotFoundException(
         `Student with ID ${createAdminChargeDto.studentId} not found`
+      );
+    }
+
+    // 🚫 RESTRICTION: Prevent operations on inactive (checked-out) students
+    if (student.status === StudentStatus.INACTIVE) {
+      throw new BadRequestException(
+        `Cannot add admin charge. Student "${student.name}" has been checked out and is inactive.`
       );
     }
 
@@ -231,6 +238,17 @@ export class AdminChargesService {
 
     if (adminCharge.status !== AdminChargeStatus.PENDING) {
       throw new BadRequestException("Only pending charges can be applied");
+    }
+
+    // 🚫 RESTRICTION: Prevent operations on inactive (checked-out) students
+    const student = await this.studentRepository.findOne({
+      where: { id: adminCharge.studentId }
+    });
+
+    if (student && student.status === StudentStatus.INACTIVE) {
+      throw new BadRequestException(
+        `Cannot apply charge. Student "${student.name}" has been checked out and is inactive.`
+      );
     }
 
     try {

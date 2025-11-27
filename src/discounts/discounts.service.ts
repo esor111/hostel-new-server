@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Discount, DiscountStatus } from './entities/discount.entity';
 import { DiscountType, DiscountCategory } from './entities/discount-type.entity';
-import { Student } from '../students/entities/student.entity';
+import { Student, StudentStatus } from '../students/entities/student.entity';
 import { LedgerV2Service } from '../ledger-v2/services/ledger-v2.service';
 import { UnifiedNotificationService } from '../notification/unified-notification.service';
 
@@ -129,6 +129,13 @@ export class DiscountsService {
 
     if (!student.hostelId) {
       throw new NotFoundException(`Student ${createDiscountDto.studentId} is not associated with any hostel`);
+    }
+
+    // 🚫 RESTRICTION: Prevent operations on inactive (checked-out) students
+    if (student.status === StudentStatus.INACTIVE) {
+      throw new BadRequestException(
+        `Cannot apply discount. Student "${student.name}" has been checked out and is inactive.`
+      );
     }
 
     // Find or create discount type if provided
