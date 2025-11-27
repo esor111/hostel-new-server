@@ -1,4 +1,4 @@
-import { Entity, Column, OneToOne, JoinColumn, Index } from 'typeorm';
+  import { Entity, Column, OneToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Hostel } from '../../hostel/entities/hostel.entity';
 
