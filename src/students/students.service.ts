@@ -375,6 +375,14 @@ export class StudentsService {
       totalAdvance = 0;
     }
 
+    // Calculate total monthly fee from all fee components
+    const baseFee = baseMonthlyFee?.amount || 0;
+    const laundry = laundryFee?.amount || 0;
+    const food = foodFee?.amount || 0;
+    const wifi = wifiFee?.amount || 0;
+    const maintenance = maintenanceFee?.amount || 0;
+    const totalMonthlyFee = baseFee + laundry + food + wifi + maintenance;
+
     // Return EXACT same structure as current JSON with NEW balance breakdown fields
     return {
       id: student.id,
@@ -391,11 +399,12 @@ export class StudentsService {
         relation: guardianContact.relationship
       } : null,
       address: student.address,
-      baseMonthlyFee: baseMonthlyFee?.amount || 0,
-      laundryFee: laundryFee?.amount || 0,
-      foodFee: foodFee?.amount || 0,
-      wifiFee: wifiFee?.amount || 0,              // WiFi/Utilities fee
-      maintenanceFee: maintenanceFee?.amount || 0, // Maintenance fee
+      baseMonthlyFee: baseFee,
+      laundryFee: laundry,
+      foodFee: food,
+      wifiFee: wifi,              // WiFi/Utilities fee
+      maintenanceFee: maintenance, // Maintenance fee
+      totalMonthlyFee,            // Total of all fees for easy display
       enrollmentDate: student.enrollmentDate,
       status: student.status,
       currentBalance,          // Dues (from regular invoices vs regular payments)
@@ -596,6 +605,7 @@ export class StudentsService {
       const netSettlement = refundAmount - deductionAmount;
 
       // PHASE 1: FINANCIAL INTEGRATION - Create ledger entries for checkout settlement
+      // Using 'Payment' type which is guaranteed to exist in the database enum
       if (refundAmount > 0) {
         await queryRunner.manager
           .createQueryBuilder()
@@ -604,7 +614,7 @@ export class StudentsService {
           .values({
             studentId,
             hostelId,
-            type: 'ADJUSTMENT',
+            type: 'Payment',  // Using existing enum value - refund is a credit (payment back to student)
             description: `Checkout refund - ${checkoutDetails.notes || 'Final settlement'} - ${student.name}`,
             referenceId: null,
             debit: 0,
@@ -627,7 +637,7 @@ export class StudentsService {
           .values({
             studentId,
             hostelId,
-            type: 'ADJUSTMENT',
+            type: 'Invoice',  // Using existing enum value - deduction is a debit (charge to student)
             description: `Checkout deduction - ${checkoutDetails.notes || 'Damages/utilities'} - ${student.name}`,
             referenceId: null,
             debit: deductionAmount,
@@ -2005,12 +2015,13 @@ export class StudentsService {
           notes: `Rate updated due to bed switch from ${currentBed.bedIdentifier} (${oldRate}) to ${targetBed.bedIdentifier} (${newRate})`
         });
 
-        // Create ledger adjustment entry
+        // Create ledger adjustment entry - using safe enum values
+        // Debit (charge) uses Invoice, Credit (refund) uses Payment
         await queryRunner.manager.save(LedgerEntry, {
           studentId,
           hostelId,
           date: effectiveDate,
-          type: LedgerEntryType.ADJUSTMENT,
+          type: rateDifference > 0 ? LedgerEntryType.INVOICE : LedgerEntryType.PAYMENT,
           balanceType: rateDifference > 0 ? BalanceType.DR : BalanceType.CR,
           debit: rateDifference > 0 ? Math.abs(rateDifference) : 0,
           credit: rateDifference < 0 ? Math.abs(rateDifference) : 0,

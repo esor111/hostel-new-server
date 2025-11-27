@@ -237,11 +237,14 @@ export class LedgerService {
       ? currentBalance.currentBalance + adjustmentAmount
       : currentBalance.currentBalance - adjustmentAmount;
 
+    // Use safe enum values - Debit uses Invoice, Credit uses Payment
+    const safeType = type === 'debit' ? LedgerEntryType.INVOICE : LedgerEntryType.PAYMENT;
+
     const entry = this.ledgerRepository.create({
       studentId,
       hostelId: student.hostelId, // Add the hostelId from the student
       date: new Date(),
-      type: LedgerEntryType.ADJUSTMENT,
+      type: safeType,
       description: `${type.toUpperCase()} Adjustment - ${description} - ${student.name}`,
       referenceId: null,
       debit: type === 'debit' ? adjustmentAmount : 0,

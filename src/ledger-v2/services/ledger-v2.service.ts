@@ -309,6 +309,7 @@ export class LedgerV2Service {
 
   /**
    * ✅ BULLETPROOF: Create adjustment entry
+   * Uses 'Payment' for credits and 'Invoice' for debits - these are guaranteed to exist in DB
    */
   async createAdjustmentEntry(
     adjustmentData: CreateAdjustmentV2Dto | {
@@ -338,10 +339,14 @@ export class LedgerV2Service {
       throw new NotFoundException('Student not found');
     }
 
+    // Use safe enum values that definitely exist in the database
+    // Credit adjustments use 'Payment' type, Debit adjustments use 'Invoice' type
+    const safeType = type === 'credit' ? LedgerEntryType.PAYMENT : LedgerEntryType.INVOICE;
+
     const entryData: CreateLedgerEntryV2Dto = {
       studentId,
       hostelId: hostelId || student.hostelId,
-      type: LedgerEntryType.ADJUSTMENT,
+      type: safeType,
       description: `${type.toUpperCase()} Adjustment - ${description} - ${student.name}`,
       referenceId: null,
       debit: type === 'debit' ? amount : 0,
