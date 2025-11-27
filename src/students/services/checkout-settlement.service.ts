@@ -100,17 +100,12 @@ export class CheckoutSettlementService {
       day: 'numeric' 
     });
 
-    if (checkoutDateObj <= enrollmentDateObj) {
-      throw new BadRequestException({
-        message: 'Checkout date must be after enrollment date',
-        userMessage: `Invalid checkout date. The checkout date (${checkoutDateFormatted}) must be after the student's enrollment date (${enrollmentDateFormatted}). Please select a valid checkout date.`,
-        code: 'INVALID_CHECKOUT_DATE',
-        details: {
-          enrollmentDate: enrollmentDateFormatted,
-          checkoutDate: checkoutDateFormatted,
-          studentName: student.name
-        }
-      });
+    // Allow checkout on same day or after enrollment (removed strict validation)
+    // Users should be able to checkout anytime - even same day for corrections/mistakes
+    if (checkoutDateObj < enrollmentDateObj) {
+      // Only warn in logs, don't block checkout
+      console.warn(`⚠️ Checkout date (${checkoutDateFormatted}) is before enrollment date (${enrollmentDateFormatted}) for ${student.name}`);
+      console.warn(`   - Proceeding with checkout anyway (user requested)`);
     }
 
     // Get all payments made by student
