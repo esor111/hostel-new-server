@@ -1508,14 +1508,14 @@ export class MultiGuestBookingService {
       // Try to find booking by UUID first, then by booking reference
       let booking = await manager.findOne(MultiGuestBooking, {
         where: { id: bookingId },
-        relations: ['guests']
+        relations: ['guests', 'hostel']
       });
 
       // If not found by UUID, try by booking reference
       if (!booking) {
         booking = await manager.findOne(MultiGuestBooking, {
           where: { bookingReference: bookingId },
-          relations: ['guests']
+          relations: ['guests', 'hostel']
         });
       }
 
@@ -1553,31 +1553,23 @@ export class MultiGuestBookingService {
 
       this.logger.log(`✅ Admin rejected booking ${bookingId}`);
 
-      // 🔔 NEW: Send rejection notification to user
-      if (adminJwt && booking.userId) {
+      // 🔔 Send rejection notification to user using HostelNotificationService
+      if (adminJwt && booking.userId && booking.hostel) {
         try {
-          console.log(`❌ BOOKING REJECTION NOTIFICATION START - Booking ID: ${booking.id}`);
+          console.log(`📱 Notifying user of booking rejection`);
           console.log(`👤 User: ${booking.contactName} (${booking.userId})`);
+          console.log(`🏨 Hostel: ${booking.hostel.name} (${booking.hostel.businessId})`);
           console.log(`📝 Reason: ${reason}`);
           
-          await this.unifiedNotificationService.sendToUser({
-            userId: booking.userId,
-            title: 'Booking Rejected',
-            message: `Your booking request has been rejected. Reason: ${reason}`,
-            type: 'BOOKING',
-            metadata: {
-              bookingId: booking.id,
-              bookingReference: booking.bookingReference,
-              contactName: booking.contactName,
-              rejectionReason: reason,
-              processedBy: processedBy,
-              processedDate: new Date().toISOString()
-            }
-          }, adminJwt);
+          await this.hostelNotificationService.notifyUserOfRejection(
+            booking,
+            adminJwt,
+            reason
+          );
           
-          console.log(`✅ BOOKING REJECTION NOTIFICATION SENT SUCCESSFULLY`);
+          console.log(`✅ User notification sent successfully`);
         } catch (notifError) {
-          console.log(`❌ BOOKING REJECTION NOTIFICATION FAILED: ${notifError.message}`);
+          console.warn(`⚠️ Failed to notify user: ${notifError.message}`);
           // Don't let notification failure cause rejection rollback
         }
       }

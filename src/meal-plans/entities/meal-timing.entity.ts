@@ -45,3 +45,4 @@ export class MealTiming extends BaseEntity {
   @JoinColumn({ name: 'hostelId' })
   hostel: Hostel;
 }
+//docker compose down kaha-notification

@@ -21,7 +21,7 @@ async function bootstrap() {
       'Access-Control-Request-Method',
       'Access-Control-Request-Headers',
       'x-cache-warmup'
-    ],
+    ], 
     credentials: true,
     optionsSuccessStatus: 200, // For legacy browser support
     preflightContinue: false,

@@ -192,6 +192,163 @@ export class HostelNotificationService {
   }
 
   /**
+   * Notify user when admin rejects booking
+   * Flow: Admin rejects → User receives notification
+   */
+  async notifyUserOfRejection(
+    booking: MultiGuestBooking,
+    adminJwt: JwtPayload,
+    rejectionReason: string
+  ): Promise<void> {
+    let notificationId: string | null = null;
+    const sessionId = `booking_reject_${booking.id}_${Date.now()}`;
+    
+    try {
+      console.log(`\n🔔 ===== BOOKING REJECTION NOTIFICATION START =====`);
+      console.log(`📋 Session ID: ${sessionId}`);
+      console.log(`📋 Booking ID: ${booking.id}`);
+      console.log(`📋 Booking Reference: ${booking.bookingReference}`);
+      console.log(`📋 Booking Status: ${booking.status}`);
+      console.log(`📋 Booking userId: ${booking.userId}`);
+      console.log(`📋 Contact Name: ${booking.contactName}`);
+      console.log(`📋 Contact Phone: ${booking.contactPhone}`);
+      console.log(`📋 Contact Email: ${booking.contactEmail}`);
+      console.log(`📋 Rejection Reason: ${rejectionReason}`);
+      console.log(`👤 Admin JWT:`, JSON.stringify(adminJwt, null, 2));
+      console.log(`🏨 Hostel Data:`, booking.hostel ? {
+        id: booking.hostel.id,
+        name: booking.hostel.name,
+        businessId: booking.hostel.businessId
+      } : 'No hostel data');
+      console.log(`👥 Guests Count: ${booking.guests?.length || 0}`);
+      
+      this.logger.log(`📱 Sending rejection notification for booking ${booking.id}`);
+      
+      // 🔔 Get room info first (needed for notification title)
+      console.log(`\n🏠 STEP 1: Getting room info from booking`);
+      const { roomName, roomId } = await this.getRoomInfoFromBooking(booking);
+      console.log(`🏠 Room Name: ${roomName}`);
+      console.log(`🏠 Room ID: ${roomId}`);
+      
+      // 🔔 Get business name (needed for notification message)
+      console.log(`\n🏢 STEP 2: Getting business name for admin ${adminJwt.id}`);
+      const businessName = await this.getBusinessName(adminJwt.id);
+      console.log(`🏢 Business Name: ${businessName}`);
+      
+      // 🔔 Create notification database record BEFORE sending
+      console.log(`\n📝 STEP 3: Creating notification database record`);
+      const notificationData = {
+        recipientType: RecipientType.USER,
+        recipientId: booking.userId,
+        category: NotificationCategory.BOOKING,
+        title: `Booking Rejected - ${roomName}`,
+        message: `Your booking at ${businessName} has been rejected. Reason: ${rejectionReason}`,
+        metadata: {
+          bookingId: booking.id,
+          bookingReference: booking.bookingReference,
+          bookingStatus: 'Rejected',
+          roomName: roomName,
+          roomId: roomId,
+          businessName: businessName,
+          adminId: adminJwt.id,
+          rejectionReason: rejectionReason,
+          source: 'booking_rejection',
+          sessionId: sessionId,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      console.log(`📝 Notification Data:`, JSON.stringify(notificationData, null, 2));
+      
+      const notification = await this.notificationLogService.createNotification(notificationData);
+      notificationId = notification.id;
+      
+      console.log(`✅ Notification record created with ID: ${notificationId}`);
+      
+      // 1. Get user FCM token
+      console.log(`\n🔍 STEP 4: Fetching FCM tokens for user ${booking.userId}`);
+      const userFcmTokens = await this.getFcmTokens(booking.userId, false);
+      console.log(`📱 FCM Tokens Found: ${userFcmTokens.length}`);
+      console.log(`📱 FCM Tokens:`, userFcmTokens);
+      
+      if (!userFcmTokens.length) {
+        console.log(`⚠️ NO FCM TOKENS - Notification will be skipped`);
+        this.logger.warn(`⚠️ No FCM token found for user ${booking.userId}`);
+        
+        // 🔔 Mark as skipped
+        if (notificationId) {
+          await this.notificationLogService.markAsSkipped(notificationId, 'No FCM tokens found');
+          console.log(`📝 Notification ${notificationId} marked as SKIPPED`);
+        }
+        console.log(`⚠️ ===== BOOKING REJECTION NOTIFICATION SKIPPED - NO FCM =====\n`);
+        return;
+      }
+      
+      // 2. Compose payload matching express server format
+      console.log(`\n📦 STEP 5: Composing notification payload`);
+      const payload = {
+        fcmToken: userFcmTokens[0],
+        bookingStatus: 'Rejected',
+        senderName: businessName,
+        recipientId: booking.userId,
+        recipientType: 'USER',
+        bookingDetails: {
+          bookingId: booking.id,
+          bookingReference: booking.bookingReference,
+          roomName: roomName,
+          roomId: roomId,
+          rejectionReason: rejectionReason
+        }
+      };
+      
+      console.log(`📦 COMPLETE PAYLOAD:`, JSON.stringify(payload, null, 2));
+      console.log(`📦 Payload Size: ${JSON.stringify(payload).length} bytes`);
+      
+      this.logger.log(`📤 Sending payload:`, JSON.stringify(payload, null, 2));
+      
+      // 3. Send to express server
+      console.log(`\n🚀 STEP 6: Sending to Express server`);
+      console.log(`🌐 Express URL: ${this.EXPRESS_NOTIFICATION_URL}/hostelno/api/v1/send-hostel-booking-notification`);
+      
+      const startTime = Date.now();
+      await this.sendNotification(payload);
+      const endTime = Date.now();
+      
+      console.log(`⏱️ Notification sent in ${endTime - startTime}ms`);
+      
+      // 🔔 Mark as sent on success
+      if (notificationId) {
+        await this.notificationLogService.markAsSent(notificationId, userFcmTokens[0]);
+        console.log(`📝 Notification ${notificationId} marked as SENT`);
+      }
+      
+      console.log(`✅ BOOKING REJECTION NOTIFICATION SENT SUCCESSFULLY`);
+      console.log(`🔔 ===== BOOKING REJECTION NOTIFICATION END =====\n`);
+      
+      this.logger.log(`✅ Rejection notification sent successfully`);
+    } catch (error) {
+      console.log(`\n❌ ===== BOOKING REJECTION NOTIFICATION FAILED =====`);
+      console.log(`📋 Session ID: ${sessionId}`);
+      console.log(`📋 Notification ID: ${notificationId}`);
+      console.log(`📋 Booking ID: ${booking.id}`);
+      console.log(`❌ Error Message: ${error.message}`);
+      console.log(`❌ Error Stack:`, error.stack);
+      console.log(`❌ ===== BOOKING REJECTION NOTIFICATION FAILED END =====\n`);
+      
+      this.logger.error(`❌ Failed to send rejection notification: ${error.message}`);
+      this.logger.error(error.stack);
+      
+      // 🔔 Mark as failed on error
+      if (notificationId) {
+        await this.notificationLogService.markAsFailed(notificationId, error.message);
+        console.log(`📝 Notification ${notificationId} marked as FAILED`);
+      }
+      
+      // Don't throw - notification failure shouldn't break booking flow
+    }
+  }
+
+  /**
    * Notify admin when user creates booking
    * Flow: User creates → Admin receives notification
    */
