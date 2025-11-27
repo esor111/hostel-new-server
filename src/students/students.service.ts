@@ -1445,12 +1445,15 @@ export class StudentsService {
   }
 
   /**
-   * ENHANCED BED RELEASE - Robust bed release with multiple lookup strategies
+   * UNIVERSAL BED RELEASE - Works for both manual and booking-based students
+   * Releases bed to AVAILABLE status so it can be booked again
    */
   private async releaseBedAndUpdateBooking(queryRunner: any, student: any, checkoutDetails: any) {
     try {
-      // Strategy 1: Find booking guest by student name
-      let bookingGuest = await queryRunner.manager
+      console.log(`🛏️ Starting bed release for student: ${student.name} (ID: ${student.id})`);
+
+      // STEP 1: Update booking guest status if exists (for booking-based students)
+      const bookingGuest = await queryRunner.manager
         .createQueryBuilder()
         .select('*')
         .from('booking_guests', 'guest')
@@ -1458,28 +1461,7 @@ export class StudentsService {
         .andWhere('guest.status = :status', { status: GuestStatus.CHECKED_IN })
         .getRawOne();
 
-      // Strategy 2: If name match fails, try by bed assignment
-      if (!bookingGuest && student.bedNumber) {
-        const bed = await queryRunner.manager
-          .createQueryBuilder()
-          .select('*')
-          .from('beds', 'bed')
-          .where('bed.bed_number = :bedNumber', { bedNumber: student.bedNumber })
-          .getRawOne();
-
-        if (bed) {
-          bookingGuest = await queryRunner.manager
-            .createQueryBuilder()
-            .select('*')
-            .from('booking_guests', 'guest')
-            .where('guest.bed_id = :bedId', { bedId: bed.id })
-            .andWhere('guest.status = :status', { status: GuestStatus.CHECKED_IN })
-            .getRawOne();
-        }
-      }
-
       if (bookingGuest) {
-        // Update booking guest status to CHECKED_OUT
         await queryRunner.manager
           .createQueryBuilder()
           .update('booking_guests')
@@ -1490,29 +1472,77 @@ export class StudentsService {
           })
           .where('id = :id', { id: bookingGuest.id })
           .execute();
-
-        // Use BedSyncService to properly handle bed release (outside transaction)
-        if (bookingGuest.bed_id) {
-          // We'll call this after transaction commits
-          setTimeout(async () => {
-            try {
-              await this.bedSyncService.handleBookingCancellation(
-                [bookingGuest.bed_id],
-                `Student checkout: ${student.name} - ${checkoutDetails.notes || 'Regular checkout'}`
-              );
-              console.log(` Bed ${bookingGuest.bed_id} freed up for student ${student.name} using BedSyncService`);
-            } catch (error) {
-              console.error(' Error in BedSyncService:', error);
-            }
-          }, 1000);
-        }
-
-        console.log(` Updated booking guest ${bookingGuest.id} to CHECKED_OUT status`);
-      } else {
-        console.warn(` No booking guest found for student ${student.name} during checkout`);
+        console.log(`✅ Updated booking guest ${bookingGuest.id} to CHECKED_OUT`);
       }
+
+      // STEP 2: Find bed directly by currentOccupantId (works for BOTH manual and booking students)
+      let bed = await queryRunner.manager
+        .createQueryBuilder()
+        .select('*')
+        .from('beds', 'bed')
+        .where('bed.current_occupant_id = :studentId', { studentId: student.id })
+        .getRawOne();
+
+      // Fallback: Try by student name if ID lookup fails
+      if (!bed) {
+        bed = await queryRunner.manager
+          .createQueryBuilder()
+          .select('*')
+          .from('beds', 'bed')
+          .where('bed.current_occupant_name = :name', { name: student.name })
+          .getRawOne();
+        if (bed) {
+          console.log(`🔍 Found bed by name fallback: ${bed.bed_identifier}`);
+        }
+      }
+
+      // STEP 3: Release the bed (same logic as handleBookingCancellation)
+      if (bed) {
+        const oldStatus = bed.status;
+        
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update('beds')
+          .set({
+            status: BedStatus.AVAILABLE,
+            current_occupant_id: null,
+            current_occupant_name: null,
+            occupied_since: null,
+            notes: `Released: Student checkout - ${student.name} - ${checkoutDetails.notes || 'Regular checkout'}`
+          })
+          .where('id = :id', { id: bed.id })
+          .execute();
+
+        console.log(`✅ Bed ${bed.bed_identifier} released: ${oldStatus} → AVAILABLE`);
+        console.log(`   - Student: ${student.name}`);
+        console.log(`   - Bed is now available for new bookings`);
+
+        // Update room occupancy count
+        if (bed.room_id) {
+          const occupiedCount = await queryRunner.manager
+            .createQueryBuilder()
+            .select('COUNT(*)', 'count')
+            .from('beds', 'bed')
+            .where('bed.room_id = :roomId', { roomId: bed.room_id })
+            .andWhere('bed.status = :status', { status: BedStatus.OCCUPIED })
+            .getRawOne();
+
+          await queryRunner.manager
+            .createQueryBuilder()
+            .update('rooms')
+            .set({ occupancy: parseInt(occupiedCount?.count || '0') })
+            .where('id = :id', { id: bed.room_id })
+            .execute();
+          
+          console.log(`📊 Room occupancy updated`);
+        }
+      } else {
+        console.warn(`⚠️ No bed found for student ${student.name} (ID: ${student.id})`);
+        console.warn(`   - This student may not have been assigned to a bed`);
+      }
+
     } catch (error) {
-      console.error(' Error updating bed availability during checkout:', error);
+      console.error('❌ Error releasing bed during checkout:', error);
       // Don't fail the entire checkout process, but log the error
     }
   }
