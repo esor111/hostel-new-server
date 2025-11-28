@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { getExternalApiConfig, logApiConfig } from '../config/environment.config';
 import { 
   SendPushNotificationDto, 
   BookingNotificationDto 
@@ -17,17 +18,18 @@ import { HostelService } from '../hostel/hostel.service';
 export class NotificationCommunicationService {
   private readonly logger = new Logger(NotificationCommunicationService.name);
   private readonly notificationServiceUrl: string;
+  private readonly kahaMainApiUrl: string;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly hostelService: HostelService,
   ) {
-    // Get notification service URL from environment or use default
-    this.notificationServiceUrl = this.configService.get<string>(
-      'NOTIFICATION_SERVICE_URL',
-      'https://dev.kaha.com.np/notifications/api/v3'
-    );
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.notificationServiceUrl = apiConfig.kahaNotificationUrl;
+    this.kahaMainApiUrl = apiConfig.kahaMainApiUrl;
+    logApiConfig('NotificationCommunicationService', apiConfig);
   }
 
   /**
@@ -97,7 +99,7 @@ export class NotificationCommunicationService {
    * @returns Owner's user ID
    */
   private async getBusinessOwnerId(businessId: string): Promise<string> {
-    const url = `https://dev.kaha.com.np/main/api/v3/businesses/owner?businessId=${businessId}`;
+    const url = `${this.kahaMainApiUrl}/businesses/owner?businessId=${businessId}`;
     
     try {
       console.log(`\n🔍 ===== FETCHING BUSINESS OWNER =====`);

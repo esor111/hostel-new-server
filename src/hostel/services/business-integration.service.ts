@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { getExternalApiConfig, logApiConfig } from '../../config/environment.config';
 
 export interface BusinessData {
   id: string;
@@ -21,7 +22,10 @@ export class BusinessIntegrationService {
   private readonly kahaMainUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.kahaMainUrl = this.configService.get('KAHA_MAIN_URL', 'https://dev.kaha.com.np');
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.kahaMainUrl = apiConfig.expressNotificationUrl;
+    logApiConfig('BusinessIntegrationService', apiConfig);
   }
 
   /**

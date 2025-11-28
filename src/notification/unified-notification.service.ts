@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { getExternalApiConfig, logApiConfig } from '../config/environment.config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Student } from '../students/entities/student.entity';
@@ -39,6 +40,7 @@ export class UnifiedNotificationService {
   // Notification servers
   private readonly KAHA_NOTIFICATION_URL: string;
   private readonly EXPRESS_NOTIFICATION_URL: string;
+  private readonly KAHA_MAIN_API_URL: string;
 
   constructor(
     private readonly httpService: HttpService,
@@ -48,19 +50,12 @@ export class UnifiedNotificationService {
     private readonly hostelService: HostelService,
     private readonly notificationLogService: NotificationLogService,
   ) {
-    // Get URLs from environment or use defaults
-    this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
-      'KAHA_NOTIFICATION_URL',
-      'https://dev.kaha.com.np/notifications'
-    );
-    this.EXPRESS_NOTIFICATION_URL = this.configService.get<string>(
-      'EXPRESS_NOTIFICATION_URL',
-      'https://dev.kaha.com.np'
-    );
-    
-    this.logger.log(`🔔 Unified Notification Service initialized`);
-    this.logger.log(`   Kaha Notification: ${this.KAHA_NOTIFICATION_URL}`);
-    this.logger.log(`   Express Notification: ${this.EXPRESS_NOTIFICATION_URL}`);
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.KAHA_NOTIFICATION_URL = apiConfig.kahaNotificationUrl;
+    this.EXPRESS_NOTIFICATION_URL = apiConfig.expressNotificationUrl;
+    this.KAHA_MAIN_API_URL = apiConfig.kahaMainApiUrl;
+    logApiConfig('UnifiedNotificationService', apiConfig);
   }
 
   /**
@@ -470,7 +465,7 @@ export class UnifiedNotificationService {
       console.log(`🔍 Checking phone ${phoneNumber} against Kaha API...`);
       
       const response = await firstValueFrom(
-        this.httpService.get(`https://dev.kaha.com.np/main/api/v3/users/check-contact/${phoneNumber}`)
+        this.httpService.get(`${this.KAHA_MAIN_API_URL}/users/check-contact/${phoneNumber}`)
       );
       
       if (response.data && response.data.id) {

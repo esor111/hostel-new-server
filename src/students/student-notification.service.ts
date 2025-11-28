@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Student } from './entities/student.entity';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { getExternalApiConfig, logApiConfig } from '../config/environment.config';
 
 /**
  * Service to handle student-related notifications
@@ -21,19 +22,11 @@ export class StudentNotificationService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    // Get URLs from environment or use defaults
-    this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
-      'https://dev.kaha.com.np/notifications',
-      'https://dev.kaha.com.np/notifications'
-    );
-    this.EXPRESS_NOTIFICATION_URL = this.configService.get<string>(
-      'EXPRESS_NOTIFICATION_URL',
-      'https://dev.kaha.com.np'
-    );
-    
-    this.logger.log(`📱 Student Notification service initialized`);
-    this.logger.log(`   Kaha Notification: ${this.KAHA_NOTIFICATION_URL}`);
-    this.logger.log(`   Express Notification: ${this.EXPRESS_NOTIFICATION_URL}`);
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.KAHA_NOTIFICATION_URL = apiConfig.kahaNotificationUrl;
+    this.EXPRESS_NOTIFICATION_URL = apiConfig.expressNotificationUrl;
+    logApiConfig('StudentNotificationService', apiConfig);
   }
 
   /**
@@ -80,6 +73,10 @@ export class StudentNotificationService {
           bookingId: `config_${student.id}`, // Use student config as booking ID
           roomName: student.room ? (student.room.name || student.room.roomNumber || 'Your Room') : 'Your Room',
           roomId: student.roomId || student.id,
+          // Custom notification type and message for configuration
+          notificationType: 'CONFIGURATION',
+          title: '🏠 Room Setup Complete',
+          message: `Your room and billing has been configured at ${businessName}`,
           // Additional configuration details
           studentId: student.id,
           studentName: student.name,
@@ -179,7 +176,7 @@ export class StudentNotificationService {
    * @param isBusiness - true if admin/business token, false if user token
    */
   private async getFcmTokens(id: string, isBusiness: boolean): Promise<string[]> {
-    const endpoint = 'https://dev.kaha.com.np/notifications/api/v3/notification-devices/tokens';
+    const endpoint = `${this.KAHA_NOTIFICATION_URL}/notification-devices/tokens`;
     const params = { [isBusiness ? 'businessIds' : 'userIds']: id };
 
     try {

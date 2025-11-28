@@ -6,6 +6,7 @@ import { MultiGuestBooking } from './entities/multi-guest-booking.entity';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { NotificationLogService } from '../notification/notification-log.service';
 import { RecipientType, NotificationCategory } from '../notification/entities/notification.entity';
+import { getExternalApiConfig, logApiConfig } from '../config/environment.config';
 
 /**
  * Service to handle hostel booking notifications
@@ -18,25 +19,19 @@ export class HostelNotificationService {
   // Notification servers
   private readonly KAHA_NOTIFICATION_URL: string;
   private readonly EXPRESS_NOTIFICATION_URL: string;
+  private readonly KAHA_MAIN_API_URL: string;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly notificationLogService: NotificationLogService,
   ) {
-    // Get URLs from environment or use defaultsa
-    this.KAHA_NOTIFICATION_URL = this.configService.get<string>(
-      'KAHA_NOTIFICATION_URL',
-      'http://localhost:3000'
-    );
-    this.EXPRESS_NOTIFICATION_URL = this.configService.get<string>(
-      'EXPRESS_NOTIFICATION_URL',
-      'https://dev.kaha.com.np'
-    );
-    
-    this.logger.log(`📱 Notification service initialized`);
-    this.logger.log(`   Kaha Notification: ${this.KAHA_NOTIFICATION_URL}`);
-    this.logger.log(`   Express Notification: ${this.EXPRESS_NOTIFICATION_URL}`);
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.KAHA_NOTIFICATION_URL = apiConfig.kahaNotificationUrl;
+    this.EXPRESS_NOTIFICATION_URL = apiConfig.expressNotificationUrl;
+    this.KAHA_MAIN_API_URL = apiConfig.kahaMainApiUrl;
+    logApiConfig('HostelNotificationService', apiConfig);
   }
 
   /**
@@ -738,7 +733,7 @@ export class HostelNotificationService {
    * @param isBusiness - true if admin/business token, false if user token
    */
   private async getFcmTokens(id: string, isBusiness: boolean): Promise<string[]> {
-    const endpoint = 'https://dev.kaha.com.np/notifications/api/v3/notification-devices/tokens';
+    const endpoint = `${this.KAHA_NOTIFICATION_URL}/notification-devices/tokens`;
     const params = { [isBusiness ? 'businessIds' : 'userIds']: id };
 
     try {
@@ -879,7 +874,7 @@ export class HostelNotificationService {
    * @returns Owner's user ID
    */
   private async getBusinessOwnerId(businessId: string): Promise<string> {
-    const url = `https://dev.kaha.com.np/main/api/v3/businesses/owner?businessId=${businessId}`;
+    const url = `${this.KAHA_MAIN_API_URL}/businesses/owner?businessId=${businessId}`;
     
     try {
       console.log(`\n🔍 ===== FETCHING BUSINESS OWNER =====`);

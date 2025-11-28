@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { getExternalApiConfig, logApiConfig } from '../config/environment.config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryRunner, DataSource } from 'typeorm';
 import { Student, StudentStatus } from './entities/student.entity';
@@ -31,6 +33,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 @Injectable()
 export class StudentsService { 
   private readonly logger = new Logger(StudentsService.name);
+  private readonly kahaMainApiUrl: string;
 
   constructor(
     @InjectRepository(Student)
@@ -62,8 +65,12 @@ export class StudentsService {
     private studentNotificationService: StudentNotificationService,
     private dataSource: DataSource,
     private httpService: HttpService,
+    private configService: ConfigService,
   ) {
-    // super(studentRepository, 'Student'); 
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.kahaMainApiUrl = apiConfig.kahaMainApiUrl;
+    logApiConfig('StudentsService', apiConfig);
   }
 
   async findAll(filters: any = {}, hostelId: string) {
@@ -2594,7 +2601,7 @@ export class StudentsService {
       if (businessId) params.append('businessId', businessId);
       
       const queryString = params.toString();
-      const url = `https://dev.kaha.com.np/main/api/v3/users/find-or-create/${encodeURIComponent(phoneNumber)}${queryString ? '?' + queryString : ''}`;
+      const url = `${this.kahaMainApiUrl}/users/find-or-create/${encodeURIComponent(phoneNumber)}${queryString ? '?' + queryString : ''}`;
       
       console.log(`🌐 API URL: ${url}`);
       
@@ -2639,7 +2646,7 @@ export class StudentsService {
     try {
       // Step 1: Fetch user data from Kaha API using userId from JWT
       // Pass userIds twice to create an array (Kaha API requirement)
-      const kahaApiUrl = `https://dev.kaha.com.np/main/api/v3/users/filter-user-by-ids?userIds=${user.id}&userIds=${user.id}`;
+      const kahaApiUrl = `${this.kahaMainApiUrl}/users/filter-user-by-ids?userIds=${user.id}&userIds=${user.id}`;
       console.log('🌐 SERVICE: Fetching user data from Kaha API:', kahaApiUrl);
       this.logger.log(`Fetching user data from Kaha API: ${kahaApiUrl}`);
 

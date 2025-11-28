@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { getExternalApiConfig, logApiConfig } from '../../config/environment.config';
 
 export interface KahaUserResponse {
   id: string;
@@ -29,10 +30,10 @@ export class ContactPersonService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.kahaApiBaseUrl = this.configService.get<string>(
-      'KAHA_API_BASE_URL',
-      'https://dev.kaha.com.np/main/api/v3'
-    );
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.kahaApiBaseUrl = apiConfig.kahaMainApiUrl;
+    logApiConfig('ContactPersonService', apiConfig);
   }
 
   /**

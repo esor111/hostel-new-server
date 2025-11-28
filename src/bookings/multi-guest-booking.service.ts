@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Not, IsNull, MoreThan } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { getExternalApiConfig, logApiConfig } from '../config/environment.config';
 import { MultiGuestBooking, MultiGuestBookingStatus } from './entities/multi-guest-booking.entity';
 import { BookingGuest, GuestStatus } from './entities/booking-guest.entity';
 import { Bed, BedStatus } from '../rooms/entities/bed.entity';
@@ -84,6 +85,7 @@ export interface CancellationResult {
 @Injectable()
 export class MultiGuestBookingService {
   private readonly logger = new Logger(MultiGuestBookingService.name);
+  private readonly kahaMainApiUrl: string;
 
   constructor(
     @InjectRepository(MultiGuestBooking)
@@ -105,7 +107,12 @@ export class MultiGuestBookingService {
     private hostelNotificationService: HostelNotificationService,
     private unifiedNotificationService: UnifiedNotificationService,
     private httpService: HttpService,
-  ) { }
+  ) {
+    // Get URLs from centralized config
+    const apiConfig = getExternalApiConfig(this.configService);
+    this.kahaMainApiUrl = apiConfig.kahaMainApiUrl;
+    logApiConfig('MultiGuestBookingService', apiConfig);
+  }
 
   async createMultiGuestBooking(createDto: CreateMultiGuestBookingDto, hostelId?: string, userId?: string): Promise<any> {
     // Extract data from the nested structure
@@ -2022,7 +2029,7 @@ export class MultiGuestBookingService {
       if (businessId) params.append('businessId', businessId);
 
       const queryString = params.toString();
-      const url = `https://dev.kaha.com.np/main/api/v3/users/find-or-create/${encodeURIComponent(phoneNumber)}${queryString ? '?' + queryString : ''}`;
+      const url = `${this.kahaMainApiUrl}/users/find-or-create/${encodeURIComponent(phoneNumber)}${queryString ? '?' + queryString : ''}`;
 
       this.logger.log(`🌐 Calling Kaha API: ${url}`);
 
