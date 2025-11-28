@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 // 🔧 ENVIRONMENT CONFIGURATION
 // ============================================
 // This file centralizes all external API URLs
-// Change CURRENT_ENVIRONMENT to switch between:
+// Set APP_ENVIRONMENT in .env to switch between:
 // - 'development' → dev.kaha.com.np
 // - 'production'  → api.kaha.com.np
 // ============================================
@@ -12,9 +12,9 @@ import { ConfigService } from '@nestjs/config';
 export type Environment = 'development' | 'production';
 
 // ============================================
-// 🎯 SET YOUR ENVIRONMENT HERE
+// 🎯 DEFAULT ENVIRONMENT (can override in .env)
 // ============================================
-export const CURRENT_ENVIRONMENT: Environment = 'development';
+const DEFAULT_ENVIRONMENT: Environment = 'development';
 
 // ============================================
 // URL Configuration by Environment
@@ -49,18 +49,20 @@ export interface ExternalApiConfig {
 // ============================================
 // Get External API Configuration
 // ============================================
-// Priority: .env file > CURRENT_ENVIRONMENT setting
+// Priority: Individual URL in .env > APP_ENVIRONMENT > DEFAULT_ENVIRONMENT
 // ============================================
 export const getExternalApiConfig = (configService?: ConfigService): ExternalApiConfig => {
-  const urls = ENV_URLS[CURRENT_ENVIRONMENT];
+  // Get environment from .env or use default
+  const currentEnv: Environment = configService?.get<Environment>('APP_ENVIRONMENT') || DEFAULT_ENVIRONMENT;
+  const urls = ENV_URLS[currentEnv] || ENV_URLS[DEFAULT_ENVIRONMENT];
   
-  // If ConfigService provided, allow .env to override
+  // If ConfigService provided, allow individual URLs to override
   if (configService) {
     return {
       kahaMainApiUrl: configService.get<string>('KAHA_MAIN_API_URL') || urls.kahaMainApi,
       kahaNotificationUrl: configService.get<string>('KAHA_NOTIFICATION_URL') || urls.kahaNotificationApi,
       expressNotificationUrl: configService.get<string>('EXPRESS_NOTIFICATION_URL') || urls.expressNotificationUrl,
-      environment: CURRENT_ENVIRONMENT,
+      environment: currentEnv,
     };
   }
   
@@ -69,7 +71,7 @@ export const getExternalApiConfig = (configService?: ConfigService): ExternalApi
     kahaMainApiUrl: urls.kahaMainApi,
     kahaNotificationUrl: urls.kahaNotificationApi,
     expressNotificationUrl: urls.expressNotificationUrl,
-    environment: CURRENT_ENVIRONMENT,
+    environment: currentEnv,
   };
 };
 
