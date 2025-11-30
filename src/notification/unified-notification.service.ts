@@ -328,9 +328,11 @@ export class UnifiedNotificationService {
   /**
    * Get FCM token from kaha-notification server
    * Same as existing implementation
+   * 
+   * NOTE: KAHA_NOTIFICATION_URL already includes /api/v3, so we don't add it again
    */
   private async getFcmTokens(id: string, isBusiness: boolean): Promise<string[]> {
-    const endpoint = `${this.KAHA_NOTIFICATION_URL}/api/v3/notification-devices/tokens`;
+    const endpoint = `${this.KAHA_NOTIFICATION_URL}/notification-devices/tokens`;
     const params = { [isBusiness ? 'businessIds' : 'userIds']: id };
 
     try {

@@ -394,6 +394,7 @@ export class StudentsService {
     return {
       id: student.id,
       userId: student.userId, // Include userId for notifications
+      contactPersonUserId: student.contactPersonUserId, // Contact person's userId for booking-based notifications
       name: student.name,
       phone: student.phone,
       email: student.email,
@@ -1006,7 +1007,7 @@ export class StudentsService {
     console.log(`🔧 AdminJwt received:`, adminJwt ? { id: adminJwt.id, businessId: adminJwt.businessId } : 'NULL');
     
     const student = await this.findOne(studentId, hostelId);
-    console.log(`🔧 Student found:`, { id: student.id, name: student.name, userId: student.userId });
+    console.log(`🔧 Student found:`, { id: student.id, name: student.name, userId: student.userId, contactPersonUserId: student.contactPersonUserId });
 
     // PROTECTION: Prevent re-configuration if student is already configured
     if (student.isConfigured) {

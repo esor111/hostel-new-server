@@ -32,6 +32,10 @@ export class StudentNotificationService {
   /**
    * Notify student when admin completes their configuration
    * Flow: Admin configures student → Student receives notification
+   * 
+   * IMPORTANT: For booking-based students, we use contactPersonUserId (the person who made the booking)
+   * because they have FCM token registered. The student's own userId (from Kaha API) may not have
+   * FCM token if they haven't logged into the mobile app yet.
    */
   async notifyStudentOfConfiguration(
     student: Student,
@@ -41,20 +45,25 @@ export class StudentNotificationService {
     try {
       console.log(`🔔 CONFIGURATION NOTIFICATION START - Student ID: ${student.id}`);
       console.log(`📋 Student userId: ${student.userId}`);
+      console.log(`📋 Student contactPersonUserId: ${(student as any).contactPersonUserId}`);
       console.log(`👨‍🎓 Student name: ${student.name}`);
       console.log(`👤 Admin JWT ID: ${adminJwt.id}`);
       console.log(`💰 Monthly fee: NPR ${configurationResult.totalMonthlyFee?.toLocaleString()}`);
       console.log(`📱 Sending configuration notification for student ${student.id}`);
       
-      // 1. Use student.userId directly (same as booking flow)
-      if (!student.userId) {
-        this.logger.warn(`⚠️ No userId found for student ${student.id}`);
+      // 1. Use contactPersonUserId if available (booking-based students), fallback to userId
+      // contactPersonUserId has FCM token because they logged into the app to make the booking
+      // student.userId may not have FCM token if the guest hasn't logged in yet
+      const contactPersonUserId = (student as any).contactPersonUserId;
+      const recipientUserId = contactPersonUserId || student.userId;
+      
+      if (!recipientUserId) {
+        this.logger.warn(`⚠️ No userId or contactPersonUserId found for student ${student.id}`);
         console.log(`⚠️ SKIPPING NOTIFICATION SEND - No userId available for student`);
         return;
       }
       
-      const recipientUserId = student.userId;
-      console.log(`✅ Using student userId: ${recipientUserId}`);
+      console.log(`✅ Using recipientUserId: ${recipientUserId} (contactPersonUserId: ${contactPersonUserId ? 'YES' : 'NO'}, studentUserId: ${student.userId})`);
       
       // 2. Get student FCM token using the userId
       const studentFcmTokens = await this.getFcmTokens(recipientUserId, false);
