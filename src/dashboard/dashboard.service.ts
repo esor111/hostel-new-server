@@ -205,7 +205,7 @@ export class DashboardService {
   }
 
   /**
-   * Get today's attendance counters (check-ins and check-outs)
+   * Get student status counters (in hostel vs outside)
    */
   async getTodayAttendanceCounters(hostelId: string) {
     // Validate hostelId is present
@@ -213,40 +213,17 @@ export class DashboardService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
-    // Get today's date in YYYY-MM-DD format
-    const today = new Date();
-    const todayString = today.toISOString().split('T')[0];
-
-    // Get today's attendance (students who checked in today)
-    const todayAttendance = await this.attendanceRepository.count({
-      where: {
-        hostelId,
-        date: todayString
+    // Get total configured students in hostel
+    const totalStudents = await this.studentRepository.count({
+      where: { 
+        hostelId, 
+        isConfigured: true,
+        status: StudentStatus.ACTIVE
       }
     });
 
-    // Get today's check-ins (total check-in events today)
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
-    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 0, 0, 0);
-
-    const todayCheckIns = await this.checkInOutRepository
-      .createQueryBuilder('checkin')
-      .where('checkin.hostelId = :hostelId', { hostelId })
-      .andWhere('checkin.checkInTime >= :startOfDay', { startOfDay })
-      .andWhere('checkin.checkInTime < :endOfDay', { endOfDay })
-      .getCount();
-
-    // Get today's check-outs (total check-out events today)
-    const todayCheckOuts = await this.checkInOutRepository
-      .createQueryBuilder('checkout')
-      .where('checkout.hostelId = :hostelId', { hostelId })
-      .andWhere('checkout.status = :status', { status: CheckInOutStatus.CHECKED_OUT })
-      .andWhere('checkout.checkOutTime >= :startOfDay', { startOfDay })
-      .andWhere('checkout.checkOutTime < :endOfDay', { endOfDay })
-      .getCount();
-
-    // Get currently checked in students
-    const currentlyCheckedIn = await this.checkInOutRepository.count({
+    // Get currently checked in students (in hostel)
+    const inHostel = await this.checkInOutRepository.count({
       where: {
         hostelId,
         status: CheckInOutStatus.CHECKED_IN,
@@ -254,11 +231,13 @@ export class DashboardService {
       }
     });
 
+    // Calculate students outside (total - in hostel)
+    const outside = totalStudents - inHostel;
+
     return {
-      todayAttendance,
-      checkIn: todayCheckIns,
-      checkOut: todayCheckOuts,
-      currentlyCheckedIn
+      inHostel,
+      outside: outside >= 0 ? outside : 0,
+      totalStudents
     };
   }
 

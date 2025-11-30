@@ -19,7 +19,7 @@ async function bootstrap() {
       'Origin',
       'X-Requested-With',
       'Access-Control-Request-Method',
-      'Access-Control-Request-Headers',
+      'Access-Control-R equest-Headers',
       'x-cache-warmup'
     ], 
     credentials: true,
