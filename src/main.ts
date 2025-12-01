@@ -9,13 +9,13 @@ async function bootstrap() {
   });
 
   // Enhanced CORS configuration for all origins
-  app.enableCors({
+  app.enableCors({  
     origin: true, // Allow all origins
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',
-      'Accept',
+      'Accept',               
       'Origin',
       'X-Requested-With',
       'Access-Control-Request-Method',
