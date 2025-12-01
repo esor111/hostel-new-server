@@ -253,12 +253,22 @@ export class BookingsController {
   }
 
   @Post('multi-guest/:id/cancel')
-  @UseGuards()
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel multi-guest booking' })
   @ApiResponse({ status: 200, description: 'Multi-guest booking cancelled successfully' })
-  async cancelMultiGuestBooking(@Param('id') id: string, @Body() cancelDto: CancelBookingDto) {
-    const result = await this.multiGuestBookingService.cancelBooking(id, cancelDto.reason);
+  async cancelMultiGuestBooking(
+    @Param('id') id: string, 
+    @Body() cancelDto: CancelBookingDto,
+    @Request() req
+  ) {
+    this.logger.log(`User ${req.user?.id} cancelling booking ${id}`);
+    const result = await this.multiGuestBookingService.cancelBooking(
+      id, 
+      cancelDto.reason,
+      undefined,
+      req.user  // ✅ Pass user JWT for notifications
+    );
 
     return {
       status: HttpStatus.OK,

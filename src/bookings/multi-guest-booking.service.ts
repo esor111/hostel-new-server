@@ -607,7 +607,7 @@ export class MultiGuestBookingService {
     });
   }
 
-  async cancelBooking(id: string, reason: string, hostelId?: string): Promise<CancellationResult> {
+  async cancelBooking(id: string, reason: string, hostelId?: string, userJwt?: any): Promise<CancellationResult> {
     this.logger.log(`Cancelling multi-guest booking ${id}: ${reason}`);
 
     return await this.dataSource.transaction(async manager => {
@@ -615,14 +615,14 @@ export class MultiGuestBookingService {
         // Try to find booking by UUID first, then by booking reference
         let booking = await manager.findOne(MultiGuestBooking, {
           where: { id },
-          relations: ['guests']
+          relations: ['guests', 'hostel']
         });
 
         // If not found by UUID, try by booking reference
         if (!booking) {
           booking = await manager.findOne(MultiGuestBooking, {
             where: { bookingReference: id },
-            relations: ['guests']
+            relations: ['guests', 'hostel']
           });
         }
 
@@ -658,6 +658,26 @@ export class MultiGuestBookingService {
         const releasedBeds = bedIds;
 
         this.logger.log(`✅ Cancelled multi-guest booking ${booking.bookingReference}, released ${releasedBeds.length} beds`);
+
+        // 🔔 Notify admin of booking cancellation (if user cancelled)
+        if (booking.hostel && booking.userId) {
+          try {
+            console.log(`📱 Notifying admin of booking cancellation`);
+            console.log(`👤 User: ${booking.contactName} (${booking.userId})`);
+            console.log(`🏨 Hostel: ${booking.hostel.name} (${booking.hostel.businessId})`);
+            console.log(`📝 Reason: ${reason}`);
+            
+            await this.hostelNotificationService.notifyAdminOfCancellation(
+              booking,
+              userJwt || { id: booking.userId } as JwtPayload
+            );
+            
+            console.log(`✅ Admin notification sent successfully`);
+          } catch (notifError) {
+            console.warn(`⚠️ Failed to notify admin: ${notifError.message}`);
+            // Don't let notification failure break cancellation
+          }
+        }
 
         return {
           success: true,
