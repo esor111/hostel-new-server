@@ -8,46 +8,14 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log', 'debug', 'verbose']
   });
 
-  // Enhanced CORS configuration for all origins
-  app.enableCors({  
-    origin: true, // Allow all origins
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Accept',               
-      'Origin',
-      'X-Requested-With',
-      'Access-Control-Request-Method',
-      'Access-Control-R equest-Headers',
-      'x-cache-warmup'
-    ], 
+  // Simple and effective CORS configuration
+  app.enableCors({
+    origin: '*', // Allow all origins explicitly
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    optionsSuccessStatus: 200, // For legacy browser support
-    preflightContinue: false,
-  });
-
-  // Additional middleware to handle CORS manually (fallback)
-  app.use((req: any, res: any, next: any) => {
-    // Set CORS headers manually as a fallback
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header(
-      'Access-Control-Allow-Headers',
-      'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-cache-warmup'
-    );
-    res.header(
-      'Access-Control-Allow-Methods',
-      'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD'
-    );
-
-    // Handle preflight requests with proper logging
-    if (req.method === 'OPTIONS') {
-      console.log(`✅ CORS Preflight handled for: ${req.url}`);
-      return res.status(200).end();
-    }
-
-    next();
+    allowedHeaders: '*', // Allow all headers
+    exposedHeaders: ['Authorization'],
+    maxAge: 3600,
   });
 
   app.useGlobalPipes(new ValidationPipe({
@@ -75,7 +43,7 @@ async function bootstrap() {
     console.log(`🚀 Hostel Server running on: http://localhost:${port}`);
     console.log(`📚 API Docs available at: http://localhost:${port}/hostel/api/v1/docs`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔓 CORS: All origins allowed`);
+    console.log(`🔓 CORS: All origins allowed with credentials`);
   });
 }
 
