@@ -238,6 +238,110 @@ export class StudentNotificationService {
 
 
   /**
+   * Notify student when admin checks them out (leaves hostel permanently)
+   * Flow: Admin processes checkout → Student receives notification
+   */
+  async notifyStudentOfCheckout(
+    student: Student,
+    checkoutDetails: any,
+    hostelName?: string
+  ): Promise<void> {
+    try {
+      console.log(`\n🔔 ===== STUDENT CHECKOUT NOTIFICATION START =====`);
+      console.log(`📋 Student ID: ${student.id}`);
+      console.log(`📋 Student Name: ${student.name}`);
+      console.log(`📋 Student userId: ${student.userId}`);
+      console.log(`📋 Student contactPersonUserId: ${(student as any).contactPersonUserId}`);
+      console.log(`🏨 Hostel Name: ${hostelName || 'Your Hostel'}`);
+      console.log(`📅 Checkout Date: ${checkoutDetails.checkoutDate}`);
+      console.log(`💰 Final Balance: NPR ${checkoutDetails.finalBalance?.toLocaleString() || 0}`);
+      console.log(`💰 Net Settlement: NPR ${checkoutDetails.netSettlement?.toLocaleString() || 0}`);
+
+      this.logger.log(`📱 Sending checkout notification for student ${student.id}`);
+
+      // 1. Use contactPersonUserId if available (booking-based students), fallback to userId
+      const contactPersonUserId = (student as any).contactPersonUserId;
+      const recipientUserId = contactPersonUserId || student.userId;
+
+      if (!recipientUserId) {
+        this.logger.warn(`⚠️ No userId or contactPersonUserId found for student ${student.id}`);
+        console.log(`⚠️ SKIPPING CHECKOUT NOTIFICATION - No userId available`);
+        console.log(`🔔 ===== STUDENT CHECKOUT NOTIFICATION SKIPPED =====\n`);
+        return;
+      }
+
+      console.log(`✅ Using recipientUserId: ${recipientUserId}`);
+
+      // 2. Get FCM tokens
+      const studentFcmTokens = await this.getFcmTokens(recipientUserId, false);
+
+      if (!studentFcmTokens.length) {
+        this.logger.warn(`⚠️ No FCM token found for user ${recipientUserId}`);
+        console.log(`⚠️ SKIPPING CHECKOUT NOTIFICATION - No FCM tokens available`);
+        console.log(`🔔 ===== STUDENT CHECKOUT NOTIFICATION SKIPPED =====\n`);
+        return;
+      }
+
+      console.log(`📱 FCM Tokens Found: ${studentFcmTokens.length}`);
+
+      // 3. Get business name
+      const businessName = hostelName || 'Your Hostel';
+
+      // 4. Compose payload for checkout notification
+      const payload = {
+        fcmToken: studentFcmTokens[0],
+        bookingStatus: 'Confirmed', // Required field, will be overridden by custom type
+        senderName: businessName,
+        recipientId: recipientUserId,
+        recipientType: 'USER',
+        bookingDetails: {
+          bookingId: `checkout_${student.id}`,
+          roomName: student.room ? (student.room.name || student.room.roomNumber || 'Your Room') : 'Your Room',
+          roomId: student.roomId || student.id,
+          // Custom notification type for checkout
+          notificationType: 'CHECKOUT',
+          title: '👋 Checkout Complete',
+          message: `Your checkout from ${businessName} has been processed. Thank you for staying with us!`,
+          // Additional checkout details
+          metadata: {
+            studentId: student.id,
+            studentName: student.name,
+            checkoutDate: checkoutDetails.checkoutDate,
+            finalBalance: checkoutDetails.finalBalance,
+            refundAmount: checkoutDetails.refundAmount,
+            deductionAmount: checkoutDetails.deductionAmount,
+            netSettlement: checkoutDetails.netSettlement
+          }
+        }
+      };
+
+      console.log(`📦 CHECKOUT PAYLOAD:`, JSON.stringify(payload, null, 2));
+
+      // 5. Send to express server
+      console.log(`🚀 Sending to Express server...`);
+      const startTime = Date.now();
+      await this.sendNotification(payload);
+      const endTime = Date.now();
+
+      console.log(`⏱️ Notification sent in ${endTime - startTime}ms`);
+      console.log(`✅ CHECKOUT NOTIFICATION SENT SUCCESSFULLY to ${student.name}`);
+      console.log(`🔔 ===== STUDENT CHECKOUT NOTIFICATION END =====\n`);
+
+      this.logger.log(`✅ Checkout notification sent successfully to student ${student.name}`);
+    } catch (error) {
+      console.log(`\n❌ ===== STUDENT CHECKOUT NOTIFICATION FAILED =====`);
+      console.log(`📋 Student ID: ${student.id}`);
+      console.log(`❌ Error Message: ${error.message}`);
+      console.log(`❌ Error Stack:`, error.stack);
+      console.log(`❌ ===== STUDENT CHECKOUT NOTIFICATION FAILED END =====\n`);
+
+      this.logger.error(`❌ Failed to send checkout notification: ${error.message}`);
+      this.logger.error(error.stack);
+      // Don't throw - notification failure shouldn't break checkout flow
+    }
+  }
+
+  /**
    * Get business name (hardcoded for now)
    * TODO: Implement actual API call to fetch business data
    */

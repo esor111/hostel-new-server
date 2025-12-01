@@ -13,7 +13,9 @@ export enum NotificationCategory {
   INVOICE = 'INVOICE',
   GENERAL = 'GENERAL',
   BULK_MESSAGE = 'BULK_MESSAGE',
-  ADMIN_CHARGE = 'ADMIN_CHARGE'
+  ADMIN_CHARGE = 'ADMIN_CHARGE',
+  ATTENDANCE = 'ATTENDANCE',
+  CHECKOUT = 'CHECKOUT'
 }
 
 export enum DeliveryStatus {

@@ -148,7 +148,7 @@ export class StudentsService {
 
     const student = await this.studentRepository.findOne({
       where: whereCondition,
-      relations: ['room', 'contacts', 'academicInfo', 'financialInfo']
+      relations: ['room', 'contacts', 'academicInfo', 'financialInfo', 'hostel']
     });
 
     if (!student) {
@@ -718,6 +718,24 @@ export class StudentsService {
       console.log(`   - Refund due: NPR ${finalSettlement.refundDue?.toLocaleString() || refundAmount.toLocaleString()}`);
       console.log(`   - Room occupancy history updated`);
       console.log(`   - Bed released and made available`);
+
+      // 🔔 Send checkout notification to student
+      const checkoutResult = {
+        checkoutDate: checkoutDetails.checkoutDate || new Date(),
+        finalBalance: currentBalance.currentBalance,
+        refundAmount: finalSettlement.refundDue || refundAmount,
+        deductionAmount: finalSettlement.additionalDue || deductionAmount,
+        netSettlement: finalSettlement.netSettlement || netSettlement
+      };
+      
+      // Get hostel name for notification
+      const hostelName = student.hostel?.name || 'Your Hostel';
+      
+      await this.studentNotificationService.notifyStudentOfCheckout(
+        student,
+        checkoutResult,
+        hostelName
+      );
 
       return {
         success: true,
