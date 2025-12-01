@@ -1456,102 +1456,55 @@ export class StudentsService {
    * UNIVERSAL BED RELEASE - Works for both manual and booking-based students
    * Releases bed to AVAILABLE status so it can be booked again
    */
+  /**
+   * SIMPLE BED RELEASE - Uses bedSyncService (same as booking cancellation)
+   * This is the SAME approach that works for booking cancellation
+   */
   private async releaseBedAndUpdateBooking(queryRunner: any, student: any, checkoutDetails: any) {
     try {
-      console.log(`🛏️ Starting bed release for student: ${student.name} (ID: ${student.id})`);
+      console.log(`🛏️ Releasing bed for student: ${student.name} (ID: ${student.id}, Room: ${student.roomId})`);
 
-      // STEP 1: Update booking guest status if exists (for booking-based students)
-      const bookingGuest = await queryRunner.manager
-        .createQueryBuilder()
-        .select('*')
-        .from('booking_guests', 'guest')
-        .where('guest.guest_name = :guestName', { guestName: student.name })
-        .andWhere('guest.status = :status', { status: GuestStatus.CHECKED_IN })
-        .getRawOne();
+      // STEP 1: Find bed(s) for this student using repository (NOT raw SQL)
+      const beds = await this.bedRepository.find({
+        where: [
+          { currentOccupantId: student.id },
+          { currentOccupantName: student.name }
+        ],
+        relations: ['room']
+      });
 
-      if (bookingGuest) {
-        await queryRunner.manager
-          .createQueryBuilder()
-          .update('booking_guests')
-          .set({
-            status: GuestStatus.CHECKED_OUT,
-            actual_check_out_date: checkoutDetails.checkoutDate ? new Date(checkoutDetails.checkoutDate) : new Date(),
-            updated_at: new Date()
-          })
-          .where('id = :id', { id: bookingGuest.id })
-          .execute();
-        console.log(`✅ Updated booking guest ${bookingGuest.id} to CHECKED_OUT`);
-      }
+      console.log(`🔍 Found ${beds.length} bed(s) for student ${student.name}`);
 
-      // STEP 2: Find bed directly by currentOccupantId (works for BOTH manual and booking students)
-      let bed = await queryRunner.manager
-        .createQueryBuilder()
-        .select('*')
-        .from('beds', 'bed')
-        .where('bed.current_occupant_id = :studentId', { studentId: student.id })
-        .getRawOne();
-
-      // Fallback: Try by student name if ID lookup fails
-      if (!bed) {
-        bed = await queryRunner.manager
-          .createQueryBuilder()
-          .select('*')
-          .from('beds', 'bed')
-          .where('bed.current_occupant_name = :name', { name: student.name })
-          .getRawOne();
-        if (bed) {
-          console.log(`🔍 Found bed by name fallback: ${bed.bed_identifier}`);
-        }
-      }
-
-      // STEP 3: Release the bed (same logic as handleBookingCancellation)
-      if (bed) {
-        const oldStatus = bed.status;
-        
-        await queryRunner.manager
-          .createQueryBuilder()
-          .update('beds')
-          .set({
-            status: BedStatus.AVAILABLE,
-            current_occupant_id: null,
-            current_occupant_name: null,
-            occupied_since: null,
-            notes: `Released: Student checkout - ${student.name} - ${checkoutDetails.notes || 'Regular checkout'}`
-          })
-          .where('id = :id', { id: bed.id })
-          .execute();
-
-        console.log(`✅ Bed ${bed.bed_identifier} released: ${oldStatus} → AVAILABLE`);
-        console.log(`   - Student: ${student.name}`);
-        console.log(`   - Bed is now available for new bookings`);
-
-        // Update room occupancy count
-        if (bed.room_id) {
-          const occupiedCount = await queryRunner.manager
-            .createQueryBuilder()
-            .select('COUNT(*)', 'count')
-            .from('beds', 'bed')
-            .where('bed.room_id = :roomId', { roomId: bed.room_id })
-            .andWhere('bed.status = :status', { status: BedStatus.OCCUPIED })
-            .getRawOne();
-
-          await queryRunner.manager
-            .createQueryBuilder()
-            .update('rooms')
-            .set({ occupancy: parseInt(occupiedCount?.count || '0') })
-            .where('id = :id', { id: bed.room_id })
-            .execute();
-          
-          console.log(`📊 Room occupancy updated`);
-        }
+      // STEP 2: Release each bed using the SAME method as booking cancellation
+      if (beds.length > 0) {
+        const bedIds = beds.map(bed => bed.id);
+        await this.bedSyncService.handleBookingCancellation(bedIds, `Student checkout: ${student.name}`);
+        console.log(`✅ Released ${beds.length} bed(s) via bedSyncService`);
       } else {
-        console.warn(`⚠️ No bed found for student ${student.name} (ID: ${student.id})`);
-        console.warn(`   - This student may not have been assigned to a bed`);
+        console.warn(`⚠️ No beds found for student ${student.name}`);
+        
+        // Still update room occupancy if student has roomId
+        if (student.roomId) {
+          await this.bedSyncService.updateRoomOccupancyFromBeds(student.roomId);
+          console.log(`📊 Room occupancy recalculated for room ${student.roomId}`);
+        }
       }
+
+      // STEP 3: Update booking_guests status if exists
+      await this.dataSource
+        .createQueryBuilder()
+        .update('booking_guests')
+        .set({
+          status: GuestStatus.CHECKED_OUT,
+          actual_check_out_date: new Date(),
+          updated_at: new Date()
+        })
+        .where('guest_name = :name', { name: student.name })
+        .andWhere('status = :status', { status: GuestStatus.CHECKED_IN })
+        .execute();
 
     } catch (error) {
-      console.error('❌ Error releasing bed during checkout:', error);
-      // Don't fail the entire checkout process, but log the error
+      console.error('❌ Error releasing bed:', error.message);
     }
   }
 

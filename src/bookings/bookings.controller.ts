@@ -423,11 +423,22 @@ export class BookingsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject booking request' })
   @ApiResponse({ status: 200, description: 'Booking rejected successfully' })
-  async rejectBookingRequest(@Param('id') id: string, @Body() rejectionDto: RejectBookingDto) {
+  async rejectBookingRequest(
+    @Param('id') id: string, 
+    @Body() rejectionDto: RejectBookingDto,
+    @Request() req  // ✅ Add Request to get JWT for notifications
+  ) {
     this.logger.log(`Rejecting booking ${id} via unified multi-guest system`);
+    this.logger.log(`Admin user: ${req.user?.id}`);
 
-    // Use MultiGuestBookingService rejectBooking method instead of cancelBooking
-    const result = await this.multiGuestBookingService.rejectBooking(id, rejectionDto.reason, rejectionDto.processedBy || 'admin');
+    // Use MultiGuestBookingService rejectBooking method with admin JWT for notifications
+    const result = await this.multiGuestBookingService.rejectBooking(
+      id, 
+      rejectionDto.reason, 
+      rejectionDto.processedBy || 'admin',
+      undefined,  // hostelId (optional)
+      req.user    // ✅ Pass admin JWT for notifications
+    );
 
     // Return direct response
     return {
