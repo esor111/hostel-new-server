@@ -39,7 +39,7 @@ export class Student extends BaseEntity {
   @Column({ length: 255 })
   name: string;
 
-  @Column({ length: 20, unique: true })
+  @Column({ length: 50, unique: true })  // Increased to 50 to accommodate archived phone format: ARCHIVED_{phone}_{timestamp}
   phone: string;
 
   @Column({ length: 255, unique: false })  // Not unique - multiple students can share parent email
