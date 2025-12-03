@@ -1926,8 +1926,9 @@ export class MultiGuestBookingService {
     this.logger.log(`✅ Creating student "${guest.guestName}" with guest email: ${studentEmail}, guest phone: ${studentPhone}`);
 
     // Check if guest phone already exists (reject if duplicate)
+    // Exclude soft-deleted students - they have archived phones and deletedAt set
     const existingStudent = await manager.findOne(Student, {
-      where: { phone: studentPhone }
+      where: { phone: studentPhone, deletedAt: IsNull() }
     });
 
     if (existingStudent) {

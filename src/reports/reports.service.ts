@@ -318,6 +318,7 @@ export class ReportsService {
 
 
   private async generateStudentReport(parameters: any, hostelId?: string) {
+    // TypeORM's @DeleteDateColumn auto-excludes soft-deleted students
     const queryBuilder = this.studentRepository.createQueryBuilder('student')
       .leftJoinAndSelect('student.room', 'room')
       .leftJoinAndSelect('student.academicInfo', 'academicInfo');

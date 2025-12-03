@@ -1,4 +1,4 @@
-import { Entity, Column, OneToMany, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Entity, Column, OneToMany, ManyToOne, JoinColumn, Index, DeleteDateColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Room } from '../../rooms/entities/room.entity';
 import { RoomOccupant } from '../../rooms/entities/room-occupant.entity';
@@ -79,6 +79,14 @@ export class Student extends BaseEntity {
 
   @Column({ name: 'booking_id', nullable: true })
   bookingId: string;
+
+  // Soft delete support - when set, student is considered "deleted" but data preserved
+  @DeleteDateColumn({ name: 'deleted_at' })
+  deletedAt: Date;
+
+  // Original phone number before archiving (for historical reference)
+  @Column({ name: 'original_phone', length: 20, nullable: true })
+  originalPhone: string;
 
   // Relations
   @ManyToOne(() => Hostel, hostel => hostel.students, { onDelete: 'CASCADE' })

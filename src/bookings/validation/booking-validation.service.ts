@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { Bed, BedStatus } from '../../rooms/entities/bed.entity';
 import { Room } from '../../rooms/entities/room.entity';
 import { BookingGuest } from '../entities/booking-guest.entity';
@@ -274,9 +274,10 @@ export class BookingValidationService {
     for (const guest of guests) {
       // Skip email check - multiple students can have same contact person email
       
-      // Check if phone already exists in students table
+      // Check if phone already exists in students table (exclude soft-deleted students)
+      // Note: TypeORM's @DeleteDateColumn auto-excludes soft-deleted, but we're explicit here
       const existingStudentByPhone = await this.studentRepository.findOne({
-        where: { phone: guest.phone }
+        where: { phone: guest.phone, deletedAt: IsNull() }
       });
 
       if (existingStudentByPhone) {

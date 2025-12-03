@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { getExternalApiConfig, logApiConfig } from '../config/environment.config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, QueryRunner, DataSource } from 'typeorm';
+import { Repository, QueryRunner, DataSource, IsNull } from 'typeorm';
 import { Student, StudentStatus } from './entities/student.entity';
 import { StudentContact, ContactType } from './entities/student-contact.entity';
 import { StudentAcademicInfo } from './entities/student-academic-info.entity';
@@ -291,6 +291,7 @@ export class StudentsService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
+    // TypeORM's @DeleteDateColumn auto-excludes soft-deleted students from all counts
     const totalStudents = await this.studentRepository.count({
       where: { hostelId }
     });
@@ -660,16 +661,25 @@ export class StudentsService {
         console.log(` Created deduction entry: NPR ${deductionAmount} for ${student.name}`);
       }
 
-      // Update student status to inactive
+      // SOFT DELETE: Archive phone number and mark as deleted
+      // This allows the same phone to be used for future bookings
+      const archivedPhone = `ARCHIVED_${student.phone}_${Date.now()}`;
+      console.log(`📱 Archiving phone: ${student.phone} → ${archivedPhone}`);
+
+      // Update student status to inactive and soft delete
       await queryRunner.manager.update('students', studentId, {
         status: StudentStatus.INACTIVE,
+        originalPhone: student.phone,  // Preserve original phone for reference
+        phone: archivedPhone,          // Free up the phone number
+        deletedAt: new Date(),         // Soft delete timestamp
         updatedAt: new Date()
       });
 
       // Clear room assignment if needed
       if (checkoutDetails.clearRoom) {
         await queryRunner.manager.update('students', studentId, {
-          roomId: null
+          roomId: null,
+          bedNumber: null
         });
       }
 
@@ -2399,9 +2409,9 @@ export class StudentsService {
           throw new BadRequestException('Bed does not belong to this hostel');
         }
 
-        // 2. Check if student with same email exists globally (across all hostels)
+        // 2. Check if student with same email exists globally (exclude soft-deleted students)
         const existingEmailStudent = await manager.findOne(Student, {
-          where: { email: dto.email },
+          where: { email: dto.email, deletedAt: IsNull() },
           relations: ['hostel']
         });
 
@@ -2413,9 +2423,9 @@ export class StudentsService {
           }
         }
 
-        // 3. Check if student with same phone exists globally (across all hostels)
+        // 3. Check if student with same phone exists globally (exclude soft-deleted students)
         const existingPhoneStudent = await manager.findOne(Student, {
-          where: { phone: dto.phone },
+          where: { phone: dto.phone, deletedAt: IsNull() },
           relations: ['hostel']
         });
 
@@ -2659,10 +2669,11 @@ export class StudentsService {
       });
 
       // Step 3: Validate phone uniqueness AFTER getting phone from Kaha API
+      // Exclude soft-deleted students - they have archived phones and can re-book
       console.log('🔍 SERVICE: About to check phone uniqueness for:', userPhone);
       
       const existingPhone = await this.studentRepository.findOne({
-        where: { phone: userPhone }
+        where: { phone: userPhone, deletedAt: IsNull() }
       });
 
       console.log('🔍 SERVICE: Phone uniqueness check result:', existingPhone ? 'PHONE EXISTS' : 'PHONE AVAILABLE');
@@ -2713,7 +2724,7 @@ export class StudentsService {
       return apiResponse;
     } catch (error) {
       console.log('❌ SERVICE: Error in createStudentFromToken:', error.message);
-      console.log('❌ SERVICE: Error type:', error.constructor.name);
+    console.log('❌ SERVICE: Error type:', error.constructor.name);
       console.log('❌ SERVICE: Error stack:', error.stack);
       
       this.logger.error(`❌ Error creating student from token: ${error.message}`);
@@ -2730,3 +2741,6 @@ export class StudentsService {
     }
   }
 }
+
+//also the another thing  i do not wnat show the student in anywhere who is checkout from that hostel
+//

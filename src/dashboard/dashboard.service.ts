@@ -351,12 +351,15 @@ export class DashboardService {
       });
     });
 
-    // Get recent checkouts (inactive students)
+    // Get recent checkouts (soft-deleted students)
+    // Use withDeleted to include checked-out students in activity feed
     const recentCheckouts = await this.studentRepository
       .createQueryBuilder('student')
+      .withDeleted()  // Include soft-deleted students for checkout activity
       .leftJoinAndSelect('student.room', 'room')
       .where('student.status = :status', { status: StudentStatus.INACTIVE })
       .andWhere('student.hostelId = :hostelId', { hostelId })
+      .andWhere('student.deletedAt IS NOT NULL')  // Only show actually checked-out students
       .orderBy('student.updatedAt', 'DESC')
       .limit(3)
       .getMany();
@@ -437,9 +440,11 @@ export class DashboardService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
-    // Get all students (both active and inactive) for this hostel
+    // Get all students (both active and soft-deleted) for this hostel
+    // Use withDeleted to include checked-out students for dues tracking
     const students = await this.studentRepository
       .createQueryBuilder('student')
+      .withDeleted()  // Include soft-deleted students for dues tracking
       .leftJoinAndSelect('student.room', 'room')
       .where('student.hostelId = :hostelId', { hostelId })
       .getMany();

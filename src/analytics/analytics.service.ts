@@ -55,6 +55,8 @@ export class AnalyticsService {
       throw new BadRequestException('Hostel context required for this operation.');
     }
 
+    // Count only active (non-deleted) students
+    // TypeORM's @DeleteDateColumn auto-excludes soft-deleted records
     const totalStudents = await this.studentRepository.count({
       where: { hostelId }
     });

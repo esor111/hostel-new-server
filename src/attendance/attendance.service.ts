@@ -357,9 +357,9 @@ export class AttendanceService {
       roomNumber: record.student?.room?.roomNumber
     }));
 
-    // Get total students in hostel
+    // Get total active students in hostel (TypeORM auto-excludes soft-deleted)
     const totalStudents = await this.studentRepository.count({
-      where: { hostelId, isConfigured: true }
+      where: { hostelId, isConfigured: true, status: StudentStatus.ACTIVE }
     });
 
     return {
